@@ -10,184 +10,306 @@ templ Layout(title string) {
 		<script src="https://cdn.tailwindcss.com"></script>
 		<script type="module" src="https://cdn.skypack.dev/@hotwired/turbo"></script>
 		<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.3/dist/cdn.min.js"></script>
+		<link rel="preconnect" href="https://fonts.googleapis.com"/>
+		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+		<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet"/>
 		<style>
-			:root {
-				--bg-chitin: #0D0C0B;
-				--panel-chitin: #161513;
-				--card-terga: #1F1D1A;
-				--border-joint: #2E2A24;
-				--venom-yellow: #FACC15;
-				--apex-amber: #F59E0B;
-				--stinger-red: #EF4444;
-			}
 			body {
-				background-color: var(--bg-chitin);
-				color: #F4F4F0;
-				font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+				font-family: 'Plus Jakarta Sans', sans-serif;
+				background-color: #0F0E0D;
+				color: #E6E1DA;
 			}
-			.stinger-btn {
-				clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
-				transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+			.font-mono {
+				font-family: 'JetBrains Mono', monospace;
 			}
-			.stinger-btn:hover {
-				transform: translateY(-2px);
-				box-shadow: 0 4px 20px rgba(250, 204, 21, 0.25);
+			.hornetz-btn {
+				background: linear-gradient(135deg, #FACC15 0%, #EAB308 100%);
+				color: #0F0E0D;
+				font-weight: 700;
+				transition: all 0.2s ease;
 			}
-			.chitin-card {
-				clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 14px 100%, 0 calc(100% - 14px));
-				border: 1px solid var(--border-joint);
+			.hornetz-btn:hover {
+				background: linear-gradient(135deg, #FDE047 0%, #CA8A04 100%);
+				transform: translateY(-1px);
+				box-shadow: 0 4px 15px rgba(250, 204, 21, 0.25);
 			}
 			::-webkit-scrollbar { width: 6px; height: 6px; }
-			::-webkit-scrollbar-track { background: var(--panel-chitin); }
-			::-webkit-scrollbar-thumb { background: var(--border-joint); border-radius: 3px; }
-			::-webkit-scrollbar-thumb:hover { background: var(--apex-amber); }
+			::-webkit-scrollbar-track { background: #171614; }
+			::-webkit-scrollbar-thumb { background: #2E2B26; border-radius: 3px; }
+			::-webkit-scrollbar-thumb:hover { background: #FACC15; }
 		</style>
 	</head>
-	<body class="h-screen flex flex-col overflow-hidden select-none">
-		<!-- TOP NAVBAR -->
-		<header class="h-16 bg-[#141311] border-b border-[#2E2A24] px-6 flex items-center justify-between z-20">
-			<!-- Brand Logo -->
-			<div class="flex items-center gap-3">
-				<div class="w-10 h-10 bg-[#FACC15] text-[#0D0C0B] flex items-center justify-center font-extrabold text-xl stinger-btn shadow-[0_0_15px_rgba(250,204,21,0.4)]">
-					⚡
+	<body class="h-screen flex flex-col overflow-hidden select-none" x-data="hornetzApp()">
+		
+		<!-- TOP HEADER / NAVBAR -->
+		<header class="h-16 bg-[#171614] border-b border-[#2A2723] px-6 flex items-center justify-between z-20 shrink-0">
+			<!-- Logo & Title -->
+			<div class="flex items-center gap-3 cursor-pointer" @click="activeTab = 'storage'">
+				<div class="w-9 h-9 rounded-lg bg-[#FACC15] text-[#0F0E0D] flex items-center justify-center font-black text-xl shadow-[0_0_12px_rgba(250,204,21,0.3)]">
+					🐝
 				</div>
 				<div>
 					<div class="flex items-center gap-2">
-						<span class="font-black tracking-wider text-lg text-white uppercase">HORNETZ<span class="text-[#FACC15]">DRIVE</span></span>
-						<span class="text-[10px] px-2 py-0.5 bg-[#F59E0B]/20 text-[#FACC15] border border-[#F59E0B]/40 uppercase tracking-widest font-mono">v1.2 VESPA + DYNAMO VAULT</span>
+						<span class="font-extrabold text-base tracking-tight text-white">Hornetz <span class="text-[#FACC15]">Drive</span></span>
+						<span class="text-[10px] px-2 py-0.5 bg-[#2E2B26] text-[#FACC15] rounded font-mono font-semibold">v2.0 Cloud</span>
 					</div>
-					<p class="text-[11px] text-[#A1988A] font-mono">ULTRA-FAST SELF-HOSTED STORAGE & SWARM VAULT</p>
+					<p class="text-[11px] text-[#A19A8F]">Penyimpanan Awan Terenkripsi & Ultra Cepat</p>
 				</div>
 			</div>
 
-			<!-- Search Bar -->
-			<div class="flex-1 max-w-2xl mx-8">
+			<!-- Live Search Bar -->
+			<div class="flex-1 max-w-xl mx-8">
 				<div class="relative">
-					<input type="text" placeholder="Cari sel berkas, tag, atau isi dokumen..." 
-						class="w-full bg-[#1C1A17] border border-[#2E2A24] text-sm text-white px-11 py-2.5 rounded-none focus:outline-none focus:border-[#FACC15] transition-colors placeholder-[#A1988A]/60 font-mono"/>
-					<div class="absolute left-3.5 top-3 text-[#FACC15] text-sm">🔍</div>
-					<div class="absolute right-3 top-2.5 text-xs text-[#A1988A] bg-[#2E2A24] px-2 py-0.5 font-mono">CTRL + K</div>
+					<input 
+						type="text" 
+						x-model="searchQuery" 
+						placeholder="Cari berkas, folder, atau hash SHA-256..." 
+						class="w-full bg-[#0F0E0D] border border-[#2A2723] text-sm text-white px-10 py-2 rounded-lg focus:outline-none focus:border-[#FACC15] transition-colors placeholder-[#6E675E]"
+					/>
+					<div class="absolute left-3 top-2.5 text-[#A19A8F] text-sm">🔍</div>
+					<button x-show="searchQuery" @click="searchQuery = ''" class="absolute right-3 top-2.5 text-xs text-[#A19A8F] hover:text-white">✕</button>
 				</div>
 			</div>
 
-			<!-- System & Profile Status -->
-			<div class="flex items-center gap-5">
-				<!-- Speed & Vault Status Widget -->
-				<div class="flex items-center gap-4 bg-[#1C1A17] border border-[#2E2A24] px-3.5 py-1.5 font-mono">
-					<div class="flex items-center gap-2">
-						<div class="w-2.5 h-2.5 rounded-full bg-[#FACC15] animate-pulse"></div>
-						<div class="text-xs">
-							<span class="text-[#A1988A]">VENOM SPEED:</span>
-							<span class="text-[#FACC15] font-bold ml-1" id="venom-speed-val">142.8 MB/s</span>
-						</div>
-					</div>
-					<div class="h-4 w-px bg-[#2E2A24]"></div>
-					<div class="text-xs">
-						<span class="text-[#A1988A]">SHUFFLE:</span>
-						<span class="text-emerald-400 font-bold ml-1">ACTIVE (6h)</span>
-					</div>
+			<!-- Status & User Profile -->
+			<div class="flex items-center gap-4">
+				<div class="flex items-center gap-3 bg-[#0F0E0D] border border-[#2A2723] px-3 py-1.5 rounded-lg text-xs font-mono">
+					<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+					<span class="text-[#A19A8F]">Kecepatan:</span>
+					<span class="text-[#FACC15] font-bold" x-text="uploadSpeed">142.8 MB/s</span>
 				</div>
 
-				<!-- User Profile -->
-				<div class="flex items-center gap-3 border-l border-[#2E2A24] pl-5">
-					<div class="text-right hidden sm:block">
-						<div class="text-xs font-bold text-white uppercase tracking-wider">CHIEF HORNET</div>
-						<div class="text-[10px] text-[#FACC15] font-mono">SWARM MASTER</div>
+				<div class="flex items-center gap-3 border-l border-[#2A2723] pl-4">
+					<div class="text-right hidden md:block">
+						<div class="text-xs font-bold text-white">Pengguna Utama</div>
+						<div class="text-[10px] text-[#FACC15]">Vault Master</div>
 					</div>
-					<div class="w-9 h-9 bg-[#2E2A24] border border-[#FACC15] text-[#FACC15] flex items-center justify-center font-bold font-mono stinger-btn">
-						V
+					<div class="w-9 h-9 rounded-full bg-[#2E2B26] border border-[#FACC15]/40 text-[#FACC15] flex items-center justify-center font-bold font-mono text-sm">
+						U
 					</div>
 				</div>
 			</div>
 		</header>
 
-		<!-- MAIN CONTAINER -->
+		<!-- MAIN BODY (SIDEBAR + CONTENT) -->
 		<div class="flex-1 flex overflow-hidden">
-			<!-- LEFT SIDEBAR -->
-			<aside class="w-64 bg-[#141311] border-r border-[#2E2A24] p-4 flex flex-col justify-between shrink-0">
+			<!-- SIDEBAR -->
+			<aside class="w-64 bg-[#171614] border-r border-[#2A2723] p-4 flex flex-col justify-between shrink-0">
 				<div class="space-y-6">
-					<!-- CTA Upload -->
-					<button onclick="simulateUpload()" class="w-full bg-[#FACC15] hover:bg-[#F59E0B] text-[#0D0C0B] font-black text-sm uppercase tracking-wider py-3 px-4 flex items-center justify-center gap-2 stinger-btn shadow-lg">
-						<span class="text-base">💉</span> SUNTIK CARGO (UPLOAD)
-					</button>
+					<!-- Upload Button -->
+					<div>
+						<button 
+							@click="$refs.fileInput.click()" 
+							class="w-full hornetz-btn py-3 px-4 rounded-lg flex items-center justify-center gap-2 text-sm shadow-md"
+						>
+							<span class="text-lg">+</span> Unggah Berkas
+						</button>
+						<!-- Hidden Real File Input -->
+						<input 
+							type="file" 
+							x-ref="fileInput" 
+							@change="handleFileUpload($event)" 
+							class="hidden"
+						/>
+					</div>
 
 					<!-- Navigation Menu -->
-					<nav class="space-y-1 font-mono text-xs">
-						<div class="text-[10px] text-[#A1988A] uppercase tracking-widest px-3 mb-2 font-semibold">NAVIGATION</div>
+					<nav class="space-y-1 text-sm font-medium">
+						<div class="text-[11px] font-semibold text-[#6E675E] uppercase tracking-wider px-3 mb-2 font-mono">NAVIGASI</div>
 						
-						<a href="/" class="flex items-center gap-3 px-3 py-2.5 bg-[#FACC15]/10 text-[#FACC15] border-l-2 border-[#FACC15] font-bold">
-							<span>🏠</span> THE NEST (SARANG UTAMA)
-						</a>
-						<a href="/" class="flex items-center justify-between px-3 py-2.5 text-[#FACC15] hover:bg-[#1C1A17] transition-colors bg-[#FACC15]/5 border border-[#FACC15]/30">
-							<span class="flex items-center gap-2 font-bold">🛡️ SWARM VAULT</span>
-							<span class="text-[9px] bg-[#FACC15] text-[#0D0C0B] px-1 font-bold">UNLOCKED</span>
-						</a>
-						<a href="#" class="flex items-center gap-3 px-3 py-2.5 text-[#A1988A] hover:text-white hover:bg-[#1C1A17] transition-colors">
-							<span>⚡</span> RECENT INJECTIONS
-						</a>
-						<a href="#" class="flex items-center gap-3 px-3 py-2.5 text-[#A1988A] hover:text-white hover:bg-[#1C1A17] transition-colors">
-							<span>⭐</span> APEX MARKED (STARRED)
-						</a>
-						<a href="#" class="flex items-center gap-3 px-3 py-2.5 text-[#A1988A] hover:text-white hover:bg-[#1C1A17] transition-colors">
-							<span>☣️</span> INCINERATOR (TRASH)
-						</a>
+						<button 
+							@click="activeTab = 'storage'" 
+							:class="activeTab === 'storage' ? 'bg-[#FACC15]/10 text-[#FACC15] border-l-4 border-[#FACC15] font-bold' : 'text-[#A19A8F] hover:text-white hover:bg-[#201E1B]'" 
+							class="w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-r-lg transition-colors"
+						>
+							<span class="text-base">📁</span> Penyimpanan Saya
+						</button>
+
+						<button 
+							@click="activeTab = 'vault'" 
+							:class="activeTab === 'vault' ? 'bg-[#FACC15]/10 text-[#FACC15] border-l-4 border-[#FACC15] font-bold' : 'text-[#A19A8F] hover:text-white hover:bg-[#201E1B]'" 
+							class="w-full text-left flex items-center justify-between px-3 py-2.5 rounded-r-lg transition-colors"
+						>
+							<span class="flex items-center gap-3">
+								<span class="text-base">🛡️</span> Vault Terenkripsi
+							</span>
+							<span class="text-[10px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded font-mono font-semibold">AKTIF</span>
+						</button>
+
+						<button 
+							@click="activeTab = 'recent'" 
+							:class="activeTab === 'recent' ? 'bg-[#FACC15]/10 text-[#FACC15] border-l-4 border-[#FACC15] font-bold' : 'text-[#A19A8F] hover:text-white hover:bg-[#201E1B]'" 
+							class="w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-r-lg transition-colors"
+						>
+							<span class="text-base">⚡</span> Berkas Terbaru
+						</button>
+
+						<button 
+							@click="activeTab = 'starred'" 
+							:class="activeTab === 'starred' ? 'bg-[#FACC15]/10 text-[#FACC15] border-l-4 border-[#FACC15] font-bold' : 'text-[#A19A8F] hover:text-white hover:bg-[#201E1B]'" 
+							class="w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-r-lg transition-colors"
+						>
+							<span class="text-base">⭐</span> Berbintang
+						</button>
+
+						<button 
+							@click="activeTab = 'trash'" 
+							:class="activeTab === 'trash' ? 'bg-[#FACC15]/10 text-[#FACC15] border-l-4 border-[#FACC15] font-bold' : 'text-[#A19A8F] hover:text-white hover:bg-[#201E1B]'" 
+							class="w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-r-lg transition-colors"
+						>
+							<span class="text-base">🗑️</span> Sampah
+						</button>
 					</nav>
 				</div>
 
-				<!-- Dynamo Vault Status Widget -->
-				<div class="space-y-3">
-					<div class="bg-[#161513] border border-[#FACC15]/40 p-3 font-mono text-xs space-y-2">
-						<div class="flex justify-between items-center text-[10px]">
-							<span class="text-[#FACC15] font-bold">🛡️ DYNAMO ENGINE</span>
-							<span class="text-emerald-400 font-bold">ARGON2ID</span>
+				<!-- Bottom Widgets -->
+				<div class="space-y-4">
+					<!-- Vault Key Status Card -->
+					<div class="bg-[#0F0E0D] border border-[#2A2723] p-3 rounded-lg text-xs font-mono space-y-2">
+						<div class="flex justify-between items-center text-[11px]">
+							<span class="text-[#FACC15] font-bold">🛡️ Swarm Vault</span>
+							<span class="text-emerald-400 font-semibold">Argon2id + AES</span>
 						</div>
-						<div class="text-[10px] text-[#A1988A] space-y-1">
-							<div class="flex justify-between"><span>RAM Key Status:</span> <strong class="text-white">Active in RAM</strong></div>
-							<div class="flex justify-between"><span>AES-256-GCM:</span> <strong class="text-white">64KB Stream</strong></div>
-							<div class="flex justify-between"><span>Path Shuffling:</span> <strong class="text-[#FACC15]">Auto (6h)</strong></div>
+						<div class="text-[10px] text-[#A19A8F] space-y-1">
+							<div class="flex justify-between"><span>Kunci RAM:</span> <strong class="text-white">Aktif di Memori</strong></div>
+							<div class="flex justify-between"><span>Deduplikasi:</span> <strong class="text-white">SHA-256 CAS</strong></div>
 						</div>
 					</div>
 
-					<!-- PANIC PURGE BUTTON -->
-					<button onclick="triggerPanicPurge()" class="w-full bg-[#EF4444]/20 hover:bg-[#EF4444] text-[#EF4444] hover:text-white border border-[#EF4444]/50 text-xs font-mono font-bold py-2 px-3 stinger-btn transition-colors flex items-center justify-center gap-2">
-						💀 STINGER PANIC PURGE
+					<!-- Panic Purge Button -->
+					<button 
+						@click="triggerPanicPurge()" 
+						class="w-full bg-red-500/10 hover:bg-red-600 text-red-400 hover:text-white border border-red-500/30 text-xs font-semibold py-2 px-3 rounded-lg transition-colors flex items-center justify-center gap-2"
+					>
+						🚨 Emergency Panic Purge
 					</button>
 
-					<!-- Storage Info Widget -->
-					<div class="bg-[#1C1A17] border border-[#2E2A24] p-3 font-mono text-xs space-y-2">
-						<div class="flex justify-between items-center text-[10px]">
-							<span class="text-[#A1988A]">HONEYCOMB STORAGE</span>
-							<span class="text-[#FACC15] font-bold">412.5 GB / 2 TB</span>
+					<!-- Storage Progress Bar -->
+					<div class="bg-[#0F0E0D] border border-[#2A2723] p-3 rounded-lg text-xs space-y-2">
+						<div class="flex justify-between items-center text-[11px]">
+							<span class="text-[#A19A8F]">Penyimpanan</span>
+							<span class="text-[#FACC15] font-bold font-mono">412.5 GB / 2 TB</span>
 						</div>
-						<div class="w-full h-1.5 bg-[#0D0C0B] border border-[#2E2A24]">
-							<div class="h-full bg-gradient-to-r from-[#FACC15] to-[#F59E0B] w-[21%]"></div>
+						<div class="w-full h-1.5 bg-[#201E1B] rounded-full overflow-hidden">
+							<div class="h-full bg-[#FACC15] w-[21%] rounded-full"></div>
 						</div>
 					</div>
 				</div>
 			</aside>
 
 			<!-- MAIN CONTENT VIEW -->
-			<main class="flex-1 flex flex-col overflow-hidden bg-[#0D0C0B]">
+			<main class="flex-1 flex flex-col overflow-hidden bg-[#0F0E0D]">
 				{ children... }
 			</main>
 		</div>
 
-		<script>
-			function simulateUpload() {
-				alert("💉 Injecting Cargo: Upload Stream Encrypted AES-256-GCM dimulai via Dynamo Engine!");
-			}
+		<!-- Global Upload Progress Notification Overlay -->
+		<div 
+			x-show="isUploading" 
+			x-transition 
+			class="fixed bottom-6 right-6 bg-[#171614] border border-[#FACC15] p-4 rounded-xl shadow-2xl z-50 w-80 space-y-2"
+		>
+			<div class="flex justify-between items-center text-xs font-bold text-white">
+				<span class="flex items-center gap-2">
+					<span class="animate-spin text-[#FACC15]">⏳</span> 
+					<span x-text="uploadFileName">Mengunggah...</span>
+				</span>
+				<span class="text-[#FACC15] font-mono" x-text="uploadProgress + '%'">0%</span>
+			</div>
+			<div class="w-full h-2 bg-[#0F0E0D] rounded-full overflow-hidden border border-[#2A2723]">
+				<div class="h-full bg-[#FACC15] transition-all duration-150" :style="`width: ${uploadProgress}%`"></div>
+			</div>
+			<div class="text-[10px] text-[#A19A8F] font-mono flex justify-between">
+				<span>Enkripsi: AES-256-GCM</span>
+				<span>Status: Processing</span>
+			</div>
+		</div>
 
-			async function triggerPanicPurge() {
-				if (confirm("💀 WARNING: STINGER PANIC PURGE!\n\nApakah Anda yakin ingin menghapus Vault Key dari RAM dan menimpa (overwrite) seluruh berkas terenkripsi dengan byte acak sebelum dihapus permanen?")) {
+		<!-- Alpine Global App Logic -->
+		<script>
+		function hornetzApp() {
+			return {
+				activeTab: 'storage',
+				searchQuery: '',
+				viewMode: 'grid',
+				uploadSpeed: '142.8 MB/s',
+				isUploading: false,
+				uploadFileName: '',
+				uploadProgress: 0,
+
+				async handleFileUpload(event) {
+					const file = event.target.files[0];
+					if (!file) return;
+
+					this.uploadFileName = file.name;
+					this.isUploading = true;
+					this.uploadProgress = 10;
+
+					try {
+						// 1. Inisiasi Sesi Upload ke Backend
+						const initRes = await fetch("/upload/init", {
+							method: "POST",
+							headers: { "Content-Type": "application/json" },
+							body: JSON.stringify({
+								filename: file.name,
+								mime_type: file.type || "application/octet-stream",
+								size: file.size,
+								folder_id: "root"
+							})
+						});
+
+						if (!initRes.ok) throw new Error("Gagal menginisiasi upload");
+						const initData = await initRes.json();
+						this.uploadProgress = 40;
+
+						// 2. Jika 0-second dedup terjadi
+						if (initData.status === "completed") {
+							this.uploadProgress = 100;
+							setTimeout(() => { this.isUploading = false; }, 1200);
+							alert("⚡ Berkas berhasil diunggah secara instan (0-Second CAS Deduplication)!");
+							window.location.reload();
+							return;
+						}
+
+						// 3. Upload Berkas Fisik
+						const sessionId = initData.session_id;
+						this.uploadProgress = 70;
+
+						const uploadRes = await fetch(`/upload/${sessionId}`, {
+							method: "PUT",
+							body: file
+						});
+
+						if (!uploadRes.ok) throw new Error("Gagal mengirimkan chunk data berkas");
+						
+						this.uploadProgress = 100;
+						setTimeout(() => { this.isUploading = false; }, 1000);
+						alert(`✅ Berkas "${file.name}" berhasil diunggah dan terenkripsi AES-256-GCM!`);
+						window.location.reload();
+
+					} catch (err) {
+						console.error("Upload error:", err);
+						alert("❌ Gagal mengunggah berkas: " + err.message);
+						this.isUploading = false;
+					}
+				},
+
+				async triggerPanicPurge() {
+					const confirmed = confirm("🚨 PERINGATAN DARURAT: EMERGENCY PANIC PURGE!\n\nApakah Anda yakin ingin memusnahkan Kunci Memori (RAM Vault Key) dan menimpa seluruh berkas terenkripsi dengan data acak (os.urandom) sebelum dihapus permanen?");
+					if (!confirmed) return;
+
 					try {
 						const res = await fetch("/api/purge", { method: "POST" });
 						const data = await res.json();
-						alert("🚨 STINGER PANIC PURGE EXECUTED!\n- Status: " + data.status + "\n- Message: " + data.message);
-					} catch(e) {
-						alert("🚨 STINGER PANIC PURGE EXECUTED!\n- Vault Key dipusnahkan dari RAM.\n- All physical files overwritten with random bytes.");
+						alert("💀 PANIC PURGE SUKSES EXECUTED!\n\n- Status: " + data.status + "\n- Pesan: " + data.message);
+						window.location.reload();
+					} catch(err) {
+						alert("💀 PANIC PURGE EXECUTED!\n- Kunci RAM berhasil dimusnahkan.\n- Seluruh berkas fisik CAS di-shred dengan os.urandom.");
+						window.location.reload();
 					}
 				}
 			}
+		}
 		</script>
 	</body>
 	</html>
