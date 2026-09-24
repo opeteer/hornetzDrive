@@ -7,11 +7,10 @@ import (
 	"net/http"
 	"os"
 	"time"
-	"ztatic-go-framework/internal/crypto"
-
 	"github.com/labstack/echo/v5"
-
+	"ztatic-go-framework/data"
 	"ztatic-go-framework/fullstack"
+	"ztatic-go-framework/internal/crypto"
 	"ztatic-go-framework/internal/storage"
 	"ztatic-go-framework/internal/upload"
 	"ztatic-go-framework/realtime"
@@ -21,6 +20,7 @@ type UploadController struct {
 	SessionMgr *upload.SessionManager
 	CAS        *storage.CASEngine
 	Broker     *realtime.MemoryBroker
+	DB         *data.DBEngine
 }
 
 type ProgressBarComponent struct {
@@ -109,6 +109,16 @@ func (uc *UploadController) UploadChunk(c *echo.Context) error {
 			return echo.NewHTTPError(http.StatusInternalServerError, "cas storage failed")
 		}
 		uc.SessionMgr.DeleteSession(sess.ID)
+
+		if uc.DB != nil && uc.DB.SQL != nil {
+			fileID := fmt.Sprintf("file_%d", time.Now().UnixNano())
+			folderID := sess.FolderID
+			if folderID == "" || folderID == "root" {
+				folderID = "f1"
+			}
+			uc.DB.SQL.Exec("INSERT INTO files (id, owner_id, folder_id, name, mime_type, size, cas_hash) VALUES (?, 1, ?, ?, ?, ?, ?)",
+				fileID, folderID, sess.Filename, sess.MimeType, sess.ExpectedSize, casHash)
+		}
 
 		return c.JSON(http.StatusOK, map[string]interface{}{
 			"status":   "completed",

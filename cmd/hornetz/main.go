@@ -76,10 +76,22 @@ func main() {
 		log.Fatalf("Failed to init Session Manager: %v", err)
 	}
 
+	fileCtrl := &controllers.FileController{
+		DB:  dbEngine,
+		CAS: casEngine,
+	}
+	fileCtrl.SeedInitialData()
+
+	app.GET("/api/files", fileCtrl.GetFiles)
+	app.GET("/api/folders", fileCtrl.GetFolders)
+	app.GET("/api/files/:id/download", fileCtrl.DownloadFile)
+	app.DELETE("/api/files/:id", fileCtrl.DeleteFile)
+
 	uploadCtrl := &controllers.UploadController{
 		SessionMgr: sessionMgr,
 		CAS:        casEngine,
 		Broker:     broker,
+		DB:         dbEngine,
 	}
 
 	// Phase 3: Security & Shuffler

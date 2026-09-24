@@ -16,30 +16,35 @@ templ Dashboard(c *echo.Context) {
 }
 
 templ DashboardContent() {
-	<div id="dashboard-content" class="h-full flex flex-col" x-data="dashboardView()">
+	<div id="dashboard-content" class="h-full flex flex-col" x-data>
 		
 		<!-- ACTION BAR & BREADCRUMBS -->
 		<div class="h-14 border-b border-[#2A2723] px-6 flex items-center justify-between bg-[#171614] shrink-0">
 			<!-- Breadcrumbs Path -->
 			<div class="flex items-center gap-2 text-xs font-mono">
-				<span class="text-[#FACC15] font-bold cursor-pointer" @click="activeTab = 'storage'">Penyimpanan Saya</span>
+				<span class="text-[#FACC15] font-bold cursor-pointer" @click="$store.drive.setTab('storage')">Penyimpanan Saya</span>
 				<span class="text-[#6E675E]">\</span>
-				<span class="text-white font-semibold" x-text="currentPathTitle()">Utama</span>
+				<span class="text-white font-semibold" x-text="
+					$store.drive.activeTab === 'storage' ? 'Penyimpanan Utama' : 
+					($store.drive.activeTab === 'vault' ? 'Vault Terenkripsi' : 
+					($store.drive.activeTab === 'recent' ? 'Berkas Terbaru' : 
+					($store.drive.activeTab === 'starred' ? 'Berbintang' : 'Sampah')))
+				">Utama</span>
 			</div>
 
 			<!-- View Switcher & Action Controls -->
 			<div class="flex items-center gap-3">
 				<div class="flex bg-[#0F0E0D] border border-[#2A2723] p-1 rounded-lg">
 					<button 
-						@click="viewMode = 'grid'" 
-						:class="viewMode === 'grid' ? 'bg-[#FACC15] text-[#0F0E0D] font-bold shadow' : 'text-[#A19A8F] hover:text-white'" 
+						@click="$store.drive.viewMode = 'grid'" 
+						:class="$store.drive.viewMode === 'grid' ? 'bg-[#FACC15] text-[#0F0E0D] font-bold shadow' : 'text-[#A19A8F] hover:text-white'" 
 						class="px-3 py-1 text-xs rounded transition-all flex items-center gap-1 font-medium"
 					>
 						<span>田</span> Tampilan Grid
 					</button>
 					<button 
-						@click="viewMode = 'list'" 
-						:class="viewMode === 'list' ? 'bg-[#FACC15] text-[#0F0E0D] font-bold shadow' : 'text-[#A19A8F] hover:text-white'" 
+						@click="$store.drive.viewMode = 'list'" 
+						:class="$store.drive.viewMode === 'list' ? 'bg-[#FACC15] text-[#0F0E0D] font-bold shadow' : 'text-[#A19A8F] hover:text-white'" 
 						class="px-3 py-1 text-xs rounded transition-all flex items-center gap-1 font-medium"
 					>
 						<span>≡</span> Tampilan Daftar
@@ -52,57 +57,26 @@ templ DashboardContent() {
 		<div class="flex-1 overflow-y-auto p-6 space-y-8">
 
 			<!-- SECTION 1: FOLDERS / CELLS (Only shown on Storage / Vault tab) -->
-			<div x-show="activeTab === 'storage' || activeTab === 'vault'" class="space-y-4">
+			<div x-show="$store.drive.activeTab === 'storage' || $store.drive.activeTab === 'vault'" class="space-y-4">
 				<h3 class="text-xs font-mono text-[#FACC15] uppercase tracking-wider font-bold flex items-center gap-2">
 					<span>📁</span> FOLDER UTAMA & VAULT CELLS
 				</h3>
 				<div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-					
-					<!-- Folder 1: Dokumen Rahasia -->
-					<div 
-						@click="selectFolder('Dokumen Keuangan 2026')"
-						class="bg-[#171614] border border-[#2A2723] hover:border-[#FACC15] p-4 rounded-xl cursor-pointer group transition-all shadow-sm hover:shadow-lg hover:-translate-y-0.5"
-					>
-						<div class="flex justify-between items-start mb-3">
-							<div class="w-10 h-10 rounded-lg bg-[#FACC15]/10 border border-[#FACC15]/30 text-[#FACC15] flex items-center justify-center text-xl group-hover:bg-[#FACC15] group-hover:text-[#0F0E0D] transition-colors">
-								🛡️
+					<template x-for="folder in $store.drive.folders" :key="folder.id">
+						<div 
+							@click="alert(`📁 Membuka Folder: ${folder.name}`)"
+							class="bg-[#171614] border border-[#2A2723] hover:border-[#FACC15] p-4 rounded-xl cursor-pointer group transition-all shadow-sm hover:shadow-lg hover:-translate-y-0.5"
+						>
+							<div class="flex justify-between items-start mb-3">
+								<div class="w-10 h-10 rounded-lg bg-[#FACC15]/10 border border-[#FACC15]/30 text-[#FACC15] flex items-center justify-center text-xl group-hover:bg-[#FACC15] group-hover:text-[#0F0E0D] transition-colors">
+									🛡️
+								</div>
+								<span class="text-[9px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 font-bold">TERENKRIPSI</span>
 							</div>
-							<span class="text-[9px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 font-bold">TERENKRIPSI</span>
+							<div class="font-bold text-sm text-white group-hover:text-[#FACC15] transition-colors" x-text="folder.name"></div>
+							<div class="text-[11px] text-[#A19A8F] font-mono mt-1" x-text="`${folder.file_count || 0} Berkas • AES-256-GCM`"></div>
 						</div>
-						<div class="font-bold text-sm text-white group-hover:text-[#FACC15] transition-colors">Dokumen Keuangan 2026</div>
-						<div class="text-[11px] text-[#A19A8F] font-mono mt-1">14 Berkas • AES-256-GCM</div>
-					</div>
-
-					<!-- Folder 2: Kunci & Sertifikat -->
-					<div 
-						@click="selectFolder('Kunci SSH & SSL Privasi')"
-						class="bg-[#171614] border border-[#2A2723] hover:border-[#FACC15] p-4 rounded-xl cursor-pointer group transition-all shadow-sm hover:shadow-lg hover:-translate-y-0.5"
-					>
-						<div class="flex justify-between items-start mb-3">
-							<div class="w-10 h-10 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-center justify-center text-xl group-hover:bg-amber-400 group-hover:text-[#0F0E0D] transition-colors">
-								🔐
-							</div>
-							<span class="text-[9px] font-mono text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20 font-bold">SWARM VAULT</span>
-						</div>
-						<div class="font-bold text-sm text-white group-hover:text-[#FACC15] transition-colors">Kunci SSH & SSL Privasi</div>
-						<div class="text-[11px] text-[#A19A8F] font-mono mt-1">6 Berkas • Argon2id KDF</div>
-					</div>
-
-					<!-- Folder 3: Proyek Hornetz -->
-					<div 
-						@click="selectFolder('Arsip Kode & Desain Sistem')"
-						class="bg-[#171614] border border-[#2A2723] hover:border-[#FACC15] p-4 rounded-xl cursor-pointer group transition-all shadow-sm hover:shadow-lg hover:-translate-y-0.5"
-					>
-						<div class="flex justify-between items-start mb-3">
-							<div class="w-10 h-10 rounded-lg bg-blue-500/10 border border-blue-500/30 text-blue-400 flex items-center justify-center text-xl group-hover:bg-blue-400 group-hover:text-[#0F0E0D] transition-colors">
-								📦
-							</div>
-							<span class="text-[9px] font-mono text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20 font-bold">CAS SHA-256</span>
-						</div>
-						<div class="font-bold text-sm text-white group-hover:text-[#FACC15] transition-colors">Arsip Kode & Desain Sistem</div>
-						<div class="text-[11px] text-[#A19A8F] font-mono mt-1">42 Berkas • Deduplikasi</div>
-					</div>
-
+					</template>
 				</div>
 			</div>
 
@@ -110,53 +84,58 @@ templ DashboardContent() {
 			<div class="space-y-4">
 				<div class="flex justify-between items-center">
 					<h3 class="text-xs font-mono text-[#A19A8F] uppercase tracking-wider font-bold flex items-center gap-2">
-						<span>⚡</span> DAFTAR BERKAS TERENKRIPSI
+						<span>⚡</span> DAFTAR BERKAS TERENKRIPSI (DATABASE SLQITE / POSTGRES)
 					</h3>
-					<span class="text-xs text-[#6E675E] font-mono" x-text="`Menampilkan ${filteredFiles().length} berkas`"></span>
+					<span class="text-xs text-[#6E675E] font-mono" x-text="`Menampilkan ${$store.drive.files.length} berkas asli`"></span>
+				</div>
+
+				<!-- Empty State if no files -->
+				<div x-show="$store.drive.files.length === 0" class="text-center py-16 border border-dashed border-[#2A2723] rounded-xl text-[#A19A8F] font-mono text-sm">
+					📭 Belum ada berkas di kategori ini. Klik "+ Unggah Berkas" untuk mengunggah berkas baru.
 				</div>
 
 				<!-- GRID VIEW -->
-				<div x-show="viewMode === 'grid'" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
-					<template x-for="file in filteredFiles()" :key="file.id">
+				<div x-show="$store.drive.viewMode === 'grid' && $store.drive.files.length > 0" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
+					<template x-for="file in $store.drive.files" :key="file.id">
 						<div 
-							@click="openFileDetails(file)" 
+							@click="$store.drive.selectedFile = file" 
 							class="bg-[#171614] border border-[#2A2723] hover:border-[#FACC15] p-3 rounded-xl cursor-pointer group transition-all flex flex-col justify-between h-48 shadow-sm hover:shadow-lg hover:-translate-y-0.5 relative"
 						>
 							<div class="h-28 bg-[#0F0E0D] border border-[#2A2723] rounded-lg flex items-center justify-center text-4xl text-[#FACC15] relative overflow-hidden group-hover:border-[#FACC15]/50 transition-colors">
-								<span x-text="file.icon"></span>
-								<div class="absolute bottom-1.5 right-1.5 text-[9px] bg-[#FACC15] text-[#0F0E0D] font-mono px-1.5 py-0.5 rounded font-bold uppercase" x-text="file.ext"></div>
+								<span x-text="file.icon || '📄'"></span>
+								<div class="absolute bottom-1.5 right-1.5 text-[9px] bg-[#FACC15] text-[#0F0E0D] font-mono px-1.5 py-0.5 rounded font-bold uppercase" x-text="file.ext || 'FILE'"></div>
 							</div>
 							<div class="mt-2">
 								<div class="font-semibold text-xs text-white truncate group-hover:text-[#FACC15] transition-colors" x-text="file.name"></div>
 								<div class="flex justify-between text-[10px] text-[#A19A8F] font-mono mt-1">
-									<span x-text="file.size"></span>
-									<span class="text-emerald-400 font-semibold" x-text="file.status"></span>
+									<span x-text="(file.size / 1024 > 1024) ? (file.size / (1024*1024)).toFixed(1) + ' MB' : (file.size / 1024).toFixed(1) + ' KB'"></span>
+									<span class="text-emerald-400 font-semibold">DATABASE</span>
 								</div>
 							</div>
 						</div>
 					</template>
 				</div>
 
-				<!-- DENSE LIST VIRTUALIZER VIEW -->
+				<!-- DENSE LIST VIEW -->
 				<div 
-					x-show="viewMode === 'list'" 
+					x-show="$store.drive.viewMode === 'list' && $store.drive.files.length > 0" 
 					class="border border-[#2A2723] rounded-xl overflow-hidden bg-[#171614] divide-y divide-[#2A2723]"
 				>
-					<template x-for="file in filteredFiles()" :key="file.id">
+					<template x-for="file in $store.drive.files" :key="file.id">
 						<div 
-							@click="openFileDetails(file)" 
+							@click="$store.drive.selectedFile = file" 
 							class="flex items-center justify-between px-4 py-3 hover:bg-[#201E1B] cursor-pointer transition-colors group"
 						>
 							<div class="flex items-center gap-3">
-								<span class="text-2xl" x-text="file.icon"></span>
+								<span class="text-2xl" x-text="file.icon || '📄'"></span>
 								<div>
 									<div class="font-bold text-sm text-white group-hover:text-[#FACC15] transition-colors" x-text="file.name"></div>
-									<div class="text-[11px] text-[#A19A8F] font-mono" x-text="`SHA-256: ${file.hash}`"></div>
+									<div class="text-[11px] text-[#A19A8F] font-mono" x-text="`SHA-256: ${file.cas_hash}`"></div>
 								</div>
 							</div>
 							<div class="flex items-center gap-6 text-xs font-mono">
-								<span class="text-[#A19A8F]" x-text="file.size"></span>
-								<span class="px-2 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded font-semibold text-[10px]" x-text="file.status"></span>
+								<span class="text-[#A19A8F]" x-text="(file.size / 1024 > 1024) ? (file.size / (1024*1024)).toFixed(1) + ' MB' : (file.size / 1024).toFixed(1) + ' KB'"></span>
+								<span class="px-2 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded font-semibold text-[10px]">DATABASE</span>
 								<button class="text-[#FACC15] hover:underline font-bold">Detail →</button>
 							</div>
 						</div>
@@ -168,26 +147,26 @@ templ DashboardContent() {
 
 		<!-- FILE DETAILS & ACTIONS MODAL -->
 		<div 
-			x-show="selectedFile" 
+			x-show="$store.drive.selectedFile" 
+			x-cloak
 			x-transition 
 			class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-			style="display: none;"
 		>
 			<div 
-				@click.away="selectedFile = null" 
+				@click.away="$store.drive.selectedFile = null" 
 				class="bg-[#171614] border border-[#FACC15] w-full max-w-lg rounded-2xl p-6 shadow-2xl space-y-5"
 			>
 				<div class="flex justify-between items-start border-b border-[#2A2723] pb-4">
 					<div class="flex items-center gap-3">
 						<div class="w-12 h-12 rounded-xl bg-[#0F0E0D] border border-[#FACC15]/40 flex items-center justify-center text-3xl">
-							<span x-text="selectedFile ? selectedFile.icon : '📦'"></span>
+							<span x-text="$store.drive.selectedFile ? $store.drive.selectedFile.icon : '📄'"></span>
 						</div>
 						<div>
-							<h3 class="font-bold text-base text-white" x-text="selectedFile ? selectedFile.name : ''"></h3>
-							<p class="text-xs text-[#A19A8F] font-mono" x-text="selectedFile ? `Ukuran: ${selectedFile.size}` : ''"></p>
+							<h3 class="font-bold text-base text-white" x-text="$store.drive.selectedFile ? $store.drive.selectedFile.name : ''"></h3>
+							<p class="text-xs text-[#A19A8F] font-mono" x-text="$store.drive.selectedFile ? `Ukuran: ${($store.drive.selectedFile.size / 1024).toFixed(1)} KB` : ''"></p>
 						</div>
 					</div>
-					<button @click="selectedFile = null" class="text-[#A19A8F] hover:text-white text-lg">✕</button>
+					<button @click="$store.drive.selectedFile = null" class="text-[#A19A8F] hover:text-white text-lg">✕</button>
 				</div>
 
 				<!-- Security & Cryptographic Details -->
@@ -198,24 +177,24 @@ templ DashboardContent() {
 					</div>
 					<div class="flex justify-between text-[#A19A8F]">
 						<span>Content Address (CAS):</span>
-						<strong class="text-[#FACC15] truncate max-w-[200px]" x-text="selectedFile ? selectedFile.hash : ''"></strong>
+						<strong class="text-[#FACC15] truncate max-w-[200px]" x-text="$store.drive.selectedFile ? $store.drive.selectedFile.cas_hash : ''"></strong>
 					</div>
 					<div class="flex justify-between text-[#A19A8F]">
-						<span>Path Shuffling:</span>
-						<strong class="text-white">Rotasi Aktif (6 Jam)</strong>
+						<span>MIME Type:</span>
+						<strong class="text-white" x-text="$store.drive.selectedFile ? $store.drive.selectedFile.mime_type : ''"></strong>
 					</div>
 				</div>
 
 				<!-- Action Buttons -->
 				<div class="flex gap-3 pt-2">
 					<button 
-						@click="downloadFile(selectedFile)" 
+						@click="$store.drive.downloadFile($store.drive.selectedFile)" 
 						class="flex-1 hornetz-btn py-2.5 px-4 rounded-xl flex items-center justify-center gap-2 text-xs font-bold"
 					>
 						<span>📥</span> Dekripsi & Unduh
 					</button>
 					<button 
-						@click="deleteFile(selectedFile)" 
+						@click="$store.drive.deleteFile($store.drive.selectedFile)" 
 						class="bg-red-500/10 hover:bg-red-600 text-red-400 hover:text-white border border-red-500/30 py-2.5 px-4 rounded-xl text-xs font-semibold transition-colors"
 					>
 						Hapus Berkas
@@ -224,57 +203,5 @@ templ DashboardContent() {
 			</div>
 		</div>
 
-		<!-- Script view state -->
-		<script>
-		function dashboardView() {
-			return {
-				selectedFile: null,
-				files: [
-					{ id: 1, name: "laporan_keuangan_q3_2026.enc", ext: "ENC", size: "24.5 MB", icon: "📊", hash: "a8f3b2c91d4e5f67...", status: "TERENKRIPSI" },
-					{ id: 2, name: "kunci_akses_master_vault.key", ext: "KEY", size: "4.2 KB", icon: "🔑", hash: "f9e8d7c6b5a43210...", status: "TERENKRIPSI" },
-					{ id: 3, name: "hornetz_system_architecture.pdf", ext: "PDF", size: "18.2 MB", icon: "📄", hash: "1234567890abcdef...", status: "CAS VERIFIED" },
-					{ id: 4, name: "cadangan_basis_data_swarm.tar.gz", ext: "TAR", size: "1.4 GB", icon: "📦", hash: "7766554433221100...", status: "CAS VERIFIED" },
-					{ id: 5, name: "sertifikat_ssl_privasi.pem", ext: "PEM", size: "8.1 KB", icon: "📜", hash: "bbccddeeff001122...", status: "TERENKRIPSI" }
-				],
-
-				currentPathTitle() {
-					if (this.activeTab === 'storage') return 'Penyimpanan Utama';
-					if (this.activeTab === 'vault') return 'Vault Terenkripsi (Swarm)';
-					if (this.activeTab === 'recent') return 'Berkas Terbaru';
-					if (this.activeTab === 'starred') return 'Berkas Berbintang';
-					if (this.activeTab === 'trash') return 'Sampah';
-					return 'Berkas';
-				},
-
-				filteredFiles() {
-					if (!this.searchQuery) return this.files;
-					const q = this.searchQuery.toLowerCase();
-					return this.files.filter(f => f.name.toLowerCase().includes(q) || f.hash.toLowerCase().includes(q));
-				},
-
-				selectFolder(name) {
-					alert(`📁 Membuka Folder: "${name}"\n\nMenampilkan isi sel folder terenkripsi.`);
-				},
-
-				openFileDetails(file) {
-					this.selectedFile = file;
-				},
-
-				downloadFile(file) {
-					if (!file) return;
-					alert(`📥 Memulai Dekripsi & Unduhan untuk "${file.name}"...\n\nVault Key didekripsi di RAM dan dikirim melalui aliran stream aman.`);
-					this.selectedFile = null;
-				},
-
-				deleteFile(file) {
-					if (!file) return;
-					if (confirm(`Apakah Anda yakin ingin memindahkan berkas "${file.name}" ke sampah?`)) {
-						this.files = this.files.filter(f => f.id !== file.id);
-						this.selectedFile = null;
-					}
-				}
-			}
-		}
-		</script>
 	</div>
 }

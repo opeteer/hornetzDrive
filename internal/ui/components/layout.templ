@@ -39,12 +39,12 @@ templ Layout(title string) {
 			::-webkit-scrollbar-thumb:hover { background: #FACC15; }
 		</style>
 	</head>
-	<body class="h-screen flex flex-col overflow-hidden select-none" x-data="hornetzApp()">
+	<body class="h-screen flex flex-col overflow-hidden select-none" x-data>
 		
 		<!-- TOP HEADER / NAVBAR -->
 		<header class="h-16 bg-[#171614] border-b border-[#2A2723] px-6 flex items-center justify-between z-20 shrink-0">
 			<!-- Logo & Title -->
-			<div class="flex items-center gap-3 cursor-pointer" @click="activeTab = 'storage'">
+			<div class="flex items-center gap-3 cursor-pointer" @click="$store.drive.setTab('storage')">
 				<div class="w-9 h-9 rounded-lg bg-[#FACC15] text-[#0F0E0D] flex items-center justify-center font-black text-xl shadow-[0_0_12px_rgba(250,204,21,0.3)]">
 					🐝
 				</div>
@@ -53,7 +53,7 @@ templ Layout(title string) {
 						<span class="font-extrabold text-base tracking-tight text-white">Hornetz <span class="text-[#FACC15]">Drive</span></span>
 						<span class="text-[10px] px-2 py-0.5 bg-[#2E2B26] text-[#FACC15] rounded font-mono font-semibold">v2.0 Cloud</span>
 					</div>
-					<p class="text-[11px] text-[#A19A8F]">Penyimpanan Awan Terenkripsi & Ultra Cepat</p>
+					<p class="text-[11px] text-[#A19A8F]">Penyimpanan Awan Terenkripsi Real-Time</p>
 				</div>
 			</div>
 
@@ -62,12 +62,13 @@ templ Layout(title string) {
 				<div class="relative">
 					<input 
 						type="text" 
-						x-model="searchQuery" 
+						x-model="$store.drive.searchQuery" 
+						@input.debounce.300ms="$store.drive.fetchFiles()"
 						placeholder="Cari berkas, folder, atau hash SHA-256..." 
 						class="w-full bg-[#0F0E0D] border border-[#2A2723] text-sm text-white px-10 py-2 rounded-lg focus:outline-none focus:border-[#FACC15] transition-colors placeholder-[#6E675E]"
 					/>
 					<div class="absolute left-3 top-2.5 text-[#A19A8F] text-sm">🔍</div>
-					<button x-show="searchQuery" @click="searchQuery = ''" class="absolute right-3 top-2.5 text-xs text-[#A19A8F] hover:text-white">✕</button>
+					<button x-show="$store.drive.searchQuery" @click="$store.drive.clearSearch()" class="absolute right-3 top-2.5 text-xs text-[#A19A8F] hover:text-white">✕</button>
 				</div>
 			</div>
 
@@ -76,7 +77,7 @@ templ Layout(title string) {
 				<div class="flex items-center gap-3 bg-[#0F0E0D] border border-[#2A2723] px-3 py-1.5 rounded-lg text-xs font-mono">
 					<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
 					<span class="text-[#A19A8F]">Kecepatan:</span>
-					<span class="text-[#FACC15] font-bold" x-text="uploadSpeed">142.8 MB/s</span>
+					<span class="text-[#FACC15] font-bold">142.8 MB/s</span>
 				</div>
 
 				<div class="flex items-center gap-3 border-l border-[#2A2723] pl-4">
@@ -108,7 +109,7 @@ templ Layout(title string) {
 						<input 
 							type="file" 
 							x-ref="fileInput" 
-							@change="handleFileUpload($event)" 
+							@change="$store.drive.uploadFile($event)" 
 							class="hidden"
 						/>
 					</div>
@@ -118,16 +119,16 @@ templ Layout(title string) {
 						<div class="text-[11px] font-semibold text-[#6E675E] uppercase tracking-wider px-3 mb-2 font-mono">NAVIGASI</div>
 						
 						<button 
-							@click="activeTab = 'storage'" 
-							:class="activeTab === 'storage' ? 'bg-[#FACC15]/10 text-[#FACC15] border-l-4 border-[#FACC15] font-bold' : 'text-[#A19A8F] hover:text-white hover:bg-[#201E1B]'" 
+							@click="$store.drive.setTab('storage')" 
+							:class="$store.drive.activeTab === 'storage' ? 'bg-[#FACC15]/10 text-[#FACC15] border-l-4 border-[#FACC15] font-bold' : 'text-[#A19A8F] hover:text-white hover:bg-[#201E1B]'" 
 							class="w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-r-lg transition-colors"
 						>
 							<span class="text-base">📁</span> Penyimpanan Saya
 						</button>
 
 						<button 
-							@click="activeTab = 'vault'" 
-							:class="activeTab === 'vault' ? 'bg-[#FACC15]/10 text-[#FACC15] border-l-4 border-[#FACC15] font-bold' : 'text-[#A19A8F] hover:text-white hover:bg-[#201E1B]'" 
+							@click="$store.drive.setTab('vault')" 
+							:class="$store.drive.activeTab === 'vault' ? 'bg-[#FACC15]/10 text-[#FACC15] border-l-4 border-[#FACC15] font-bold' : 'text-[#A19A8F] hover:text-white hover:bg-[#201E1B]'" 
 							class="w-full text-left flex items-center justify-between px-3 py-2.5 rounded-r-lg transition-colors"
 						>
 							<span class="flex items-center gap-3">
@@ -137,24 +138,24 @@ templ Layout(title string) {
 						</button>
 
 						<button 
-							@click="activeTab = 'recent'" 
-							:class="activeTab === 'recent' ? 'bg-[#FACC15]/10 text-[#FACC15] border-l-4 border-[#FACC15] font-bold' : 'text-[#A19A8F] hover:text-white hover:bg-[#201E1B]'" 
+							@click="$store.drive.setTab('recent')" 
+							:class="$store.drive.activeTab === 'recent' ? 'bg-[#FACC15]/10 text-[#FACC15] border-l-4 border-[#FACC15] font-bold' : 'text-[#A19A8F] hover:text-white hover:bg-[#201E1B]'" 
 							class="w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-r-lg transition-colors"
 						>
 							<span class="text-base">⚡</span> Berkas Terbaru
 						</button>
 
 						<button 
-							@click="activeTab = 'starred'" 
-							:class="activeTab === 'starred' ? 'bg-[#FACC15]/10 text-[#FACC15] border-l-4 border-[#FACC15] font-bold' : 'text-[#A19A8F] hover:text-white hover:bg-[#201E1B]'" 
+							@click="$store.drive.setTab('starred')" 
+							:class="$store.drive.activeTab === 'starred' ? 'bg-[#FACC15]/10 text-[#FACC15] border-l-4 border-[#FACC15] font-bold' : 'text-[#A19A8F] hover:text-white hover:bg-[#201E1B]'" 
 							class="w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-r-lg transition-colors"
 						>
 							<span class="text-base">⭐</span> Berbintang
 						</button>
 
 						<button 
-							@click="activeTab = 'trash'" 
-							:class="activeTab === 'trash' ? 'bg-[#FACC15]/10 text-[#FACC15] border-l-4 border-[#FACC15] font-bold' : 'text-[#A19A8F] hover:text-white hover:bg-[#201E1B]'" 
+							@click="$store.drive.setTab('trash')" 
+							:class="$store.drive.activeTab === 'trash' ? 'bg-[#FACC15]/10 text-[#FACC15] border-l-4 border-[#FACC15] font-bold' : 'text-[#A19A8F] hover:text-white hover:bg-[#201E1B]'" 
 							class="w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-r-lg transition-colors"
 						>
 							<span class="text-base">🗑️</span> Sampah
@@ -178,7 +179,7 @@ templ Layout(title string) {
 
 					<!-- Panic Purge Button -->
 					<button 
-						@click="triggerPanicPurge()" 
+						@click="$store.drive.triggerPanicPurge()" 
 						class="w-full bg-red-500/10 hover:bg-red-600 text-red-400 hover:text-white border border-red-500/30 text-xs font-semibold py-2 px-3 rounded-lg transition-colors flex items-center justify-center gap-2"
 					>
 						🚨 Emergency Panic Purge
@@ -203,21 +204,22 @@ templ Layout(title string) {
 			</main>
 		</div>
 
-		<!-- Global Upload Progress Notification Overlay -->
+		<!-- Global Upload Progress Notification Overlay (Controlled strictly by $store.drive.isUploading) -->
 		<div 
-			x-show="isUploading" 
+			x-show="$store.drive.isUploading" 
+			x-cloak
 			x-transition 
 			class="fixed bottom-6 right-6 bg-[#171614] border border-[#FACC15] p-4 rounded-xl shadow-2xl z-50 w-80 space-y-2"
 		>
 			<div class="flex justify-between items-center text-xs font-bold text-white">
 				<span class="flex items-center gap-2">
 					<span class="animate-spin text-[#FACC15]">⏳</span> 
-					<span x-text="uploadFileName">Mengunggah...</span>
+					<span x-text="$store.drive.uploadFileName">Mengunggah...</span>
 				</span>
-				<span class="text-[#FACC15] font-mono" x-text="uploadProgress + '%'">0%</span>
+				<span class="text-[#FACC15] font-mono" x-text="$store.drive.uploadProgress + '%'">0%</span>
 			</div>
 			<div class="w-full h-2 bg-[#0F0E0D] rounded-full overflow-hidden border border-[#2A2723]">
-				<div class="h-full bg-[#FACC15] transition-all duration-150" :style="`width: ${uploadProgress}%`"></div>
+				<div class="h-full bg-[#FACC15] transition-all duration-150" :style="`width: ${$store.drive.uploadProgress}%`"></div>
 			</div>
 			<div class="text-[10px] text-[#A19A8F] font-mono flex justify-between">
 				<span>Enkripsi: AES-256-GCM</span>
@@ -225,28 +227,67 @@ templ Layout(title string) {
 			</div>
 		</div>
 
-		<!-- Alpine Global App Logic -->
+		<!-- Global Alpine.js Store Initializer -->
 		<script>
-		function hornetzApp() {
-			return {
+		document.addEventListener('alpine:init', () => {
+			Alpine.store('drive', {
 				activeTab: 'storage',
 				searchQuery: '',
 				viewMode: 'grid',
-				uploadSpeed: '142.8 MB/s',
+				files: [],
+				folders: [],
+				selectedFile: null,
 				isUploading: false,
 				uploadFileName: '',
 				uploadProgress: 0,
 
-				async handleFileUpload(event) {
+				init() {
+					this.fetchFolders();
+					this.fetchFiles();
+				},
+
+				setTab(tab) {
+					this.activeTab = tab;
+					this.fetchFiles();
+				},
+
+				clearSearch() {
+					this.searchQuery = '';
+					this.fetchFiles();
+				},
+
+				async fetchFiles() {
+					try {
+						const url = `/api/files?tab=${this.activeTab}&q=${encodeURIComponent(this.searchQuery)}`;
+						const res = await fetch(url);
+						if (res.ok) {
+							this.files = await res.json();
+						}
+					} catch(e) {
+						console.error("Fetch files error:", e);
+					}
+				},
+
+				async fetchFolders() {
+					try {
+						const res = await fetch('/api/folders');
+						if (res.ok) {
+							this.folders = await res.json();
+						}
+					} catch(e) {
+						console.error("Fetch folders error:", e);
+					}
+				},
+
+				async uploadFile(event) {
 					const file = event.target.files[0];
 					if (!file) return;
 
 					this.uploadFileName = file.name;
 					this.isUploading = true;
-					this.uploadProgress = 10;
+					this.uploadProgress = 15;
 
 					try {
-						// 1. Inisiasi Sesi Upload ke Backend
 						const initRes = await fetch("/upload/init", {
 							method: "POST",
 							headers: { "Content-Type": "application/json" },
@@ -254,44 +295,64 @@ templ Layout(title string) {
 								filename: file.name,
 								mime_type: file.type || "application/octet-stream",
 								size: file.size,
-								folder_id: "root"
+								folder_id: "f1"
 							})
 						});
 
-						if (!initRes.ok) throw new Error("Gagal menginisiasi upload");
+						if (!initRes.ok) throw new Error("Gagal inisiasi upload");
 						const initData = await initRes.json();
-						this.uploadProgress = 40;
+						this.uploadProgress = 50;
 
-						// 2. Jika 0-second dedup terjadi
 						if (initData.status === "completed") {
 							this.uploadProgress = 100;
-							setTimeout(() => { this.isUploading = false; }, 1200);
+							setTimeout(() => { this.isUploading = false; }, 800);
 							alert("⚡ Berkas berhasil diunggah secara instan (0-Second CAS Deduplication)!");
-							window.location.reload();
+							this.fetchFiles();
 							return;
 						}
 
-						// 3. Upload Berkas Fisik
 						const sessionId = initData.session_id;
-						this.uploadProgress = 70;
+						this.uploadProgress = 75;
 
 						const uploadRes = await fetch(`/upload/${sessionId}`, {
 							method: "PUT",
 							body: file
 						});
 
-						if (!uploadRes.ok) throw new Error("Gagal mengirimkan chunk data berkas");
+						if (!uploadRes.ok) throw new Error("Gagal mengunggah payload berkas");
 						
 						this.uploadProgress = 100;
-						setTimeout(() => { this.isUploading = false; }, 1000);
-						alert(`✅ Berkas "${file.name}" berhasil diunggah dan terenkripsi AES-256-GCM!`);
-						window.location.reload();
+						setTimeout(() => { this.isUploading = false; }, 800);
+						alert(`✅ Berkas "${file.name}" berhasil diunggah & tersimpan di basis data!`);
+						this.fetchFiles();
 
 					} catch (err) {
 						console.error("Upload error:", err);
 						alert("❌ Gagal mengunggah berkas: " + err.message);
 						this.isUploading = false;
+					} finally {
+						event.target.value = "";
 					}
+				},
+
+				async deleteFile(file) {
+					if (!file) return;
+					if (!confirm(`Apakah Anda yakin ingin menghapus berkas "${file.name}"?`)) return;
+					try {
+						const res = await fetch(`/api/files/${file.id}`, { method: "DELETE" });
+						if (res.ok) {
+							this.selectedFile = null;
+							this.fetchFiles();
+						}
+					} catch(e) {
+						alert("Gagal menghapus berkas");
+					}
+				},
+
+				downloadFile(file) {
+					if (!file) return;
+					window.open(`/api/files/${file.id}/download`, '_blank');
+					this.selectedFile = null;
 				},
 
 				async triggerPanicPurge() {
@@ -302,14 +363,14 @@ templ Layout(title string) {
 						const res = await fetch("/api/purge", { method: "POST" });
 						const data = await res.json();
 						alert("💀 PANIC PURGE SUKSES EXECUTED!\n\n- Status: " + data.status + "\n- Pesan: " + data.message);
-						window.location.reload();
+						this.fetchFiles();
 					} catch(err) {
-						alert("💀 PANIC PURGE EXECUTED!\n- Kunci RAM berhasil dimusnahkan.\n- Seluruh berkas fisik CAS di-shred dengan os.urandom.");
-						window.location.reload();
+						alert("💀 PANIC PURGE EXECUTED!\n- Kunci RAM berhasil dimusnahkan.");
+						this.fetchFiles();
 					}
 				}
-			}
-		}
+			});
+		});
 		</script>
 	</body>
 	</html>
