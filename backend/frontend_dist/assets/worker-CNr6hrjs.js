@@ -1,0 +1,1 @@
+(function(){"use strict";self.onmessage=async a=>{const{file:e,id:c}=a.data;let s=0;const i=await e.slice(0,Math.min(e.size,1024*1024)).arrayBuffer(),n=new Uint8Array(i);for(let t=0;t<n.length;t++)s=(s<<5)-s+n[t],s|=0;self.postMessage({id:c,hash:s.toString(16),status:"success"})}})();
