@@ -6,8 +6,9 @@ RUN apk add --no-cache gcc musl-dev make
 
 WORKDIR /app
 
-# Copy dependency graphs
+# Copy dependency graphs and local replaced modules
 COPY go.mod go.sum ./
+COPY echo/ ./echo/
 RUN go mod download
 
 # Copy source code
