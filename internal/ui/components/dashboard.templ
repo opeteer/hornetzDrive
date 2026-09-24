@@ -1,0 +1,190 @@
+package components
+
+import (
+	"ztatic-go-framework/fullstack"
+	"github.com/labstack/echo/v5"
+)
+
+templ Dashboard(c *echo.Context) {
+	if fullstack.IsTurboFrame(c) {
+		@DashboardContent()
+	} else {
+		@Layout("Swarm Vault") {
+			@DashboardContent()
+		}
+	}
+}
+
+templ DashboardContent() {
+	<div id="dashboard-content" class="h-full flex flex-col" x-data="{ viewMode: 'grid' }">
+		<!-- ACTION BAR & BREADCRUMBS -->
+		<div class="h-14 border-b border-[#2E2A24] px-6 flex items-center justify-between bg-[#141311] shrink-0">
+			<!-- Breadcrumb path -->
+			<div class="flex items-center gap-2 font-mono text-xs">
+				<span class="text-[#FACC15] font-bold">THE NEST</span>
+				<span class="text-[#A1988A]">\</span>
+				<span class="text-[#FACC15] font-bold">SWARM_VAULT</span>
+				<span class="text-[#A1988A]">\</span>
+				<span class="text-white">ENCRYPTED_DOCUMENTS</span>
+			</div>
+
+			<!-- View Controls -->
+			<div class="flex items-center gap-3">
+				<div class="flex bg-[#1C1A17] border border-[#2E2A24] p-0.5">
+					<button @click="viewMode = 'grid'" :class="viewMode === 'grid' ? 'bg-[#FACC15] text-[#0D0C0B] font-bold' : 'text-[#A1988A] hover:text-white'" class="px-3 py-1 text-xs font-mono transition-colors">HEX GRID</button>
+					<button @click="viewMode = 'list'" :class="viewMode === 'list' ? 'bg-[#FACC15] text-[#0D0C0B] font-bold' : 'text-[#A1988A] hover:text-white'" class="px-3 py-1 text-xs font-mono transition-colors">DENSE LIST</button>
+				</div>
+			</div>
+		</div>
+
+		<!-- FILE WORKSPACE AREA -->
+		<div class="flex-1 overflow-y-auto p-6 flex flex-col">
+
+			<!-- SWARM VAULT SECURE FOLDERS -->
+			<div class="mb-8 shrink-0">
+				<h3 class="text-xs font-mono text-[#FACC15] uppercase tracking-widest mb-4 flex items-center gap-2">
+					<span>🛡️</span> SWARM VAULT VAULT CELLS (ARGON2ID + AES-256-GCM)
+				</h3>
+				<div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+					<!-- Folder 1 -->
+					<div class="bg-[#161513] border border-[#FACC15]/40 hover:border-[#FACC15] p-4 cursor-pointer group transition-all chitin-card">
+						<div class="flex justify-between items-start mb-3">
+							<div class="w-10 h-10 bg-[#FACC15]/10 border border-[#FACC15]/30 text-[#FACC15] flex items-center justify-center text-xl font-bold group-hover:bg-[#FACC15] group-hover:text-[#0D0C0B] transition-colors">
+								🛡️
+							</div>
+							<span class="text-[9px] font-mono text-[#FACC15] bg-[#FACC15]/10 px-2 py-0.5 border border-[#FACC15]/30 font-bold">RAM-KEY ENCRYPTED</span>
+						</div>
+						<div class="font-bold text-sm text-white group-hover:text-[#FACC15] transition-colors font-mono">Financial_Ledger_2026</div>
+						<div class="text-[11px] text-[#A1988A] font-mono mt-1">Dynamo Shuffled 1h ago</div>
+					</div>
+
+					<!-- Folder 2 -->
+					<div class="bg-[#161513] border border-[#FACC15]/40 hover:border-[#FACC15] p-4 cursor-pointer group transition-all chitin-card">
+						<div class="flex justify-between items-start mb-3">
+							<div class="w-10 h-10 bg-[#F59E0B]/10 border border-[#F59E0B]/30 text-[#F59E0B] flex items-center justify-center text-xl font-bold group-hover:bg-[#F59E0B] group-hover:text-[#0D0C0B] transition-colors">
+								🔐
+							</div>
+							<span class="text-[9px] font-mono text-[#F59E0B] bg-[#F59E0B]/10 px-2 py-0.5 border border-[#F59E0B]/30 font-bold">AES-256-GCM</span>
+						</div>
+						<div class="font-bold text-sm text-white group-hover:text-[#FACC15] transition-colors font-mono">Private_SSH_Keys</div>
+						<div class="text-[11px] text-[#A1988A] font-mono mt-1">Dynamo Shuffled 3h ago</div>
+					</div>
+				</div>
+			</div>
+
+			<!-- FILES SECTION TITLE -->
+			<h3 class="text-xs font-mono text-[#A1988A] uppercase tracking-widest mb-4 flex items-center gap-2 shrink-0">
+				<span class="text-[#F59E0B]">⚡</span> STREAM-ENCRYPTED CARGO FILES
+			</h3>
+
+			<!-- GRID VIEW MODE -->
+			<div x-show="viewMode === 'grid'" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-4">
+				<div class="bg-[#161513] border border-[#2E2A24] hover:border-[#FACC15] p-3 cursor-pointer group transition-all flex flex-col justify-between h-44 chitin-card">
+					<div class="h-24 bg-[#0D0C0B] border border-[#2E2A24] flex items-center justify-center text-3xl text-[#FACC15] relative overflow-hidden group-hover:border-[#FACC15]">
+						📦
+						<div class="absolute bottom-1 right-1 text-[9px] bg-[#FACC15] text-[#0D0C0B] font-mono px-1 font-bold">TAR.GZ.ENC</div>
+					</div>
+					<div>
+						<div class="font-mono text-xs font-bold text-white truncate group-hover:text-[#FACC15]">vault_backup_sys.enc</div>
+						<div class="flex justify-between text-[10px] text-[#A1988A] font-mono mt-1">
+							<span>2.4 GB</span>
+							<span class="text-[#FACC15]">SHUFFLED</span>
+						</div>
+					</div>
+				</div>
+
+				<div class="bg-[#161513] border border-[#2E2A24] hover:border-[#FACC15] p-3 cursor-pointer group transition-all flex flex-col justify-between h-44 chitin-card">
+					<div class="h-24 bg-[#0D0C0B] border border-[#2E2A24] flex items-center justify-center text-3xl text-[#FACC15] relative overflow-hidden group-hover:border-[#FACC15]">
+						📄
+						<div class="absolute bottom-1 right-1 text-[9px] bg-[#FACC15] text-[#0D0C0B] font-mono px-1 font-bold">PDF.ENC</div>
+					</div>
+					<div>
+						<div class="font-mono text-xs font-bold text-white truncate group-hover:text-[#FACC15]">hornetz_blueprint_v2.enc</div>
+						<div class="flex justify-between text-[10px] text-[#A1988A] font-mono mt-1">
+							<span>18.2 MB</span>
+							<span class="text-[#FACC15]">SHUFFLED</span>
+						</div>
+					</div>
+				</div>
+			</div>
+
+			<!-- DENSE LIST VIRTUALIZER VIEW MODE -->
+			<div 
+				x-show="viewMode === 'list'"
+				x-data="virtualList()" 
+				x-init="initList()"
+				@scroll.passive="onScroll" 
+				class="relative overflow-y-auto w-full flex-1 border border-[#2E2A24] bg-[#0D0C0B] min-h-[400px]"
+				id="scroll-container"
+			>
+				<div :style="`height: ${totalHeight}px`" class="w-full absolute top-0 left-0"></div>
+				
+				<div class="absolute w-full top-0 left-0" :style="`transform: translateY(${offsetY}px)`">
+					<template x-for="item in visibleItems" :key="item.id">
+						<div class="h-[60px] border-b border-[#2E2A24] flex items-center px-4 hover:bg-[#161513] cursor-pointer group chitin-card text-white font-mono text-sm">
+							<span class="text-2xl mr-4" x-text="item.icon"></span>
+							<div class="flex-1">
+								<div class="font-bold group-hover:text-[#FACC15]" x-text="item.name"></div>
+								<div class="text-[10px] text-[#A1988A]" x-text="item.size + ' - ' + item.hash"></div>
+							</div>
+						</div>
+					</template>
+				</div>
+			</div>
+
+			<script>
+			function virtualList() {
+				return {
+					items: [],
+					itemHeight: 60,
+					windowHeight: 0,
+					scrollTop: 0,
+					totalHeight: 0,
+					offsetY: 0,
+					visibleItems: [],
+
+					initList() {
+						for(let i=0; i<10000; i++) {
+							this.items.push({
+								id: i,
+								name: `top_secret_cargo_${i}.enc`,
+								size: `${(Math.random() * 100).toFixed(2)} MB`,
+								hash: `cas_hash_xyz_${i}`,
+								icon: '📦'
+							});
+						}
+						
+						const container = document.getElementById('scroll-container');
+						if (container) {
+							this.windowHeight = container.clientHeight || 600;
+							this.totalHeight = this.items.length * this.itemHeight;
+							this.calculateVisible();
+							
+							window.addEventListener('resize', () => {
+								this.windowHeight = container.clientHeight;
+								this.calculateVisible();
+							});
+						}
+					},
+
+					onScroll(e) {
+						this.scrollTop = e.target.scrollTop;
+						this.calculateVisible();
+					},
+
+					calculateVisible() {
+						const startIndex = Math.floor(this.scrollTop / this.itemHeight);
+						const endIndex = Math.min(
+							this.items.length - 1, 
+							Math.ceil((this.scrollTop + this.windowHeight) / this.itemHeight) + 2
+						);
+
+						this.offsetY = startIndex * this.itemHeight;
+						this.visibleItems = this.items.slice(startIndex, endIndex + 1);
+					}
+				}
+			}
+			</script>
+		</div>
+	</div>
+}

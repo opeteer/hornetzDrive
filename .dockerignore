@@ -1,0 +1,8 @@
+.git
+.github
+bin/
+scratch/
+hornetz.db
+storage/
+tmp/
+*.md

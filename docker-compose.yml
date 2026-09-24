@@ -1,0 +1,67 @@
+version: '3.8'
+
+services:
+  # Hornetz Drive Web Server
+  web:
+    build: .
+    image: hornetz-web:latest
+    container_name: hornetz-web
+    ports:
+      - "8085:8085"
+    environment:
+      - PORT=8085
+      - DB_DRIVER=postgres
+      - DB_DSN=postgres://hornetz_user:hornetz_pass@db:5432/hornetz_db?sslmode=disable
+    volumes:
+      - hornetz-storage:/app/storage
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - hornetz-network
+    restart: unless-stopped
+
+  # PostgreSQL Database Image
+  db:
+    image: postgres:15-alpine
+    container_name: hornetz-db
+    environment:
+      POSTGRES_USER: hornetz_user
+      POSTGRES_PASSWORD: hornetz_pass
+      POSTGRES_DB: hornetz_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - hornetz-db-data:/var/lib/postgresql/data
+    networks:
+      - hornetz-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hornetz_user -d hornetz_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Optional: Redis Cache (For future Swarm Broker expansion)
+  cache:
+    image: redis:7-alpine
+    container_name: hornetz-cache
+    ports:
+      - "6379:6379"
+    volumes:
+      - hornetz-cache-data:/data
+    networks:
+      - hornetz-network
+    restart: unless-stopped
+
+networks:
+  hornetz-network:
+    driver: bridge
+
+volumes:
+  hornetz-storage:
+    name: hornetz-storage-vol
+  hornetz-db-data:
+    name: hornetz-db-vol
+  hornetz-cache-data:
+    name: hornetz-cache-vol
