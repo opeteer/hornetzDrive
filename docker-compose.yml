@@ -7,9 +7,9 @@ services:
     image: hornetz-web:latest
     container_name: hornetz-web
     ports:
-      - "8085:8085"
+      - "8071:8071"
     environment:
-      - PORT=8085
+      - PORT=8071
       - DB_DRIVER=postgres
       - DB_DSN=postgres://hornetz_user:hornetz_pass@db:5432/hornetz_db?sslmode=disable
     volumes:
@@ -30,7 +30,7 @@ services:
       POSTGRES_PASSWORD: hornetz_pass
       POSTGRES_DB: hornetz_db
     ports:
-      - "5432:5432"
+      - "5471:5432"
     volumes:
       - hornetz-db-data:/var/lib/postgresql/data
     networks:
@@ -47,7 +47,7 @@ services:
     image: redis:7-alpine
     container_name: hornetz-cache
     ports:
-      - "6379:6379"
+      - "6371:6379"
     volumes:
       - hornetz-cache-data:/data
     networks:

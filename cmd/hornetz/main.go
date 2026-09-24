@@ -39,7 +39,7 @@ func main() {
 
 	dbDriver := getEnv("DB_DRIVER", "sqlite3")
 	dbDsn := getEnv("DB_DSN", "file:hornetz.db?cache=shared&mode=rwc&_journal_mode=WAL")
-	port := getEnv("PORT", "8085")
+	port := getEnv("PORT", "8071")
 
 	dbEngine, err := data.NewDBEngine(dbDriver, dbDsn)
 	if err != nil {

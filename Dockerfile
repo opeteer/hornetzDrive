@@ -32,12 +32,12 @@ COPY --from=builder /app/bin/hornetz .
 RUN mkdir -p storage/cas storage/tmp && chmod -R 777 storage
 
 # Expose the server port
-EXPOSE 8085
+EXPOSE 8071
 
 # Default Environment Variables (SQLite mode)
 ENV DB_DRIVER=sqlite3
 ENV DB_DSN="file:hornetz.db?cache=shared&mode=rwc&_journal_mode=WAL"
-ENV PORT=8085
+ENV PORT=8071
 
 # Run the binary
 ENTRYPOINT ["./hornetz"]
