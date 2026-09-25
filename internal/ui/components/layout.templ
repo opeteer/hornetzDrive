@@ -14,6 +14,7 @@ templ Layout(title string) {
 		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 		<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet"/>
 		<style>
+			[x-cloak] { display: none !important; }
 			body {
 				font-family: 'Plus Jakarta Sans', sans-serif;
 				background-color: #0F0E0D;
@@ -206,8 +207,9 @@ templ Layout(title string) {
 
 		<!-- Global Upload Progress Notification Overlay (Controlled strictly by $store.drive.isUploading) -->
 		<div 
-			x-show="$store.drive.isUploading" 
+			x-show="$store.drive && $store.drive.isUploading" 
 			x-cloak
+			style="display: none;"
 			x-transition 
 			class="fixed bottom-6 right-6 bg-[#171614] border border-[#FACC15] p-4 rounded-xl shadow-2xl z-50 w-80 space-y-2"
 		>

@@ -147,8 +147,9 @@ templ DashboardContent() {
 
 		<!-- FILE DETAILS & ACTIONS MODAL -->
 		<div 
-			x-show="$store.drive.selectedFile" 
+			x-show="$store.drive && $store.drive.selectedFile" 
 			x-cloak
+			style="display: none;"
 			x-transition 
 			class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4"
 		>

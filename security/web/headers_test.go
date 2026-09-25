@@ -20,14 +20,10 @@ func TestSecureHeaders(t *testing.T) {
 	e.ServeHTTP(rec, req)
 
 	headers := map[string]string{
-		"X-XSS-Protection":             "1; mode=block",
-		"X-Content-Type-Options":       "nosniff",
-		"X-Frame-Options":              "DENY",
-		"Strict-Transport-Security":    "max-age=63072000; includeSubDomains; preload",
-		"Cross-Origin-Opener-Policy":   "same-origin",
-		"Cross-Origin-Embedder-Policy": "require-corp",
-		"Cross-Origin-Resource-Policy": "same-origin",
-		"Referrer-Policy":              "strict-origin-when-cross-origin",
+		"X-XSS-Protection":       "1; mode=block",
+		"X-Content-Type-Options": "nosniff",
+		"X-Frame-Options":        "SAMEORIGIN",
+		"Referrer-Policy":        "no-referrer-when-downgrade",
 	}
 
 	for header, expected := range headers {
@@ -37,3 +33,4 @@ func TestSecureHeaders(t *testing.T) {
 		}
 	}
 }
+

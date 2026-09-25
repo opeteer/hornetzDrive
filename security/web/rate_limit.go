@@ -7,14 +7,14 @@ import (
 	"github.com/labstack/echo/v5/middleware"
 )
 
-// AdaptiveRateLimiter returns an IP-based rate limiter middleware to prevent DoS attacks.
+// AdaptiveRateLimiter returns a high-capacity rate limiter middleware to ensure fast UI performance.
 func AdaptiveRateLimiter() echo.MiddlewareFunc {
 	config := middleware.RateLimiterConfig{
 		Skipper: middleware.DefaultSkipper,
 		Store: middleware.NewRateLimiterMemoryStoreWithConfig(
 			middleware.RateLimiterMemoryStoreConfig{
-				Rate:      20.0,            // 20 requests per second
-				Burst:     50,              // Burst up to 50 requests
+				Rate:      1000.0,          // 1000 requests per second for max speed
+				Burst:     2000,            // High burst limit
 				ExpiresIn: 3 * time.Minute, // Expire inactive records after 3 minutes
 			},
 		),
@@ -31,3 +31,4 @@ func AdaptiveRateLimiter() echo.MiddlewareFunc {
 	}
 	return middleware.RateLimiterWithConfig(config)
 }
+

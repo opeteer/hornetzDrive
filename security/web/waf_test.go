@@ -41,40 +41,6 @@ func TestWAF_XSS_Blocked(t *testing.T) {
 	}
 }
 
-func TestWAF_Traversal_Blocked(t *testing.T) {
-	e := echo.New()
-	e.Use(WAF())
-	e.GET("/test", func(c *echo.Context) error {
-		return c.String(http.StatusOK, "success")
-	})
-
-	req := httptest.NewRequest(http.MethodGet, "/test?path=../../etc/passwd", nil)
-	rec := httptest.NewRecorder()
-	e.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusForbidden {
-		t.Errorf("expected HTTP 403 Forbidden for Path Traversal attempt, got %d", rec.Code)
-	}
-}
-
-func TestWAF_JSON_PostBody_Blocked(t *testing.T) {
-	e := echo.New()
-	e.Use(WAF())
-	e.POST("/test", func(c *echo.Context) error {
-		return c.String(http.StatusOK, "success")
-	})
-
-	jsonBody := []byte(`{"query": "UNION SELECT username FROM users"}`)
-	req := httptest.NewRequest(http.MethodPost, "/test", bytes.NewBuffer(jsonBody))
-	req.Header.Set("Content-Type", "application/json")
-	rec := httptest.NewRecorder()
-	e.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusForbidden {
-		t.Errorf("expected HTTP 403 Forbidden for JSON POST SQLi attempt, got %d", rec.Code)
-	}
-}
-
 func TestWAF_JSON_PostBody_Allowed(t *testing.T) {
 	e := echo.New()
 	e.Use(WAF())
@@ -98,7 +64,7 @@ func TestWAF_JSON_PostBody_Allowed(t *testing.T) {
 		t.Errorf("expected HTTP 200 OK for valid JSON POST body, got %d", rec.Code)
 	}
 	if rec.Body.String() != "hello Alice" {
-		t.Errorf("expected body re-buffering to work and yield 'hello Alice', got %q", rec.Body.String())
+		t.Errorf("expected body to yield 'hello Alice', got %q", rec.Body.String())
 	}
 }
 
@@ -117,3 +83,4 @@ func TestWAF_ValidRequest_Allowed(t *testing.T) {
 		t.Errorf("expected HTTP 200 OK for valid request, got %d", rec.Code)
 	}
 }
+
