@@ -80,14 +80,26 @@ func (fc *FileController) GetFiles(c *echo.Context) error {
 
 	tab := c.QueryParam("tab")
 	search := c.QueryParam("q")
+	folderID := c.QueryParam("folder_id")
 
 	query := "SELECT id, owner_id, COALESCE(folder_id, ''), name, mime_type, size, cas_hash, created_at FROM files WHERE 1=1"
 	args := []interface{}{}
+
+	if folderID != "" {
+		query += " AND folder_id = ?"
+		args = append(args, folderID)
+	} else if tab == "vault" {
+		query += " AND (folder_id = 'f2' OR mime_type = 'application/octet-stream' OR name LIKE '%.key')"
+	}
 
 	if search != "" {
 		query += " AND (name LIKE ? OR cas_hash LIKE ?)"
 		pattern := "%" + search + "%"
 		args = append(args, pattern, pattern)
+	}
+
+	if tab == "recent" {
+		query += " ORDER BY created_at DESC"
 	}
 
 	query = fc.DB.Rebind(query)

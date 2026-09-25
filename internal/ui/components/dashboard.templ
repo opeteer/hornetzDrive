@@ -24,12 +24,22 @@ templ DashboardContent() {
 			<div class="flex items-center gap-2 text-xs font-mono">
 				<span class="text-[#FACC15] font-bold cursor-pointer" @click="$store.drive.setTab('storage')">Penyimpanan Saya</span>
 				<span class="text-[#6E675E]">\</span>
-				<span class="text-white font-semibold" x-text="
-					$store.drive.activeTab === 'storage' ? 'Penyimpanan Utama' : 
-					($store.drive.activeTab === 'vault' ? 'Vault Terenkripsi' : 
-					($store.drive.activeTab === 'recent' ? 'Berkas Terbaru' : 
-					($store.drive.activeTab === 'starred' ? 'Berbintang' : 'Sampah')))
-				">Utama</span>
+				<span 
+					:class="$store.drive.currentFolderId ? 'text-[#FACC15] cursor-pointer font-semibold' : 'text-white font-semibold'"
+					@click="if ($store.drive.currentFolderId) $store.drive.clearFolder()"
+					x-text="
+						$store.drive.activeTab === 'storage' ? 'Penyimpanan Utama' : 
+						($store.drive.activeTab === 'vault' ? 'Vault Terenkripsi' : 
+						($store.drive.activeTab === 'recent' ? 'Berkas Terbaru' : 
+						($store.drive.activeTab === 'starred' ? 'Berbintang' : 'Sampah')))
+					"
+				>Utama</span>
+				<template x-if="$store.drive.currentFolderId">
+					<span class="flex items-center gap-2">
+						<span class="text-[#6E675E]">\</span>
+						<span class="text-white font-bold" x-text="$store.drive.currentFolderName"></span>
+					</span>
+				</template>
 			</div>
 
 			<!-- View Switcher & Action Controls -->
@@ -56,15 +66,15 @@ templ DashboardContent() {
 		<!-- WORKSPACE CONTENT AREA -->
 		<div class="flex-1 overflow-y-auto p-6 space-y-8">
 
-			<!-- SECTION 1: FOLDERS / CELLS (Only shown on Storage / Vault tab) -->
-			<div x-show="$store.drive.activeTab === 'storage' || $store.drive.activeTab === 'vault'" class="space-y-4">
+			<!-- SECTION 1: FOLDERS / CELLS (Only shown on Storage / Vault tab when no folder selected) -->
+			<div x-show="!$store.drive.currentFolderId && ($store.drive.activeTab === 'storage' || $store.drive.activeTab === 'vault')" class="space-y-4">
 				<h3 class="text-xs font-mono text-[#FACC15] uppercase tracking-wider font-bold flex items-center gap-2">
 					<span>📁</span> FOLDER UTAMA & VAULT CELLS
 				</h3>
 				<div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
 					<template x-for="folder in $store.drive.folders" :key="folder.id">
 						<div 
-							@click="alert(`📁 Membuka Folder: ${folder.name}`)"
+							@click="$store.drive.openFolder(folder)"
 							class="bg-[#171614] border border-[#2A2723] hover:border-[#FACC15] p-4 rounded-xl cursor-pointer group transition-all shadow-sm hover:shadow-lg hover:-translate-y-0.5"
 						>
 							<div class="flex justify-between items-start mb-3">

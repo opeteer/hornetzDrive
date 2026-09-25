@@ -239,6 +239,8 @@ templ Layout(title string) {
 				files: [],
 				folders: [],
 				selectedFile: null,
+				currentFolderId: '',
+				currentFolderName: '',
 				isUploading: false,
 				uploadFileName: '',
 				uploadProgress: 0,
@@ -250,6 +252,21 @@ templ Layout(title string) {
 
 				setTab(tab) {
 					this.activeTab = tab;
+					this.currentFolderId = '';
+					this.currentFolderName = '';
+					this.fetchFiles();
+				},
+
+				openFolder(folder) {
+					if (!folder) return;
+					this.currentFolderId = folder.id;
+					this.currentFolderName = folder.name;
+					this.fetchFiles();
+				},
+
+				clearFolder() {
+					this.currentFolderId = '';
+					this.currentFolderName = '';
 					this.fetchFiles();
 				},
 
@@ -260,7 +277,7 @@ templ Layout(title string) {
 
 				async fetchFiles() {
 					try {
-						const url = `/api/files?tab=${this.activeTab}&q=${encodeURIComponent(this.searchQuery)}`;
+						const url = `/api/files?tab=${this.activeTab}&q=${encodeURIComponent(this.searchQuery)}&folder_id=${encodeURIComponent(this.currentFolderId)}`;
 						const res = await fetch(url);
 						if (res.ok) {
 							this.files = await res.json();
