@@ -281,6 +281,11 @@ templ Layout(title string) {
 					}
 				},
 
+				getCsrfToken() {
+					const match = document.cookie.match(new RegExp('(?:^|; )_csrf=([^;]+)'));
+					return match ? decodeURIComponent(match[1]) : '';
+				},
+
 				async uploadFile(event) {
 					const file = event.target.files[0];
 					if (!file) return;
@@ -292,7 +297,10 @@ templ Layout(title string) {
 					try {
 						const initRes = await fetch("/upload/init", {
 							method: "POST",
-							headers: { "Content-Type": "application/json" },
+							headers: {
+								"Content-Type": "application/json",
+								"X-CSRF-Token": this.getCsrfToken()
+							},
 							body: JSON.stringify({
 								filename: file.name,
 								mime_type: file.type || "application/octet-stream",
@@ -321,6 +329,9 @@ templ Layout(title string) {
 
 						const uploadRes = await fetch(`/upload/${sessionId}`, {
 							method: "PUT",
+							headers: {
+								"X-CSRF-Token": this.getCsrfToken()
+							},
 							body: file
 						});
 
@@ -347,7 +358,12 @@ templ Layout(title string) {
 					if (!file) return;
 					if (!confirm(`Apakah Anda yakin ingin menghapus berkas "${file.name}"?`)) return;
 					try {
-						const res = await fetch(`/api/files/${file.id}`, { method: "DELETE" });
+						const res = await fetch(`/api/files/${file.id}`, {
+							method: "DELETE",
+							headers: {
+								"X-CSRF-Token": this.getCsrfToken()
+							}
+						});
 						if (res.ok) {
 							this.selectedFile = null;
 							this.fetchFiles();
@@ -368,7 +384,12 @@ templ Layout(title string) {
 					if (!confirmed) return;
 
 					try {
-						const res = await fetch("/api/purge", { method: "POST" });
+						const res = await fetch("/api/purge", {
+							method: "POST",
+							headers: {
+								"X-CSRF-Token": this.getCsrfToken()
+							}
+						});
 						const data = await res.json();
 						alert("💀 PANIC PURGE SUKSES EXECUTED!\n\n- Status: " + data.status + "\n- Pesan: " + data.message);
 						this.fetchFiles();

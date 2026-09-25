@@ -13,6 +13,7 @@ import (
 	"ztatic-go-framework/internal/storage"
 	"ztatic-go-framework/internal/upload"
 	"ztatic-go-framework/realtime"
+	"ztatic-go-framework/security/web"
 )
 
 func setupUploadTest(t *testing.T) (*echo.Echo, *UploadController) {
@@ -119,5 +120,36 @@ func TestUploadController_ZeroByteFileUpload(t *testing.T) {
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("Expected HTTP 200 on 0-byte completion, got %d", rec.Code)
+	}
+}
+
+func TestUploadController_WithCSRFProtection(t *testing.T) {
+	e, ctrl := setupUploadTest(t)
+	e.Use(web.HardenedCSRF())
+
+	e.POST("/upload/init", ctrl.InitSession)
+
+	// 1. Request without CSRF token should return HTTP 400 Bad Request
+	body := []byte(`{"filename":"test.txt","mime_type":"text/plain","size":100,"folder_id":"root"}`)
+	req1 := httptest.NewRequest(http.MethodPost, "/upload/init", bytes.NewReader(body))
+	req1.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec1 := httptest.NewRecorder()
+	e.ServeHTTP(rec1, req1)
+
+	if rec1.Code != http.StatusBadRequest {
+		t.Fatalf("Expected HTTP 400 without CSRF token, got %d", rec1.Code)
+	}
+
+	// 2. Request with _csrf cookie and matching X-CSRF-Token header should succeed (HTTP 201)
+	csrfToken := "test-csrf-token-12345"
+	req2 := httptest.NewRequest(http.MethodPost, "/upload/init", bytes.NewReader(body))
+	req2.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	req2.Header.Set("X-CSRF-Token", csrfToken)
+	req2.AddCookie(&http.Cookie{Name: "_csrf", Value: csrfToken})
+	rec2 := httptest.NewRecorder()
+	e.ServeHTTP(rec2, req2)
+
+	if rec2.Code != http.StatusCreated {
+		t.Fatalf("Expected HTTP 201 with valid CSRF token, got %d (body: %s)", rec2.Code, rec2.Body.String())
 	}
 }
