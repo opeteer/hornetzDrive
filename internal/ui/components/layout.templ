@@ -401,6 +401,11 @@ templ Layout(title string) {
 					this.isUploading = true;
 					this.uploadProgress = 15;
 
+					let targetFolderId = this.currentFolderId;
+					if (!targetFolderId) {
+						targetFolderId = (this.activeTab === 'vault') ? 'f2' : 'f1';
+					}
+
 					try {
 						const initRes = await fetch("/upload/init", {
 							method: "POST",
@@ -412,7 +417,7 @@ templ Layout(title string) {
 								filename: file.name,
 								mime_type: file.type || "application/octet-stream",
 								size: file.size,
-								folder_id: "f1"
+								folder_id: targetFolderId
 							})
 						});
 
