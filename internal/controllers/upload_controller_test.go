@@ -97,3 +97,27 @@ func TestUploadController_ChunkUploadLifecycle(t *testing.T) {
 		t.Fatalf("Expected cas_hash in response")
 	}
 }
+
+func TestUploadController_ZeroByteFileUpload(t *testing.T) {
+	e, ctrl := setupUploadTest(t)
+
+	// Create Session for 0-byte file
+	sess, err := ctrl.SessionMgr.CreateSession(1, "root", "empty.txt", "text/plain", 0)
+	if err != nil {
+		t.Fatalf("CreateSession failed: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPut, "/upload/"+sess.ID, bytes.NewReader([]byte{}))
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetPathValues(echo.PathValues{{Name: "session_id", Value: sess.ID}})
+	c.Set("vault_key", crypto.DummyVK())
+
+	if err := ctrl.UploadChunk(c); err != nil {
+		t.Fatalf("UploadChunk error: %v", err)
+	}
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Expected HTTP 200 on 0-byte completion, got %d", rec.Code)
+	}
+}

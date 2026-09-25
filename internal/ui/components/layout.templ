@@ -301,7 +301,10 @@ templ Layout(title string) {
 							})
 						});
 
-						if (!initRes.ok) throw new Error("Gagal inisiasi upload");
+						if (!initRes.ok) {
+							const errData = await initRes.json().catch(() => ({}));
+							throw new Error(errData.message || `Gagal inisiasi upload (Status HTTP ${initRes.status})`);
+						}
 						const initData = await initRes.json();
 						this.uploadProgress = 50;
 
@@ -321,7 +324,10 @@ templ Layout(title string) {
 							body: file
 						});
 
-						if (!uploadRes.ok) throw new Error("Gagal mengunggah payload berkas");
+						if (!uploadRes.ok) {
+							const errData = await uploadRes.json().catch(() => ({}));
+							throw new Error(errData.message || `Gagal mengunggah payload berkas (Status HTTP ${uploadRes.status})`);
+						}
 						
 						this.uploadProgress = 100;
 						setTimeout(() => { this.isUploading = false; }, 800);

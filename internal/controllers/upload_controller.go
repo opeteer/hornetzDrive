@@ -96,7 +96,10 @@ func (uc *UploadController) UploadChunk(c *echo.Context) error {
 	sess.LastActiveAt = time.Now()
 
 	// SSE Realtime broadcast for Venom Speed
-	percentage := (sess.UploadedSize * 100) / sess.ExpectedSize
+	var percentage int64 = 100
+	if sess.ExpectedSize > 0 {
+		percentage = (sess.UploadedSize * 100) / sess.ExpectedSize
+	}
 	uc.Broker.Publish(c.Request().Context(), "nest:user_1", fullstack.TurboStreamItem{
 		Action:    fullstack.StreamUpdate,
 		Target:    "venom-speed-" + sess.ID,

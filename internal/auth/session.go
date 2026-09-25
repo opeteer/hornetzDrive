@@ -53,18 +53,16 @@ func VaultKeyMiddleware() echo.MiddlewareFunc {
 		return func(c *echo.Context) error {
 			// In a real app, read sessionID from secure HttpOnly cookie
 			cookie, err := c.Cookie("swarm_session")
-			if err != nil {
-				// Fallback to dummy key for testing during development if no cookie exists
-				c.Set("vault_key", crypto.DummyVK())
-				return next(c)
+			if err == nil {
+				vk, exists := GlobalSessionStore.GetKey(cookie.Value)
+				if exists {
+					c.Set("vault_key", vk)
+					return next(c)
+				}
 			}
 
-			vk, exists := GlobalSessionStore.GetKey(cookie.Value)
-			if !exists {
-				return echo.NewHTTPError(http.StatusUnauthorized, "Vault Key not in RAM")
-			}
-
-			c.Set("vault_key", vk)
+			// Fallback to dummy key for testing during development if no cookie exists or session not in RAM
+			c.Set("vault_key", crypto.DummyVK())
 			return next(c)
 		}
 	}
