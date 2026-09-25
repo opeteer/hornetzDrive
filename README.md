@@ -1,256 +1,165 @@
-# Ztatic Full-Stack Go Framework
+# Hornetz Drive
 
-[![Go Version](https://img.shields.io/badge/Go-1.21%2B-00ADD8?style=flat-square&logo=go)](https://golang.org)
-[![Security](https://img.shields.io/badge/Security-First-red?style=flat-square&logo=shield)](https://github.com/opeteer/ztatic-go-framework)
-[![Architecture](https://img.shields.io/badge/Architecture-HOTW-success?style=flat-square)](https://github.com/opeteer/ztatic-go-framework)
+[![Go Version](https://img.shields.io/badge/Go-1.26%2B-00ADD8?style=flat-square&logo=go)](https://golang.org)
+[![Security](https://img.shields.io/badge/Security-Zero--Trust-red?style=flat-square&logo=shield)](https://github.com/opeteer/hornetzDrive)
+[![Architecture](https://img.shields.io/badge/Architecture-HOTW-success?style=flat-square)](https://github.com/opeteer/hornetzDrive)
+[![Storage](https://img.shields.io/badge/Storage-CAS--Deduplicated-orange?style=flat-square)](https://github.com/opeteer/hornetzDrive)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](LICENSE)
 
-**Ztatic** is an enterprise-grade, security-first full-stack framework built on top of **Echo v5**. It transforms Go into a high-productivity full-stack monolith ecosystem using the **HOTW (HTML Over The Wire)** stack: **Templ**, **Hotwire (Turbo)**, **Alpine.js**, **esbuild**, and **Server-Sent Events (SSE)**.
+**Hornetz Drive** is a high-performance, zero-trust, enterprise-grade encrypted cloud storage and asset management engine built with **Go 1.26+** and **Echo v5**. It is powered by the **HOTW (HTML Over The Wire)** stack: **Templ**, **Hotwire (Turbo 8)**, **Alpine.js**, and **Server-Sent Events (SSE)**.
 
-With Ztatic, you write pure Go and HTML—**zero Node.js or npm required**—and compile your entire application (templates, JavaScript, CSS, migrations) into a **single, statically-linked binary** capable of pushing real-time updates in microsecond scale.
+Hornetz Drive provides client & server streaming AES-256-GCM encryption, content-addressable storage (CAS) with 0-second file deduplication, anti-forensic path obfuscation via the Chitin Shuffler, resumable chunked uploads, and an emergency Stinger Panic Purge protocol—all bundled inside a single, zero-dependency static binary.
 
 ---
 
 ## Key Features & Architecture Pillars
 
-### 1. Security Suite
-* **Web Security Engine:** Built-in Web Application Firewall (WAF) payload inspection, nonces-based Content Security Policy (CSP), HTTP Strict Transport Security (HSTS), and Double Submit Cookie CSRF protection.
-* **Data Privacy & Encryption:** AES-256-GCM field-level struct tag encryption (`ztatic:"encrypt"`), Argon2id password hashing, and zero-allocation PII masking for `slog`.
+### 1. Zero-Trust Security & Encryption Engine
+* **AES-256-GCM Chunked Stream Encryption:** `EncryptStream` and `DecryptStream` handle continuous block-by-block data streams (`[4-byte length][12-byte nonce][ciphertext + tag]`), preventing full-file memory buffering.
+* **Argon2id Key Derivation:** Master Encryption Key (MEK) derived securely using Argon2id (`time=3, memory=64MB, threads=4`).
+* **Stinger Panic Purge:** One-touch emergency endpoint (`/api/purge`) that instantly obliterates RAM keys and overwrites physical disk storage with cryptographic random bytes (`os.urandom`) before deletion.
 
-### 2. HOTW Frontend (Templ + Hotwire + Alpine.js)
-* **Templ Integration:** Direct streaming of type-safe Go HTML templates into response buffers (`fullstack.Render`).
-* **Smart Layout Unwrapping:** Automatically detects `Turbo-Frame` request headers and unwraps the outer application layout shell, cutting payload sizes by up to 80%.
-* **Hotwire Turbo Streams:** Native support for Turbo 8 DOM mutation actions (`append`, `prepend`, `replace`, `update`, `remove`, `before`, `after`).
-* **Alpine.js Morphing:** Automatic state-preserving morph headers (`X-Alpine-Morph`) for reactive client-side micro-interactions.
+### 2. Content-Addressable Storage (CAS) & Deduplication
+* **0-Second Deduplication:** Physical storage is indexed by SHA-256 content hashes. Identical file contents uploaded by multiple users consume zero additional disk space.
+* **Path Sharding:** Files are stored in deep directory shards (`storage/cas/ab/cd/hash...`) to prevent filesystem performance bottlenecks under massive file volume.
+* **Chitin Shuffler:** Background anti-forensics process that periodically rotates path shards and obfuscates filesystem access timestamps (`mtime`) to thwart access pattern analysis.
 
-### 3. Native Asset Pipeline
-* **Zero Node.js Dependency:** Native Go binding to the `esbuild` API compiles TypeScript, JavaScript, and CSS in sub-10ms.
-* **Dual-Mode Asset Manager:** Disk-backed live reloads with timestamp cache-busting during development; Go `embed.FS` with immutable 1-year caching in production.
-* **Content Hashing Manifest:** Automatic SHA-256 content hashing (`app.a8f9b2.js`) and manifest loading (`fullstack.AssetURL()`).
+### 3. Resumable Chunked Upload Engine
+* **Session-Managed Multipart Uploads:** Supports large file uploads fragmented into discrete binary chunks via `/upload/init`, `PUT /upload/:session_id`, and `GET /upload/:session_id`.
+* **Stateful Assembly & Integrity Verification:** Upload progress is tracked in-memory, verified against expected file sizes, and moved atomically into CAS upon completion.
 
-### 4. Realtime Engine (SSE & Pub/Sub Broker)
-* **Topic-Based Event Broker:** High-throughput `MemoryBroker` leveraging thread-safe `sync.RWMutex` channels.
-* **Zero-JS Realtime Streams:** Serves Turbo Streams directly over HTTP/1.1 Server-Sent Events (`<turbo-stream-from src="/sse?topic=room:101">`).
-* **Proxy-Optimized:** Includes `X-Accel-Buffering: no` headers to bypass Nginx buffering bottlenecks.
+### 4. HOTW Real-Time Dashboard (Templ + Turbo + Alpine.js)
+* **Type-Safe Templ Views:** Rendered directly into server response buffers for maximum throughput.
+* **Zero-JS Realtime Event Streams:** Server-Sent Events (SSE) stream Turbo Stream DOM mutations (`append`, `update`, `remove`) directly to the client without page refreshes.
+* **Reactive Micro-Interactions:** Alpine.js client-side reactivity and state preservation.
 
-### 5. Enterprise Data Tier
-* **Panic-Safe Transactions:** `DBEngine.Transaction(ctx, fn)` automatically handles `COMMIT` on success, and `ROLLBACK` on explicit errors or runtime panics.
-* **Generic Base Repository:** Go 1.18+ Generics-powered `BaseRepository[T]` eliminates boilerplate CRUD code without sacrificing type safety.
-* **Embedded Migrations:** Embeds Goose SQL schema migrations directly inside your binary using `embed.FS`.
-
-### 6. Unified Developer CLI (`ztatic`)
-* **Scaffolding:** `ztatic new <project_name>` generates production-ready directory layouts.
-* **Live Reload:** `ztatic dev` monitors `.go`, `.templ`, `.css`, and `.js` files, auto-compiling assets and restarting the process.
-* **Single-Binary Build:** `ztatic build` creates an optimized, self-contained binary artifact ready for distribution.
+### 5. Multi-Database Engine & Embedded Migrations
+* **SQLite3 (WAL Mode) & PostgreSQL Support:** Configurable through environment variables (`DB_DRIVER`, `DB_DSN`).
+* **Embedded Schema Migrations:** Database migrations (`data/migrations_sqlite3`, `data/migrations_postgres`) executed automatically at startup via embedded Goose (`embed.FS`).
 
 ---
 
-## Quick Start
+## Architecture & Directory Layout
 
-### Installation & Prerequisites
-Ensure you have **Go 1.21+** installed.
+```text
+hornetzDrive/
+├── cmd/
+│   ├── hornetz/          # Main Hornetz Drive application entry point (main.go)
+│   └── ztatic/           # Unified CLI tool for scaffolding & building
+├── internal/
+│   ├── auth/             # Session management & Vault Key middleware
+│   ├── controllers/      # Handlers: FileController, UploadController, SecurityController
+│   ├── crypto/           # AES-256-GCM streaming encryption & Argon2id key derivation
+│   ├── storage/          # CAS engine & Chitin Shuffler background worker
+│   ├── ui/               # Templ components and layouts (dashboard, layout)
+│   └── upload/           # Resumable chunked upload session manager
+├── data/
+│   ├── db.go             # Database engine initializer & generic transaction wrapper
+│   ├── migrate.go        # Embedded Goose schema migration driver
+│   ├── migrations_postgres/
+│   └── migrations_sqlite3/
+├── assets/               # CSS, JS, and static frontend resources
+├── echo/                 # Embedded Echo v5 web framework engine
+├── storage/              # Runtime CAS storage & temporary upload buffers
+├── Dockerfile            # Multi-stage Alpine container build specification
+├── docker-compose.yml    # Full-stack orchestrator (Web + Postgres + Redis)
+├── Makefile              # Project build & Templ code generation targets
+└── go.mod                # Module definition & dependency management
+```
+
+---
+
+## API Reference Summary
+
+### File Management API
+* `GET /api/files` - Retrieve user file listing (JSON).
+* `GET /api/folders` - Retrieve folder structure (JSON).
+* `GET /api/files/:id/download` - Stream and decrypt file content on-the-fly.
+* `DELETE /api/files/:id` - Delete user file reference.
+
+### Protected Resumable Upload API
+* `POST /upload/init` - Initialize an upload session (`owner_id`, `filename`, `size`, `mime_type`).
+* `PUT /upload/:session_id` - Upload binary file chunk.
+* `GET /upload/:session_id` - Check current upload session status & byte progress.
+
+### Security & Realtime API
+* `POST /api/purge` - Trigger emergency **Stinger Panic Purge** (overwrites CAS storage & clears RAM keys).
+* `GET /sse` - Server-Sent Events stream endpoint for real-time dashboard updates.
+* `POST /login` - Authentication endpoint.
+
+---
+
+## Quick Start & Local Setup
+
+### Prerequisites
+* **Go 1.21+** (Go 1.26 recommended)
+* **GCC / Musl-dev** (Required for CGO with `go-sqlite3`)
+* **Templ CLI**: `go install github.com/a-h/templ/cmd/templ@latest`
+
+### 1. Build and Run via Makefile
 
 ```bash
 # Clone the repository
-git clone https://github.com/opeteer/ztatic-go-framework.git
-cd ztatic-go-framework
+git clone https://github.com/opeteer/hornetzDrive.git
+cd hornetzDrive
 
-# Build the ztatic CLI tool
-go build -o ztatic ./cmd/ztatic
+# Generate Templ HTML components
+make generate
+
+# Build the standalone binary executable
+make build
+
+# Launch Hornetz Drive server
+make run
 ```
 
-### 1. Scaffold a New Project
-```bash
-./ztatic new myapp
-cd myapp
-```
+By default, Hornetz Drive starts listening on `http://localhost:8071`.
 
-This creates the standard Ztatic project architecture:
-```text
-myapp/
-├── assets/
-│   ├── css/
-│   └── js/
-├── cmd/
-│   └── server/
-│       └── main.go
-├── db/
-│   └── migrations/
-├── internal/
-│   ├── controllers/
-│   ├── models/
-│   ├── repositories/
-│   └── views/
-│       ├── components/
-│       └── layouts/
-└── go.mod
-```
+### 2. Environment Variables
 
-### 2. Basic Server Example (`cmd/server/main.go`)
-```go
-package main
-
-import (
-	"log"
-	
-	"ztatic-go-framework"
-	"ztatic-go-framework/fullstack"
-)
-
-func main() {
-	// Initialize security-hardened engine
-	app := ztatic.NewSecure()
-
-	// Serve static assets
-	fullstack.MountAssets(app.Engine, "assets", true)
-
-	// Define routes
-	app.GET("/", func(c ztatic.Context) error {
-		return c.String(200, "Welcome to Ztatic Full-Stack Framework!")
-	})
-
-	log.Fatal(app.Start(":8080"))
-}
-```
+| Variable | Default Value | Description |
+| :--- | :--- | :--- |
+| `PORT` | `8071` | HTTP server listening port |
+| `DB_DRIVER` | `sqlite3` | Database driver (`sqlite3` or `postgres`) |
+| `DB_DSN` | `file:hornetz.db?cache=shared&mode=rwc&_journal_mode=WAL` | Database connection string |
 
 ---
 
-## Module Usage Guide
+## Container Deployment (Docker & Docker Compose)
 
-### Rendering Templ Components & Turbo Streams
+Hornetz Drive includes a production-ready multi-stage `Dockerfile` and `docker-compose.yml` configured for PostgreSQL and Redis integration.
 
-```go
-package controllers
+### Run with Docker Compose
 
-import (
-	"github.com/labstack/echo/v5"
-	"ztatic-go-framework/fullstack"
-)
-
-// Standard HTML View with smart layout unwrapping
-func HandleHome(c *echo.Context) error {
-	// If the request comes from a Turbo-Frame, AppLayout is bypassed automatically!
-	return fullstack.RenderLayout(c, 200, views.AppLayout, views.HomePage())
-}
-
-// Turbo Stream DOM Mutation Response
-func HandleUpdateMessage(c *echo.Context) error {
-	// Appends a component into #messages container
-	return fullstack.RenderTurboStream(
-		c, 
-		fullstack.StreamAppend, 
-		"messages", 
-		components.MessageCard("New Message"),
-	)
-}
+```bash
+docker-compose up -d --build
 ```
 
-### Real-Time Server-Sent Events (SSE)
-
-```go
-package main
-
-import (
-	"github.com/labstack/echo/v5"
-	"ztatic-go-framework/fullstack"
-	"ztatic-go-framework/realtime"
-)
-
-func SetupRealtime(e *echo.Echo) {
-	broker := realtime.NewMemoryBroker()
-
-	// 1. Mount SSE stream endpoint
-	e.GET("/sse", realtime.SSEHandler(broker))
-
-	// 2. Broadcast DOM mutations from anywhere in your backend
-	e.POST("/chat/send", func(c *echo.Context) error {
-		broker.Publish(c.Request().Context(), "chat-room-1", fullstack.TurboStreamItem{
-			Action:    fullstack.StreamAppend,
-			Target:    "chat-box",
-			Component: components.ChatMessage("Hello from Go!"),
-		})
-		return c.NoContent(200)
-	})
-}
-```
-
-In your HTML template, simply declare:
-```html
-<turbo-stream-from src="/sse?topic=chat-room-1"></turbo-stream-from>
-<div id="chat-box"></div>
-```
-
-### Database Transactions & Generic Repositories
-
-```go
-package repositories
-
-import (
-	"context"
-	"ztatic-go-framework/data"
-)
-
-type User struct {
-	ID    int
-	Email string
-}
-
-type UserRepository struct {
-	*data.BaseRepository[User]
-}
-
-func NewUserRepository(db *data.DBEngine) *UserRepository {
-	return &UserRepository{
-		BaseRepository: data.NewBaseRepository[User](db, "users"),
-	}
-}
-
-// Usage in Handler:
-func CreateUserSafely(db *data.DBEngine, user *User) error {
-	return db.Transaction(context.Background(), func(tx *sql.Tx) error {
-		// All operations inside this closure rollback automatically on error or panic!
-		_, err := tx.Exec("INSERT INTO users (email) VALUES (?)", user.Email)
-		return err
-	})
-}
-```
+This starts:
+1. **Hornetz Web Engine** listening on port `8071`
+2. **PostgreSQL 15 Container** listening on port `5471`
+3. **Redis 7 Container** listening on port `6371`
 
 ---
 
-## Development & Production Workflow
+## Development Workflow
 
-### Development Mode (Live Reload)
+### Live Reloading & Component Generation
+During development, regenerate Templ templates whenever `.templ` files are modified:
+
 ```bash
-./ztatic dev
+templ generate --watch
 ```
-Monitors template files (`.templ`), Go source files (`.go`), and assets (`.css`/`.js`), automatically generating components, bundling via `esbuild`, and restarting the server process seamlessly.
 
-### Production Build
+### Running Tests
+Execute unit and benchmark tests for CAS storage, encryption, and repositories:
+
 ```bash
-./ztatic build
+go test -v ./...
 ```
-Executes the production build pipeline:
-1. `templ generate` compiles components to Go bytecode.
-2. `esbuild` bundles and minifies JS/CSS assets targeting ES2022.
-3. Content-hash manifest (`manifest.json`) is generated.
-4. `go build -ldflags="-s -w" -trimpath` creates a zero-dependency static binary.
-
-Deploy the resulting `bin/server` binary anywhere—no extra assets or runtime dependencies required!
-
----
-
-## Performance Benchmarks
-
-Benchmark results executed on AMD64 Linux (12th Gen Intel i5-12450H):
-
-| Subsystem | Operation | Latency | Memory Overhead |
-| :--- | :--- | :--- | :--- |
-| **Asset Pipeline** | Manifest Hash Lookup (`AssetURL`) | **356.3 ns/op** | 64 B/op (3 allocs) |
-| **Realtime Engine** | SSE Broadcast (100 Subscribers) | **4.6 µs/op** | ~46 ns / subscriber |
-| **Data Engine** | Generic CRUD Identification | **0.005 ms** | Zero Heap Leaks |
 
 ---
 
 ## License
 
-Distributed under the MIT License. See `LICENSE` for more information.
+Distributed under the MIT License. See `LICENSE` for details.
