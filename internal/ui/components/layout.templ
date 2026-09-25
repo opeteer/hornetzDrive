@@ -317,10 +317,10 @@ templ Layout(title string) {
 						this.uploadProgress = 50;
 
 						if (initData.status === "completed") {
+							await this.fetchFiles();
 							this.uploadProgress = 100;
 							setTimeout(() => { this.isUploading = false; }, 800);
 							alert("⚡ Berkas berhasil diunggah secara instan (0-Second CAS Deduplication)!");
-							this.fetchFiles();
 							return;
 						}
 
@@ -340,10 +340,10 @@ templ Layout(title string) {
 							throw new Error(errData.message || `Gagal mengunggah payload berkas (Status HTTP ${uploadRes.status})`);
 						}
 						
+						await this.fetchFiles();
 						this.uploadProgress = 100;
 						setTimeout(() => { this.isUploading = false; }, 800);
 						alert(`✅ Berkas "${file.name}" berhasil diunggah & tersimpan di basis data!`);
-						this.fetchFiles();
 
 					} catch (err) {
 						console.error("Upload error:", err);
