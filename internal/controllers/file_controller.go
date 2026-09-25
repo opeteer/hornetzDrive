@@ -48,21 +48,31 @@ func (fc *FileController) SeedInitialData() {
 		return
 	}
 
+	ignoreClause := "INSERT OR IGNORE"
+	if fc.DB != nil && fc.DB.DriverName == "postgres" {
+		ignoreClause = "INSERT"
+	}
+
+	onConflict := ""
+	if fc.DB != nil && fc.DB.DriverName == "postgres" {
+		onConflict = " ON CONFLICT DO NOTHING"
+	}
+
 	// Ensure user exists
-	fc.DB.SQL.Exec(`INSERT OR IGNORE INTO users (id, email, password_hash, salt, encrypted_vault_key) VALUES (1, 'master@hornetz.io', 'hash', 'salt', 'vk')`)
+	fc.DB.SQL.Exec(ignoreClause + ` INTO users (id, email, password_hash, salt, encrypted_vault_key) VALUES (1, 'master@hornetz.io', 'hash', 'salt', 'vk')` + onConflict)
 
 	// Create Folders
-	fc.DB.SQL.Exec(`INSERT OR IGNORE INTO folders (id, owner_id, parent_id, name) VALUES 
+	fc.DB.SQL.Exec(ignoreClause + ` INTO folders (id, owner_id, parent_id, name) VALUES 
 		('f1', 1, NULL, 'Dokumen Keuangan 2026'),
 		('f2', 1, NULL, 'Kunci SSH & SSL Privasi'),
-		('f3', 1, NULL, 'Arsip Kode & Desain Sistem')`)
+		('f3', 1, NULL, 'Arsip Kode & Desain Sistem')` + onConflict)
 
 	// Create Initial Files
-	fc.DB.SQL.Exec(`INSERT OR IGNORE INTO files (id, owner_id, folder_id, name, mime_type, size, cas_hash) VALUES
+	fc.DB.SQL.Exec(ignoreClause + ` INTO files (id, owner_id, folder_id, name, mime_type, size, cas_hash) VALUES
 		('file_1', 1, 'f1', 'laporan_keuangan_q3_2026.pdf', 'application/pdf', 25690112, 'a8f3b2c91d4e5f67890abcdef1234567890abcdef1234567890abcdef1234567'),
 		('file_2', 1, 'f2', 'kunci_akses_master_vault.key', 'application/octet-stream', 4300, 'f9e8d7c6b5a432109876543210fedcba9876543210fedcba9876543210fedcba'),
 		('file_3', 1, 'f3', 'hornetz_system_architecture.pdf', 'application/pdf', 19084000, '1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef'),
-		('file_4', 1, 'f3', 'cadangan_basis_data_swarm.tar.gz', 'application/gzip', 1503238553, '7766554433221100998877665544332211009988776655443322110099887766')`)
+		('file_4', 1, 'f3', 'cadangan_basis_data_swarm.tar.gz', 'application/gzip', 1503238553, '7766554433221100998877665544332211009988776655443322110099887766')` + onConflict)
 }
 
 func (fc *FileController) GetFiles(c *echo.Context) error {
@@ -80,6 +90,7 @@ func (fc *FileController) GetFiles(c *echo.Context) error {
 		args = append(args, pattern, pattern)
 	}
 
+	query = fc.DB.Rebind(query)
 	rows, err := fc.DB.SQL.Query(query, args...)
 	if err != nil {
 		return c.JSON(http.StatusOK, []FileRecord{})
@@ -133,7 +144,8 @@ func (fc *FileController) GetFolders(c *echo.Context) error {
 func (fc *FileController) DownloadFile(c *echo.Context) error {
 	id := c.Param("id")
 	var f FileRecord
-	err := fc.DB.SQL.QueryRow("SELECT id, name, mime_type, cas_hash FROM files WHERE id = ?", id).Scan(&f.ID, &f.Name, &f.MimeType, &f.CasHash)
+	query := fc.DB.Rebind("SELECT id, name, mime_type, cas_hash FROM files WHERE id = ?")
+	err := fc.DB.SQL.QueryRow(query, id).Scan(&f.ID, &f.Name, &f.MimeType, &f.CasHash)
 	if err == sql.ErrNoRows {
 		return echo.NewHTTPError(http.StatusNotFound, "File not found")
 	}
@@ -161,9 +173,10 @@ func (fc *FileController) DownloadFile(c *echo.Context) error {
 
 func (fc *FileController) DeleteFile(c *echo.Context) error {
 	id := c.Param("id")
-	_, err := fc.DB.SQL.Exec("DELETE FROM files WHERE id = ?", id)
+	query := fc.DB.Rebind("DELETE FROM files WHERE id = ?")
+	_, err := fc.DB.SQL.Exec(query, id)
 	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to delete file")
+		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to delete file: "+err.Error())
 	}
 	return c.JSON(http.StatusOK, map[string]string{"status": "deleted"})
 }

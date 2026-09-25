@@ -119,8 +119,8 @@ func (uc *UploadController) UploadChunk(c *echo.Context) error {
 			if folderID == "" || folderID == "root" {
 				folderID = "f1"
 			}
-			_, err := uc.DB.SQL.Exec("INSERT INTO files (id, owner_id, folder_id, name, mime_type, size, cas_hash) VALUES (?, 1, ?, ?, ?, ?, ?)",
-				fileID, folderID, sess.Filename, sess.MimeType, sess.ExpectedSize, casHash)
+			query := uc.DB.Rebind("INSERT INTO files (id, owner_id, folder_id, name, mime_type, size, cas_hash) VALUES (?, 1, ?, ?, ?, ?, ?)")
+			_, err := uc.DB.SQL.Exec(query, fileID, folderID, sess.Filename, sess.MimeType, sess.ExpectedSize, casHash)
 			if err != nil {
 				return echo.NewHTTPError(http.StatusInternalServerError, "failed to record file metadata in database: "+err.Error())
 			}

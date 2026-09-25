@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 )
 
 // In a non-sandbox production environment, you would uncomment this to use Squirrel
@@ -12,7 +13,8 @@ import (
 // DBEngine wraps the standard database/sql connection pool and provides
 // integrated transaction management and query building capabilities.
 type DBEngine struct {
-	SQL *sql.DB
+	SQL        *sql.DB
+	DriverName string
 	// Builder squirrel.StatementBuilderType // Configured for PostgreSQL ($1) or MySQL (?)
 }
 
@@ -29,9 +31,33 @@ func NewDBEngine(driverName, dataSourceName string) (*DBEngine, error) {
 	}
 
 	return &DBEngine{
-		SQL: db,
+		SQL:        db,
+		DriverName: driverName,
 		// Builder: squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar).RunWith(db),
 	}, nil
+}
+
+// Rebind rewrites ? positional parameters into $1, $2, ... when using PostgreSQL.
+func (e *DBEngine) Rebind(query string) string {
+	if e == nil || e.DriverName != "postgres" {
+		return query
+	}
+	var b strings.Builder
+	paramIdx := 1
+	inString := false
+	for i := 0; i < len(query); i++ {
+		ch := query[i]
+		if ch == '\'' {
+			inString = !inString
+			b.WriteByte(ch)
+		} else if ch == '?' && !inString {
+			fmt.Fprintf(&b, "$%d", paramIdx)
+			paramIdx++
+		} else {
+			b.WriteByte(ch)
+		}
+	}
+	return b.String()
 }
 
 // Close gracefully terminates the database connection pool.

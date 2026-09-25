@@ -79,3 +79,21 @@ func TestMigrationEngine_Run(t *testing.T) {
 	// Skip goose up since dummy driver isn't fully mocked for goose schema inspection
 	t.Skip("Skipping goose migration with dummy driver")
 }
+
+func TestDBEngine_Rebind(t *testing.T) {
+	pgEngine := &DBEngine{DriverName: "postgres"}
+	sqliteEngine := &DBEngine{DriverName: "sqlite3"}
+
+	query := "INSERT INTO files (id, owner_id, folder_id, name, mime_type, size, cas_hash) VALUES (?, 1, ?, ?, ?, ?, ?)"
+	
+	pgRebound := pgEngine.Rebind(query)
+	expectedPg := "INSERT INTO files (id, owner_id, folder_id, name, mime_type, size, cas_hash) VALUES ($1, 1, $2, $3, $4, $5, $6)"
+	if pgRebound != expectedPg {
+		t.Fatalf("Expected Postgres rebound query:\n%s\nGot:\n%s", expectedPg, pgRebound)
+	}
+
+	sqliteRebound := sqliteEngine.Rebind(query)
+	if sqliteRebound != query {
+		t.Fatalf("Expected SQLite query to remain unchanged:\n%s\nGot:\n%s", query, sqliteRebound)
+	}
+}
