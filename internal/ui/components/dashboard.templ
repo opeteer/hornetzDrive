@@ -78,7 +78,8 @@ templ DashboardContent() {
 			<!-- SECTION 1: FOLDERS / CELLS (Only shown on Storage / Vault tab when no folder selected) -->
 			<div x-show="!$store.drive.currentFolderId && ($store.drive.activeTab === 'storage' || $store.drive.activeTab === 'vault')" class="space-y-4">
 				<h3 class="text-xs font-mono text-[#FACC15] uppercase tracking-wider font-bold flex items-center gap-2">
-					<span>📁</span> FOLDER UTAMA & VAULT CELLS
+					<span x-text="$store.drive.activeTab === 'vault' ? '🛡️' : '📁'"></span>
+					<span x-text="$store.drive.activeTab === 'vault' ? 'VAULT CELLS TERENKRIPSI' : 'FOLDER UTAMA'"></span>
 				</h3>
 				<div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
 					<template x-for="folder in $store.drive.folders" :key="folder.id">
@@ -88,12 +89,17 @@ templ DashboardContent() {
 						>
 							<div class="flex justify-between items-start mb-3">
 								<div class="w-10 h-10 rounded-lg bg-[#FACC15]/10 border border-[#FACC15]/30 text-[#FACC15] flex items-center justify-center text-xl group-hover:bg-[#FACC15] group-hover:text-[#0F0E0D] transition-colors">
-									🛡️
+									<span x-text="$store.drive.activeTab === 'vault' ? '🛡️' : '📁'"></span>
 								</div>
-								<span class="text-[9px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 font-bold">TERENKRIPSI</span>
+								<template x-if="$store.drive.activeTab === 'vault'">
+									<span class="text-[9px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 font-bold">TERENKRIPSI</span>
+								</template>
+								<template x-if="$store.drive.activeTab === 'storage'">
+									<span class="text-[9px] font-mono text-amber-400/80 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20 font-bold">STANDAR</span>
+								</template>
 							</div>
 							<div class="font-bold text-sm text-white group-hover:text-[#FACC15] transition-colors" x-text="folder.name"></div>
-							<div class="text-[11px] text-[#A19A8F] font-mono mt-1" x-text="`${folder.file_count || 0} Berkas • AES-256-GCM`"></div>
+							<div class="text-[11px] text-[#A19A8F] font-mono mt-1" x-text="$store.drive.activeTab === 'vault' ? `${folder.file_count || 0} Berkas • AES-256-GCM` : `${folder.file_count || 0} Berkas • Standar`"></div>
 						</div>
 					</template>
 				</div>
@@ -103,7 +109,8 @@ templ DashboardContent() {
 			<div class="space-y-4">
 				<div class="flex justify-between items-center">
 					<h3 class="text-xs font-mono text-[#A19A8F] uppercase tracking-wider font-bold flex items-center gap-2">
-						<span>⚡</span> DAFTAR BERKAS TERENKRIPSI (DATABASE SLQITE / POSTGRES)
+						<span x-text="$store.drive.activeTab === 'vault' ? '🛡️' : '⚡'"></span>
+						<span x-text="$store.drive.activeTab === 'vault' ? 'DAFTAR BERKAS TERENKRIPSI VAULT (DATABASE SQLITE / POSTGRES)' : 'DAFTAR BERKAS (DATABASE SQLITE / POSTGRES)'"></span>
 					</h3>
 					<span class="text-xs text-[#6E675E] font-mono" x-text="`Menampilkan ${$store.drive.files.length} berkas asli`"></span>
 				</div>
