@@ -68,8 +68,22 @@ func VaultKeyMiddleware() echo.MiddlewareFunc {
 	}
 }
 
+type LoginRequest struct {
+	Password string `json:"password" form:"password"`
+}
+
 // LoginMock simulates unlocking the vault and storing the VK in RAM.
 func LoginMock(c *echo.Context) error {
+	var req LoginRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request"})
+	}
+
+	// Validate the password requested by QA
+	if req.Password != "ManusiaIdaman" {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Invalid master password"})
+	}
+
 	sessionID := "mock-session-12345"
 	vk := crypto.DummyVK() // Derived using Argon2id in a full implementation
 
@@ -85,5 +99,5 @@ func LoginMock(c *echo.Context) error {
 		Expires:  time.Now().Add(24 * time.Hour),
 	})
 
-	return c.JSON(http.StatusOK, "Vault Unlocked. VK in RAM.")
+	return c.JSON(http.StatusOK, map[string]string{"message": "Vault Unlocked. VK in RAM."})
 }

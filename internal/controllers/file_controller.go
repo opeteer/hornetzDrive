@@ -88,8 +88,13 @@ func (fc *FileController) GetFiles(c *echo.Context) error {
 	if folderID != "" {
 		query += " AND folder_id = ?"
 		args = append(args, folderID)
+		if tab != "vault" && folderID == "f2" {
+			query += " AND 1=0" // Prevent accessing vault folder from storage tab
+		}
 	} else if tab == "vault" {
-		query += " AND (folder_id = 'f2' OR mime_type = 'application/octet-stream' OR name LIKE '%.key')"
+		query += " AND (folder_id = 'f2' OR mime_type = 'application/octet-stream' OR name LIKE '%.key' OR name LIKE '%.kdbx')"
+	} else {
+		query += " AND folder_id != 'f2' AND mime_type != 'application/octet-stream' AND name NOT LIKE '%.key' AND name NOT LIKE '%.kdbx'"
 	}
 
 	if search != "" {
@@ -132,11 +137,27 @@ func (fc *FileController) GetFiles(c *echo.Context) error {
 func (fc *FileController) GetFolders(c *echo.Context) error {
 	fc.SeedInitialData()
 
-	rows, err := fc.DB.SQL.Query(`
+	tab := c.QueryParam("tab")
+
+	query := `
 		SELECT f.id, f.owner_id, COALESCE(f.parent_id, ''), f.name, COUNT(fi.id) as file_count, f.created_at 
 		FROM folders f 
 		LEFT JOIN files fi ON fi.folder_id = f.id 
-		GROUP BY f.id`)
+		WHERE 1=1`
+	
+	args := []interface{}{}
+
+	if tab == "vault" {
+		query += " AND f.id = 'f2'"
+	} else {
+		query += " AND f.id != 'f2'"
+	}
+
+	query += " GROUP BY f.id"
+	
+	query = fc.DB.Rebind(query)
+
+	rows, err := fc.DB.SQL.Query(query, args...)
 	if err != nil {
 		return c.JSON(http.StatusOK, []FolderRecord{})
 	}

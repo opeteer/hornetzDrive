@@ -44,6 +44,15 @@ templ DashboardContent() {
 
 			<!-- View Switcher & Action Controls -->
 			<div class="flex items-center gap-3">
+				<!-- Vault Lock Button -->
+				<button 
+					x-show="$store.drive.activeTab === 'vault' && $store.drive.isVaultUnlocked" 
+					@click="$store.drive.setTab('storage')" 
+					class="text-xs bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 px-3 py-1.5 rounded-lg font-bold flex items-center gap-2 transition-colors"
+				>
+					<span>🔒</span> Kunci Vault
+				</button>
+				
 				<div class="flex bg-[#0F0E0D] border border-[#2A2723] p-1 rounded-lg">
 					<button 
 						@click="$store.drive.viewMode = 'grid'" 

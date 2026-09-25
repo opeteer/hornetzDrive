@@ -229,6 +229,53 @@ templ Layout(title string) {
 			</div>
 		</div>
 
+		<!-- Vault Unlock Password Modal -->
+		<div 
+			x-show="$store.drive && $store.drive.showVaultPasswordModal" 
+			x-cloak
+			style="display: none;"
+			x-transition 
+			class="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[100] p-4"
+		>
+			<div 
+				@click.away="$store.drive.showVaultPasswordModal = false" 
+				class="bg-[#171614] border-2 border-[#FACC15] w-full max-w-sm rounded-2xl p-6 shadow-2xl space-y-6"
+			>
+				<div class="text-center space-y-2">
+					<div class="w-16 h-16 mx-auto bg-[#FACC15]/10 border border-[#FACC15]/40 rounded-full flex items-center justify-center text-4xl text-[#FACC15]">
+						🛡️
+					</div>
+					<h3 class="font-bold text-lg text-white">Buka Vault Terenkripsi</h3>
+					<p class="text-xs text-[#A19A8F]">Masukkan kata sandi master untuk mengakses berkas rahasia.</p>
+				</div>
+				
+				<div class="space-y-4">
+					<input 
+						type="password" 
+						x-model="$store.drive.vaultPassword" 
+						@keydown.enter="$store.drive.unlockVault()"
+						placeholder="Kata Sandi Master Vault" 
+						class="w-full bg-[#0F0E0D] border border-[#2A2723] text-sm text-white px-4 py-3 rounded-lg focus:outline-none focus:border-[#FACC15] transition-colors placeholder-[#6E675E]"
+					/>
+					
+					<div class="flex gap-3">
+						<button 
+							@click="$store.drive.showVaultPasswordModal = false" 
+							class="flex-1 py-3 bg-[#0F0E0D] border border-[#2A2723] text-[#A19A8F] hover:text-white hover:border-[#6E675E] rounded-lg text-sm font-bold transition-colors"
+						>
+							Batal
+						</button>
+						<button 
+							@click="$store.drive.unlockVault()" 
+							class="flex-1 py-3 hornetz-btn font-bold text-sm rounded-lg"
+						>
+							Buka Vault
+						</button>
+					</div>
+				</div>
+			</div>
+		</div>
+
 		<!-- Global Alpine.js Store Initializer -->
 		<script>
 		document.addEventListener('alpine:init', () => {
@@ -244,6 +291,9 @@ templ Layout(title string) {
 				isUploading: false,
 				uploadFileName: '',
 				uploadProgress: 0,
+				isVaultUnlocked: false,
+				showVaultPasswordModal: false,
+				vaultPassword: '',
 
 				init() {
 					this.fetchFolders();
@@ -251,9 +301,17 @@ templ Layout(title string) {
 				},
 
 				setTab(tab) {
+					if (tab === 'vault' && !this.isVaultUnlocked) {
+						this.showVaultPasswordModal = true;
+						return; // Do not switch to vault tab or load its contents until unlocked
+					}
+					if (tab !== 'vault') {
+						this.lockVault(); // Automatically lock vault when leaving the tab
+					}
 					this.activeTab = tab;
 					this.currentFolderId = '';
 					this.currentFolderName = '';
+					this.fetchFolders();
 					this.fetchFiles();
 				},
 
@@ -289,13 +347,45 @@ templ Layout(title string) {
 
 				async fetchFolders() {
 					try {
-						const res = await fetch('/api/folders');
+						const url = `/api/folders?tab=${this.activeTab}`;
+						const res = await fetch(url);
 						if (res.ok) {
 							this.folders = await res.json();
 						}
 					} catch(e) {
 						console.error("Fetch folders error:", e);
 					}
+				},
+
+				async unlockVault() {
+					try {
+						const res = await fetch('/login', {
+							method: 'POST',
+							headers: {
+								'Content-Type': 'application/json',
+								'X-CSRF-Token': this.getCsrfToken()
+							},
+							body: JSON.stringify({ password: this.vaultPassword })
+						});
+						if (res.ok) {
+							this.isVaultUnlocked = true;
+							this.showVaultPasswordModal = false;
+							this.vaultPassword = '';
+							this.activeTab = 'vault';
+							this.fetchFolders();
+							this.fetchFiles();
+						} else {
+							alert("Password salah!");
+						}
+					} catch(e) {
+						console.error("Unlock vault error:", e);
+					}
+				},
+
+				lockVault() {
+					this.isVaultUnlocked = false;
+					this.files = [];
+					this.folders = [];
 				},
 
 				getCsrfToken() {
