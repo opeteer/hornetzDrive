@@ -200,7 +200,10 @@ templ DashboardContent() {
 				<div class="bg-[#0F0E0D] border border-[#2A2723] rounded-xl p-4 space-y-2 font-mono text-xs">
 					<div class="flex justify-between text-[#A19A8F]">
 						<span>Status Enkripsi:</span>
-						<strong class="text-emerald-400">AES-256-GCM (Swarm Vault)</strong>
+						<strong 
+							:class="$store.drive.activeTab === 'vault' ? 'text-emerald-400' : 'text-amber-400'"
+							x-text="$store.drive.activeTab === 'vault' ? 'AES-256-GCM (Swarm Vault)' : 'Penyimpanan Standar'"
+						></strong>
 					</div>
 					<div class="flex justify-between text-[#A19A8F]">
 						<span>Content Address (CAS):</span>
@@ -218,7 +221,7 @@ templ DashboardContent() {
 						@click="$store.drive.downloadFile($store.drive.selectedFile)" 
 						class="flex-1 hornetz-btn py-2.5 px-4 rounded-xl flex items-center justify-center gap-2 text-xs font-bold"
 					>
-						<span>📥</span> Dekripsi & Unduh
+						<span>📥</span> <span x-text="$store.drive.activeTab === 'vault' ? 'Dekripsi & Unduh' : 'Unduh Berkas'"></span>
 					</button>
 					<button 
 						@click="$store.drive.deleteFile($store.drive.selectedFile)" 
