@@ -40,8 +40,14 @@ templ Layout(title string) {
 			::-webkit-scrollbar-thumb:hover { background: #FACC15; }
 		</style>
 	</head>
-	<body class="h-screen flex flex-col overflow-hidden select-none" x-data>
-		
+	<body 
+		class="h-screen flex flex-col overflow-hidden select-none relative" 
+		x-data
+		@dragenter="$store.drive.handleDragEnter($event)"
+		@dragleave="$store.drive.handleDragLeave($event)"
+		@dragover.prevent="$store.drive.handleDragOver($event)"
+		@drop.prevent="$store.drive.handleDrop($event)"
+	>
 		<!-- TOP HEADER / NAVBAR -->
 		<header class="h-16 bg-[#171614] border-b border-[#2A2723] px-6 flex items-center justify-between z-20 shrink-0">
 			<!-- Logo & Title -->
@@ -276,6 +282,23 @@ templ Layout(title string) {
 			</div>
 		</div>
 
+		<!-- Drag & Drop Dropzone Overlay -->
+		<div 
+			x-show="$store.drive && $store.drive.isDragging" 
+			x-cloak 
+			style="display: none;"
+			x-transition 
+			class="fixed inset-0 bg-black/85 backdrop-blur-sm border-4 border-dashed border-[#FACC15] flex flex-col items-center justify-center z-50 pointer-events-none space-y-4"
+		>
+			<div class="w-20 h-20 rounded-2xl bg-[#FACC15]/20 border border-[#FACC15] flex items-center justify-center text-4xl text-[#FACC15] animate-bounce">
+				📥
+			</div>
+			<div class="text-center space-y-1">
+				<h2 class="text-xl font-extrabold text-white">Lepaskan Berkas untuk Mengunggah</h2>
+				<p class="text-xs font-mono text-[#A19A8F]">Otomatis dienkripsi dengan AES-256-GCM & deduplikasi CAS</p>
+			</div>
+		</div>
+
 		<!-- Global Alpine.js Store Initializer -->
 		<script>
 		document.addEventListener('alpine:init', () => {
@@ -294,6 +317,8 @@ templ Layout(title string) {
 				isVaultUnlocked: false,
 				showVaultPasswordModal: false,
 				vaultPassword: '',
+				isDragging: false,
+				dragCounter: 0,
 
 				init() {
 					this.fetchFolders();
@@ -393,8 +418,49 @@ templ Layout(title string) {
 					return match ? decodeURIComponent(match[1]) : '';
 				},
 
+				handleDragEnter(event) {
+					event.preventDefault();
+					this.dragCounter++;
+					this.isDragging = true;
+				},
+
+				handleDragLeave(event) {
+					event.preventDefault();
+					this.dragCounter--;
+					if (this.dragCounter <= 0) {
+						this.dragCounter = 0;
+						this.isDragging = false;
+					}
+				},
+
+				handleDragOver(event) {
+					event.preventDefault();
+					this.isDragging = true;
+				},
+
+				async handleDrop(event) {
+					event.preventDefault();
+					this.dragCounter = 0;
+					this.isDragging = false;
+					const dt = event.dataTransfer;
+					if (dt && dt.files && dt.files.length > 0) {
+						for (let i = 0; i < dt.files.length; i++) {
+							await this.processUpload(dt.files[i]);
+						}
+					}
+				},
+
 				async uploadFile(event) {
-					const file = event.target.files[0];
+					const file = event.target?.files?.[0];
+					if (file) {
+						await this.processUpload(file);
+					}
+					if (event.target) {
+						event.target.value = "";
+					}
+				},
+
+				async processUpload(file) {
 					if (!file) return;
 
 					this.uploadFileName = file.name;
@@ -461,8 +527,6 @@ templ Layout(title string) {
 						console.error("Upload error:", err);
 						alert("❌ Gagal mengunggah berkas: " + err.message);
 						this.isUploading = false;
-					} finally {
-						event.target.value = "";
 					}
 				},
 
