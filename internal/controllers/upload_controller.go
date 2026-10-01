@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"io"
@@ -78,19 +79,24 @@ func (uc *UploadController) UploadChunk(c *echo.Context) error {
 	}
 	defer f.Close()
 
+	bufWriter := bufio.NewWriterSize(f, 2*1024*1024)
+	defer bufWriter.Flush()
+
 	// Retrieve RAM-only Vault Key from middleware context
 	vk := c.Get("vault_key").([]byte)
 
 	// Apply Dynamo AES-256-GCM chunked encryption directly during upload stream
-	encStream, err := crypto.NewEncryptStream(f, vk)
+	encStream, err := crypto.NewEncryptStream(bufWriter, vk)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to initialize encryption stream")
 	}
 
-	written, err := io.Copy(encStream, c.Request().Body)
+	transferBuf := make([]byte, 1024*1024)
+	written, err := io.CopyBuffer(encStream, c.Request().Body, transferBuf)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "chunk transfer failed")
 	}
+	_ = bufWriter.Flush()
 
 	sess.UploadedSize += written
 	sess.LastActiveAt = time.Now()

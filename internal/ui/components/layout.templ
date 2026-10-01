@@ -540,24 +540,53 @@ templ Layout(title string) {
 						}
 
 						const sessionId = initData.session_id;
-						this.uploadProgress = 75;
+						this.uploadProgress = 20;
 
-						const uploadRes = await fetch(`/upload/${sessionId}`, {
-							method: "PUT",
-							headers: {
-								"X-CSRF-Token": this.getCsrfToken()
-							},
-							body: file
+						await new Promise((resolve, reject) => {
+							const xhr = new XMLHttpRequest();
+							xhr.open("PUT", `/upload/${sessionId}`);
+							xhr.setRequestHeader("X-CSRF-Token", this.getCsrfToken());
+
+							let lastLoaded = 0;
+							let lastTime = performance.now();
+
+							xhr.upload.onprogress = (event) => {
+								if (event.lengthComputable && event.total > 0) {
+									const now = performance.now();
+									const timeDiff = (now - lastTime) / 1000;
+									if (timeDiff >= 0.25) {
+										const bytesDiff = event.loaded - lastLoaded;
+										const speedMBps = ((bytesDiff / (1024 * 1024)) / timeDiff).toFixed(1);
+										this.currentSpeedText = `${speedMBps} MB/s`;
+										lastLoaded = event.loaded;
+										lastTime = now;
+									}
+									// Granular mapping from 20% to 98%
+									const percent = 20 + Math.round((event.loaded / event.total) * 78);
+									this.uploadProgress = Math.min(Math.max(percent, 20), 98);
+								}
+							};
+
+							xhr.onload = () => {
+								if (xhr.status >= 200 && xhr.status < 300) {
+									resolve(xhr.response);
+								} else {
+									let errMsg = `Gagal mengunggah payload berkas (Status HTTP ${xhr.status})`;
+									try {
+										const errJson = JSON.parse(xhr.responseText);
+										if (errJson.message) errMsg = errJson.message;
+									} catch(e) {}
+									reject(new Error(errMsg));
+								}
+							};
+
+							xhr.onerror = () => reject(new Error("Network transfer error during upload"));
+							xhr.send(file);
 						});
 
-						if (!uploadRes.ok) {
-							const errData = await uploadRes.json().catch(() => ({}));
-							throw new Error(errData.message || `Gagal mengunggah payload berkas (Status HTTP ${uploadRes.status})`);
-						}
-						
 						const elapsedSec = (performance.now() - uploadStartTime) / 1000;
-						const speedMBps = ((file.size / (1024 * 1024)) / Math.max(elapsedSec, 0.05)).toFixed(1);
-						this.currentSpeedText = `${speedMBps} MB/s`;
+						const avgSpeedMBps = ((file.size / (1024 * 1024)) / Math.max(elapsedSec, 0.05)).toFixed(1);
+						this.currentSpeedText = `${avgSpeedMBps} MB/s`;
 
 						await this.fetchFiles();
 						await this.fetchStorageStats();
