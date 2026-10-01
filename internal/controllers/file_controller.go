@@ -40,6 +40,15 @@ type FolderRecord struct {
 	CreatedAt string `json:"created_at"`
 }
 
+type StorageStats struct {
+	UsedBytes      int64   `json:"used_bytes"`
+	QuotaBytes     int64   `json:"quota_bytes"`
+	UsedFormatted  string  `json:"used_formatted"`
+	QuotaFormatted string  `json:"quota_formatted"`
+	PercentUsed    float64 `json:"percent_used"`
+	FileCount      int     `json:"file_count"`
+}
+
 // SeedInitialData populates database with initial real data if empty
 func (fc *FileController) SeedInitialData() {
 	var count int
@@ -212,6 +221,44 @@ func (fc *FileController) DeleteFile(c *echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to delete file: "+err.Error())
 	}
 	return c.JSON(http.StatusOK, map[string]string{"status": "deleted"})
+}
+
+func (fc *FileController) GetStorageStats(c *echo.Context) error {
+	fc.SeedInitialData()
+
+	var totalBytes sql.NullInt64
+	var fileCount int
+	query := fc.DB.Rebind("SELECT COALESCE(SUM(size), 0), COUNT(*) FROM files WHERE owner_id = ?")
+	err := fc.DB.SQL.QueryRow(query, 1).Scan(&totalBytes, &fileCount)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to query storage stats: "+err.Error())
+	}
+
+	const quotaBytes int64 = 2 * 1024 * 1024 * 1024 * 1024 // 2 TB
+	used := totalBytes.Int64
+	percent := (float64(used) / float64(quotaBytes)) * 100
+
+	return c.JSON(http.StatusOK, StorageStats{
+		UsedBytes:      used,
+		QuotaBytes:     quotaBytes,
+		UsedFormatted:  formatBytes(used),
+		QuotaFormatted: "2 TB",
+		PercentUsed:    percent,
+		FileCount:      fileCount,
+	})
+}
+
+func formatBytes(b int64) string {
+	const unit = 1024
+	if b < unit {
+		return fmt.Sprintf("%d B", b)
+	}
+	div, exp := int64(unit), 0
+	for n := b / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(b)/float64(div), "KMGTPE"[exp])
 }
 
 func getFileIcon(name, mime string) string {

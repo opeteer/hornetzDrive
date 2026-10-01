@@ -82,9 +82,12 @@ templ Layout(title string) {
 			<!-- Status & User Profile -->
 			<div class="flex items-center gap-4">
 				<div class="flex items-center gap-3 bg-[#0F0E0D] border border-[#2A2723] px-3 py-1.5 rounded-lg text-xs font-mono">
-					<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+					<span 
+						:class="$store.drive.isTransferring ? 'bg-emerald-400 animate-pulse' : 'bg-[#6E675E]'" 
+						class="w-2 h-2 rounded-full transition-colors"
+					></span>
 					<span class="text-[#A19A8F]">Kecepatan:</span>
-					<span class="text-[#FACC15] font-bold">142.8 MB/s</span>
+					<span class="text-[#FACC15] font-bold" x-text="$store.drive.currentSpeedText">Idle</span>
 				</div>
 
 				<div class="flex items-center gap-3 border-l border-[#2A2723] pl-4">
@@ -196,10 +199,13 @@ templ Layout(title string) {
 					<div class="bg-[#0F0E0D] border border-[#2A2723] p-3 rounded-lg text-xs space-y-2">
 						<div class="flex justify-between items-center text-[11px]">
 							<span class="text-[#A19A8F]">Penyimpanan</span>
-							<span class="text-[#FACC15] font-bold font-mono">412.5 GB / 2 TB</span>
+							<span class="text-[#FACC15] font-bold font-mono" x-text="`${$store.drive.storageUsedText} / ${$store.drive.storageQuotaText}`">0 B / 2 TB</span>
 						</div>
 						<div class="w-full h-1.5 bg-[#201E1B] rounded-full overflow-hidden">
-							<div class="h-full bg-[#FACC15] w-[21%] rounded-full"></div>
+							<div 
+								class="h-full bg-[#FACC15] transition-all duration-300" 
+								:style="`width: ${Math.max($store.drive.storagePercent, $store.drive.storageUsedBytes > 0 ? 0.8 : 0)}%`"
+							></div>
 						</div>
 					</div>
 				</div>
@@ -319,10 +325,17 @@ templ Layout(title string) {
 				vaultPassword: '',
 				isDragging: false,
 				dragCounter: 0,
+				storageUsedBytes: 0,
+				storageUsedText: '0 B',
+				storageQuotaText: '2 TB',
+				storagePercent: 0,
+				currentSpeedText: 'Idle',
+				isTransferring: false,
 
 				init() {
 					this.fetchFolders();
 					this.fetchFiles();
+					this.fetchStorageStats();
 				},
 
 				setTab(tab) {
@@ -379,6 +392,21 @@ templ Layout(title string) {
 						}
 					} catch(e) {
 						console.error("Fetch folders error:", e);
+					}
+				},
+
+				async fetchStorageStats() {
+					try {
+						const res = await fetch('/api/storage/stats');
+						if (res.ok) {
+							const data = await res.json();
+							this.storageUsedBytes = data.used_bytes;
+							this.storageUsedText = data.used_formatted;
+							this.storageQuotaText = data.quota_formatted;
+							this.storagePercent = data.percent_used.toFixed(2);
+						}
+					} catch(e) {
+						console.error("Fetch storage stats error:", e);
 					}
 				},
 
@@ -466,6 +494,9 @@ templ Layout(title string) {
 					this.uploadFileName = file.name;
 					this.isUploading = true;
 					this.uploadProgress = 15;
+					this.isTransferring = true;
+					this.currentSpeedText = 'Menghubungkan...';
+					const uploadStartTime = performance.now();
 
 					let targetFolderId = this.currentFolderId;
 					if (!targetFolderId) {
@@ -496,8 +527,14 @@ templ Layout(title string) {
 
 						if (initData.status === "completed") {
 							await this.fetchFiles();
+							await this.fetchStorageStats();
 							this.uploadProgress = 100;
-							setTimeout(() => { this.isUploading = false; }, 800);
+							this.currentSpeedText = 'Instan (CAS)';
+							setTimeout(() => { 
+								this.isUploading = false;
+								this.isTransferring = false;
+								this.currentSpeedText = 'Idle';
+							}, 1500);
 							alert("⚡ Berkas berhasil diunggah secara instan (0-Second CAS Deduplication)!");
 							return;
 						}
@@ -518,15 +555,26 @@ templ Layout(title string) {
 							throw new Error(errData.message || `Gagal mengunggah payload berkas (Status HTTP ${uploadRes.status})`);
 						}
 						
+						const elapsedSec = (performance.now() - uploadStartTime) / 1000;
+						const speedMBps = ((file.size / (1024 * 1024)) / Math.max(elapsedSec, 0.05)).toFixed(1);
+						this.currentSpeedText = `${speedMBps} MB/s`;
+
 						await this.fetchFiles();
+						await this.fetchStorageStats();
 						this.uploadProgress = 100;
-						setTimeout(() => { this.isUploading = false; }, 800);
+						setTimeout(() => { 
+							this.isUploading = false;
+							this.isTransferring = false;
+							this.currentSpeedText = 'Idle';
+						}, 2500);
 						alert(`✅ Berkas "${file.name}" berhasil diunggah & tersimpan di basis data!`);
 
 					} catch (err) {
 						console.error("Upload error:", err);
 						alert("❌ Gagal mengunggah berkas: " + err.message);
 						this.isUploading = false;
+						this.isTransferring = false;
+						this.currentSpeedText = 'Idle';
 					}
 				},
 
@@ -543,6 +591,7 @@ templ Layout(title string) {
 						if (res.ok) {
 							this.selectedFile = null;
 							this.fetchFiles();
+							this.fetchStorageStats();
 						}
 					} catch(e) {
 						alert("Gagal menghapus berkas");
@@ -569,9 +618,11 @@ templ Layout(title string) {
 						const data = await res.json();
 						alert("💀 PANIC PURGE SUKSES EXECUTED!\n\n- Status: " + data.status + "\n- Pesan: " + data.message);
 						this.fetchFiles();
+						this.fetchStorageStats();
 					} catch(err) {
 						alert("💀 PANIC PURGE EXECUTED!\n- Kunci RAM berhasil dimusnahkan.");
 						this.fetchFiles();
+						this.fetchStorageStats();
 					}
 				}
 			});

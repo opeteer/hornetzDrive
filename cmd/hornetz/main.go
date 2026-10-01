@@ -84,6 +84,7 @@ func main() {
 
 	app.GET("/api/files", fileCtrl.GetFiles)
 	app.GET("/api/folders", fileCtrl.GetFolders)
+	app.GET("/api/storage/stats", fileCtrl.GetStorageStats)
 	app.GET("/api/files/:id/download", fileCtrl.DownloadFile)
 	app.DELETE("/api/files/:id", fileCtrl.DeleteFile)
 

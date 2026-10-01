@@ -131,3 +131,55 @@ func TestFileController_GetFiles_FolderAndVaultFiltering(t *testing.T) {
 		}
 	}
 }
+
+func TestFileController_GetStorageStats(t *testing.T) {
+	e := echo.New()
+
+	dbEngine, err := data.NewDBEngine("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to create memory DB: %v", err)
+	}
+	defer dbEngine.Close()
+
+	_, err = dbEngine.SQL.Exec(`
+		CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, salt BLOB NOT NULL, encrypted_vault_key BLOB NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+		CREATE TABLE folders (id TEXT PRIMARY KEY, owner_id INTEGER NOT NULL, parent_id TEXT, name TEXT NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+		CREATE TABLE files (id TEXT PRIMARY KEY, owner_id INTEGER NOT NULL, folder_id TEXT, name TEXT NOT NULL, mime_type TEXT NOT NULL, size INTEGER NOT NULL, cas_hash TEXT NOT NULL, encrypted_metadata BLOB, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+	`)
+	if err != nil {
+		t.Fatalf("Migration failed: %v", err)
+	}
+
+	casEngine, _ := storage.NewCASEngine(t.TempDir())
+	fileCtrl := &FileController{
+		DB:  dbEngine,
+		CAS: casEngine,
+	}
+	fileCtrl.SeedInitialData()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/storage/stats", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := fileCtrl.GetStorageStats(c); err != nil {
+		t.Fatalf("GetStorageStats error: %v", err)
+	}
+
+	var stats StorageStats
+	if err := json.Unmarshal(rec.Body.Bytes(), &stats); err != nil {
+		t.Fatalf("Failed to unmarshal storage stats: %v", err)
+	}
+
+	if stats.UsedBytes <= 0 {
+		t.Fatalf("Expected used_bytes > 0, got %d", stats.UsedBytes)
+	}
+	if stats.FileCount != 4 {
+		t.Fatalf("Expected 4 files, got %d", stats.FileCount)
+	}
+	if stats.QuotaFormatted != "2 TB" {
+		t.Fatalf("Expected quota_formatted '2 TB', got %s", stats.QuotaFormatted)
+	}
+	if stats.PercentUsed <= 0 || stats.PercentUsed > 100 {
+		t.Fatalf("Invalid percent_used: %f", stats.PercentUsed)
+	}
+}
