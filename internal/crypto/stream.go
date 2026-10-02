@@ -96,6 +96,10 @@ func (s *DecryptStream) Read(p []byte) (n int, err error) {
 		return 0, err
 	}
 	chunkLen := binary.BigEndian.Uint32(lenBuf)
+	const MaxChunkSize = 50 * 1024 * 1024 // 50 MB upper limit to protect against OOM
+	if chunkLen < TagSize || chunkLen > MaxChunkSize {
+		return 0, errors.New("invalid or excessive chunk length")
+	}
 
 	// 3. Read nonce (12 bytes)
 	nonce := make([]byte, NonceSize)

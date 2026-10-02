@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"github.com/labstack/echo/v5"
@@ -214,4 +215,148 @@ func TestUploadController_LargeFileMetadataOver2GB(t *testing.T) {
 		t.Fatalf("Expected filename 'ultramarine-plasma-44-live-anaconda-x86_64.iso', got %s", rowName)
 	}
 }
+
+func TestUploadController_ZeroSecondDedup_InsertsFileRecord(t *testing.T) {
+	e, ctrl := setupUploadTest(t)
+
+	dbEngine, err := data.NewDBEngine("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to create memory DB: %v", err)
+	}
+	defer dbEngine.Close()
+
+	_, err = dbEngine.SQL.Exec(`
+		CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, salt BLOB NOT NULL, encrypted_vault_key BLOB NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+		CREATE TABLE folders (id TEXT PRIMARY KEY, owner_id INTEGER NOT NULL, parent_id TEXT, name TEXT NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+		CREATE TABLE files (id TEXT PRIMARY KEY, owner_id INTEGER NOT NULL, folder_id TEXT, name TEXT NOT NULL, mime_type TEXT NOT NULL, size BIGINT NOT NULL, cas_hash TEXT NOT NULL, encrypted_metadata BLOB, is_starred BOOLEAN DEFAULT 0, is_deleted BOOLEAN DEFAULT 0, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+		INSERT INTO users (id, email, password_hash, salt, encrypted_vault_key) VALUES (1, 'test@hornetz.io', 'hash', 'salt', 'vk');
+		INSERT INTO folders (id, owner_id, parent_id, name) VALUES ('root', 1, NULL, 'Root');
+	`)
+	if err != nil {
+		t.Fatalf("DB setup failed: %v", err)
+	}
+	ctrl.DB = dbEngine
+
+	// Create an existing file in CAS
+	existingHash := "d41d8cd98f00b204e9800998ecf8427e0123456789abcdef0123456789abcdef"
+	casFilePath := ctrl.CAS.Path(existingHash)
+	_ = os.WriteFile(casFilePath, []byte("dedup target payload"), 0644)
+
+	// User attempts to upload with matching cas_hash
+	body := []byte(`{"filename":"dedup_doc.pdf","mime_type":"application/pdf","size":1234,"folder_id":"root","cas_hash":"` + existingHash + `"}`)
+	req := httptest.NewRequest(http.MethodPost, "/upload/init", bytes.NewReader(body))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := ctrl.InitSession(c); err != nil {
+		t.Fatalf("InitSession error: %v", err)
+	}
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Expected HTTP 200 on dedup match, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var res map[string]interface{}
+	json.Unmarshal(rec.Body.Bytes(), &res)
+	if res["status"] != "completed" {
+		t.Fatalf("Expected status completed, got %v", res["status"])
+	}
+
+	// Verify that the file record is properly inserted into the files table
+	var count int
+	var fname string
+	err = dbEngine.SQL.QueryRow("SELECT COUNT(*), COALESCE(MAX(name), '') FROM files WHERE cas_hash = ?", existingHash).Scan(&count, &fname)
+	if err != nil {
+		t.Fatalf("QueryRow failed: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("Expected 1 file row inserted on dedup match, got %d", count)
+	}
+	if fname != "dedup_doc.pdf" {
+		t.Fatalf("Expected filename 'dedup_doc.pdf', got %s", fname)
+	}
+}
+
+func TestUploadController_NegativeSize_Rejection(t *testing.T) {
+	e, ctrl := setupUploadTest(t)
+
+	body := []byte(`{"filename":"malicious.txt","mime_type":"text/plain","size":-500,"folder_id":"root"}`)
+	req := httptest.NewRequest(http.MethodPost, "/upload/init", bytes.NewReader(body))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	err := ctrl.InitSession(c)
+	if err == nil && rec.Code == http.StatusCreated {
+		t.Fatalf("Expected InitSession to reject negative file size, but it succeeded")
+	}
+	if he, ok := err.(*echo.HTTPError); ok {
+		if he.Code != http.StatusBadRequest {
+			t.Fatalf("Expected HTTP 400, got %d", he.Code)
+		}
+	} else if rec.Code != http.StatusBadRequest {
+		t.Fatalf("Expected HTTP 400 Bad Request, got %d", rec.Code)
+	}
+}
+
+func TestUploadController_FilenameSanitization(t *testing.T) {
+	e, ctrl := setupUploadTest(t)
+
+	body := []byte(`{"filename":"../../../../etc/passwd","mime_type":"text/plain","size":100,"folder_id":"root"}`)
+	req := httptest.NewRequest(http.MethodPost, "/upload/init", bytes.NewReader(body))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := ctrl.InitSession(c); err != nil {
+		t.Fatalf("InitSession error: %v", err)
+	}
+
+	var res map[string]interface{}
+	json.Unmarshal(rec.Body.Bytes(), &res)
+	sessID, ok := res["session_id"].(string)
+	if !ok || sessID == "" {
+		t.Fatalf("Expected session_id")
+	}
+
+	sess, found := ctrl.SessionMgr.GetSession(sessID)
+	if !found {
+		t.Fatalf("Session not found")
+	}
+
+	if sess.Filename != "passwd" {
+		t.Fatalf("Expected sanitized filename 'passwd', got %q", sess.Filename)
+	}
+}
+
+func TestUploadController_ChunkOverflow_Rejection(t *testing.T) {
+	e, ctrl := setupUploadTest(t)
+
+	sess, err := ctrl.SessionMgr.CreateSession(1, "root", "tiny.txt", "text/plain", 10)
+	if err != nil {
+		t.Fatalf("CreateSession failed: %v", err)
+	}
+
+	// Send chunk that is larger than ExpectedSize (20 bytes > 10 bytes)
+	chunk := []byte("01234567890123456789")
+	req := httptest.NewRequest(http.MethodPut, "/upload/"+sess.ID, bytes.NewReader(chunk))
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetPathValues(echo.PathValues{{Name: "session_id", Value: sess.ID}})
+	c.Set("vault_key", crypto.DummyVK())
+
+	err = ctrl.UploadChunk(c)
+	if err == nil && rec.Code == http.StatusOK {
+		t.Fatalf("Expected UploadChunk to reject chunk larger than expected size")
+	}
+	if he, ok := err.(*echo.HTTPError); ok {
+		if he.Code != http.StatusBadRequest {
+			t.Fatalf("Expected HTTP 400 for overflow chunk, got %d", he.Code)
+		}
+	} else if rec.Code != http.StatusBadRequest {
+		t.Fatalf("Expected HTTP 400 Bad Request, got %d", rec.Code)
+	}
+}
+
 

@@ -4,6 +4,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"crypto/subtle"
 	"errors"
 	"golang.org/x/crypto/argon2"
 	"io"
@@ -22,6 +23,12 @@ const (
 // DeriveMEK derives the Master Encryption Key using Argon2id.
 func DeriveMEK(password []byte, salt []byte) []byte {
 	return argon2.IDKey(password, salt, ArgonTime, ArgonMemory, ArgonThreads, KeySize)
+}
+
+// VerifyPassword compares a plaintext password against a stored Argon2id hash using constant-time comparison.
+func VerifyPassword(password, salt, expectedHash []byte) bool {
+	derived := DeriveMEK(password, salt)
+	return subtle.ConstantTimeCompare(derived, expectedHash) == 1
 }
 
 // EncryptBlock encrypts a single block of data entirely in memory.

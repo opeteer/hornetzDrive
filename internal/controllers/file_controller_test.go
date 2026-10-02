@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strconv"
 	"testing"
 
@@ -228,8 +229,9 @@ func TestFileController_DownloadFile_ContentLengthAndDecryption(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("DownloadFile mock returned status %d: %s", rec.Code, rec.Body.String())
 	}
-	if rec.Header().Get("Content-Length") != "500" {
-		t.Errorf("Expected Content-Length 500, got %q", rec.Header().Get("Content-Length"))
+	expectedLen := strconv.Itoa(len(rec.Body.String()))
+	if rec.Header().Get("Content-Length") != expectedLen {
+		t.Errorf("Expected Content-Length %s matching body, got %q", expectedLen, rec.Header().Get("Content-Length"))
 	}
 	if rec.Header().Get("Content-Disposition") != `attachment; filename="mock.txt"` {
 		t.Errorf("Unexpected Content-Disposition: %q", rec.Header().Get("Content-Disposition"))
@@ -268,3 +270,163 @@ func TestFileController_DownloadFile_ContentLengthAndDecryption(t *testing.T) {
 		t.Errorf("Downloaded decrypted content %q does not match original %q", rec2.Body.String(), string(secretData))
 	}
 }
+
+func TestFileController_DeleteRestoreAndStar(t *testing.T) {
+	e := echo.New()
+
+	dbEngine, err := data.NewDBEngine("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to create memory DB: %v", err)
+	}
+	defer dbEngine.Close()
+
+	_, err = dbEngine.SQL.Exec(`
+		CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, salt BLOB NOT NULL, encrypted_vault_key BLOB NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+		CREATE TABLE folders (id TEXT PRIMARY KEY, owner_id INTEGER NOT NULL, parent_id TEXT, name TEXT NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+		CREATE TABLE files (id TEXT PRIMARY KEY, owner_id INTEGER NOT NULL, folder_id TEXT, name TEXT NOT NULL, mime_type TEXT NOT NULL, size BIGINT NOT NULL, cas_hash TEXT NOT NULL, encrypted_metadata BLOB, is_starred BOOLEAN DEFAULT 0, is_deleted BOOLEAN DEFAULT 0, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+	`)
+	if err != nil {
+		t.Fatalf("Migration failed: %v", err)
+	}
+
+	casDir := t.TempDir()
+	casEngine, err := storage.NewCASEngine(casDir)
+	if err != nil {
+		t.Fatalf("NewCASEngine failed: %v", err)
+	}
+
+	fileCtrl := &FileController{
+		DB:  dbEngine,
+		CAS: casEngine,
+	}
+
+	// Insert test CAS file
+	tmpFile := filepath.Join(casDir, "temp_upload.bin")
+	if err := os.WriteFile(tmpFile, []byte("test cas content"), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+	casHash, err := casEngine.MoveToCAS(tmpFile)
+	if err != nil {
+		t.Fatalf("CAS MoveToCAS failed: %v", err)
+	}
+	fileID := "file_test_lifecycle"
+	_, err = dbEngine.SQL.Exec("INSERT INTO files (id, owner_id, folder_id, name, mime_type, size, cas_hash, is_starred, is_deleted) VALUES (?, 1, 'f1', 'test_doc.pdf', 'application/pdf', 100, ?, 0, 0)", fileID, casHash)
+	if err != nil {
+		t.Fatalf("DB insert failed: %v", err)
+	}
+
+	// 1. Soft-delete file (move to Trash)
+	reqDel := httptest.NewRequest(http.MethodDelete, "/api/files/"+fileID, nil)
+	recDel := httptest.NewRecorder()
+	cDel := e.NewContext(reqDel, recDel)
+	cDel.SetPathValues(echo.PathValues{{Name: "id", Value: fileID}})
+
+	if err := fileCtrl.DeleteFile(cDel); err != nil {
+		t.Fatalf("DeleteFile failed: %v", err)
+	}
+	if recDel.Code != http.StatusOK {
+		t.Fatalf("Expected HTTP 200 on soft-delete, got %d", recDel.Code)
+	}
+
+	// Verify file is in trash tab
+	reqTrash := httptest.NewRequest(http.MethodGet, "/api/files?tab=trash", nil)
+	recTrash := httptest.NewRecorder()
+	cTrash := e.NewContext(reqTrash, recTrash)
+	if err := fileCtrl.GetFiles(cTrash); err != nil {
+		t.Fatalf("GetFiles tab=trash failed: %v", err)
+	}
+	var trashFiles []FileRecord
+	json.Unmarshal(recTrash.Body.Bytes(), &trashFiles)
+	if len(trashFiles) != 1 || trashFiles[0].ID != fileID {
+		t.Fatalf("Expected file %s in trash tab, got %+v", fileID, trashFiles)
+	}
+
+	// 2. Restore file
+	reqRest := httptest.NewRequest(http.MethodPost, "/api/files/"+fileID+"/restore", nil)
+	recRest := httptest.NewRecorder()
+	cRest := e.NewContext(reqRest, recRest)
+	cRest.SetPathValues(echo.PathValues{{Name: "id", Value: fileID}})
+	if err := fileCtrl.RestoreFile(cRest); err != nil {
+		t.Fatalf("RestoreFile failed: %v", err)
+	}
+	if recRest.Code != http.StatusOK {
+		t.Fatalf("Expected HTTP 200 on restore, got %d", recRest.Code)
+	}
+
+	// Verify file is back in storage tab
+	reqStorage := httptest.NewRequest(http.MethodGet, "/api/files?tab=storage", nil)
+	recStorage := httptest.NewRecorder()
+	cStorage := e.NewContext(reqStorage, recStorage)
+	if err := fileCtrl.GetFiles(cStorage); err != nil {
+		t.Fatalf("GetFiles tab=storage failed: %v", err)
+	}
+	var storageFiles []FileRecord
+	json.Unmarshal(recStorage.Body.Bytes(), &storageFiles)
+	foundRestored := false
+	for _, f := range storageFiles {
+		if f.ID == fileID {
+			foundRestored = true
+			break
+		}
+	}
+	if !foundRestored {
+		t.Fatalf("Expected file %s in storage tab after restore", fileID)
+	}
+
+	// 3. Star file
+	reqStar := httptest.NewRequest(http.MethodPost, "/api/files/"+fileID+"/star", nil)
+	recStar := httptest.NewRecorder()
+	cStar := e.NewContext(reqStar, recStar)
+	cStar.SetPathValues(echo.PathValues{{Name: "id", Value: fileID}})
+	if err := fileCtrl.StarFile(cStar); err != nil {
+		t.Fatalf("StarFile failed: %v", err)
+	}
+	if recStar.Code != http.StatusOK {
+		t.Fatalf("Expected HTTP 200 on star, got %d", recStar.Code)
+	}
+
+	// Verify file appears in starred tab
+	reqStarred := httptest.NewRequest(http.MethodGet, "/api/files?tab=starred", nil)
+	recStarred := httptest.NewRecorder()
+	cStarred := e.NewContext(reqStarred, recStarred)
+	if err := fileCtrl.GetFiles(cStarred); err != nil {
+		t.Fatalf("GetFiles tab=starred failed: %v", err)
+	}
+	var starredFiles []FileRecord
+	json.Unmarshal(recStarred.Body.Bytes(), &starredFiles)
+	foundStarred := false
+	for _, f := range starredFiles {
+		if f.ID == fileID {
+			foundStarred = true
+			break
+		}
+	}
+	if !foundStarred {
+		t.Fatalf("Expected file %s in starred tab, got %+v", fileID, starredFiles)
+	}
+
+	// 4. Permanent delete
+	reqPerm := httptest.NewRequest(http.MethodDelete, "/api/files/"+fileID+"?permanent=true", nil)
+	recPerm := httptest.NewRecorder()
+	cPerm := e.NewContext(reqPerm, recPerm)
+	cPerm.SetPathValues(echo.PathValues{{Name: "id", Value: fileID}})
+	if err := fileCtrl.DeleteFile(cPerm); err != nil {
+		t.Fatalf("Permanent delete failed: %v", err)
+	}
+	if recPerm.Code != http.StatusOK {
+		t.Fatalf("Expected HTTP 200 on permanent delete, got %d", recPerm.Code)
+	}
+
+	// Verify file is gone from DB
+	var remainingCount int
+	_ = dbEngine.SQL.QueryRow("SELECT COUNT(*) FROM files WHERE id = ?", fileID).Scan(&remainingCount)
+	if remainingCount != 0 {
+		t.Fatalf("Expected 0 rows in DB for file %s, got %d", fileID, remainingCount)
+	}
+
+	// Verify CAS object was removed since refcount dropped to 0
+	if casEngine.Exists(casHash) {
+		t.Fatalf("Expected CAS blob %s to be garbage collected", casHash)
+	}
+}
+

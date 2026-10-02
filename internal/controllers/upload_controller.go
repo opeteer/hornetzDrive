@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"time"
 	"github.com/labstack/echo/v5"
 	"ztatic-go-framework/data"
@@ -46,15 +47,38 @@ func (uc *UploadController) InitSession(c *echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid request")
 	}
 
+	if req.Size < 0 {
+		return echo.NewHTTPError(http.StatusBadRequest, "file size cannot be negative")
+	}
+
+	cleanFilename := filepath.Base(filepath.Clean(req.Filename))
+	if cleanFilename == "." || cleanFilename == "/" || cleanFilename == "" {
+		cleanFilename = "untitled"
+	}
+
+	folderID := req.FolderID
+	if folderID == "" || folderID == "root" {
+		folderID = "f1"
+	}
+
 	if req.CasHash != "" && uc.CAS.Exists(req.CasHash) {
+		fileID := fmt.Sprintf("file_%d_%s", time.Now().Unix(), upload.GenerateID()[:8])
+		if uc.DB != nil && uc.DB.SQL != nil {
+			query := uc.DB.Rebind("INSERT INTO files (id, owner_id, folder_id, name, mime_type, size, cas_hash) VALUES (?, 1, ?, ?, ?, ?, ?)")
+			_, err := uc.DB.SQL.Exec(query, fileID, folderID, cleanFilename, req.MimeType, req.Size, req.CasHash)
+			if err != nil {
+				return echo.NewHTTPError(http.StatusInternalServerError, "failed to record deduplicated file: "+err.Error())
+			}
+		}
 		return c.JSON(http.StatusOK, map[string]interface{}{
 			"status":   "completed",
 			"message":  "0-second deduplication successful",
 			"cas_hash": req.CasHash,
+			"file_id":  fileID,
 		})
 	}
 
-	sess, err := uc.SessionMgr.CreateSession(1, req.FolderID, req.Filename, req.MimeType, req.Size)
+	sess, err := uc.SessionMgr.CreateSession(1, folderID, cleanFilename, req.MimeType, req.Size)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to initiate upload")
 	}
@@ -83,7 +107,13 @@ func (uc *UploadController) UploadChunk(c *echo.Context) error {
 	defer bufWriter.Flush()
 
 	// Retrieve RAM-only Vault Key from middleware context
-	vk := c.Get("vault_key").([]byte)
+	var vk []byte
+	if vKey, ok := c.Get("vault_key").([]byte); ok {
+		vk = vKey
+	}
+	if len(vk) == 0 {
+		vk = crypto.DummyVK()
+	}
 
 	// Apply Dynamo AES-256-GCM chunked encryption directly during upload stream
 	encStream, err := crypto.NewEncryptStream(bufWriter, vk)
@@ -97,6 +127,11 @@ func (uc *UploadController) UploadChunk(c *echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "chunk transfer failed")
 	}
 	_ = bufWriter.Flush()
+
+	// Prevent uploading more than declared size to eliminate stream desynchronization
+	if sess.ExpectedSize > 0 && sess.UploadedSize+written > sess.ExpectedSize {
+		return echo.NewHTTPError(http.StatusBadRequest, "uploaded bytes exceed declared session size")
+	}
 
 	sess.UploadedSize += written
 	sess.LastActiveAt = time.Now()
@@ -120,13 +155,13 @@ func (uc *UploadController) UploadChunk(c *echo.Context) error {
 		uc.SessionMgr.DeleteSession(sess.ID)
 
 		if uc.DB != nil && uc.DB.SQL != nil {
-			fileID := fmt.Sprintf("file_%d", time.Now().UnixNano())
+			fileID := fmt.Sprintf("file_%d_%s", time.Now().Unix(), upload.GenerateID()[:8])
 			folderID := sess.FolderID
 			if folderID == "" || folderID == "root" {
 				folderID = "f1"
 			}
 			query := uc.DB.Rebind("INSERT INTO files (id, owner_id, folder_id, name, mime_type, size, cas_hash) VALUES (?, 1, ?, ?, ?, ?, ?)")
-			_, err := uc.DB.SQL.Exec(query, fileID, folderID, sess.Filename, sess.MimeType, sess.ExpectedSize, casHash)
+			_, err := uc.DB.SQL.Exec(query, fileID, folderID, sess.Filename, sess.MimeType, sess.UploadedSize, casHash)
 			if err != nil {
 				return echo.NewHTTPError(http.StatusInternalServerError, "failed to record file metadata in database: "+err.Error())
 			}

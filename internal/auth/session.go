@@ -36,6 +36,24 @@ func (s *SessionStore) GetKey(sessionID string) ([]byte, bool) {
 	return vk, ok
 }
 
+// DeleteKey removes a specific Vault Key from RAM.
+func (s *SessionStore) DeleteKey(sessionID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if vk, ok := s.vaultKeys[sessionID]; ok {
+		rand.Read(vk)
+		delete(s.vaultKeys, sessionID)
+	}
+}
+
+// HasKey checks if a Vault Key exists in RAM for the session.
+func (s *SessionStore) HasKey(sessionID string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	_, ok := s.vaultKeys[sessionID]
+	return ok
+}
+
 // Purge completely obliterates all Vault Keys from RAM.
 func (s *SessionStore) Purge() {
 	s.mu.Lock()
@@ -72,15 +90,20 @@ type LoginRequest struct {
 	Password string `json:"password" form:"password"`
 }
 
-// LoginMock simulates unlocking the vault and storing the VK in RAM.
+var (
+	defaultVaultSalt = []byte("hornetz_vault_master_salt_32b_!")
+	defaultVaultHash = crypto.DeriveMEK([]byte("ManusiaIdaman"), defaultVaultSalt)
+)
+
+// LoginMock simulates unlocking the vault and storing the VK in RAM using Argon2id.
 func LoginMock(c *echo.Context) error {
 	var req LoginRequest
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request"})
 	}
 
-	// Validate the password requested by QA
-	if req.Password != "ManusiaIdaman" {
+	// Validate the password using Argon2id constant-time comparison
+	if !crypto.VerifyPassword([]byte(req.Password), defaultVaultSalt, defaultVaultHash) {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Invalid master password"})
 	}
 
@@ -94,10 +117,37 @@ func LoginMock(c *echo.Context) error {
 		Value:    sessionID,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   true,
-		SameSite: http.SameSiteStrictMode,
+		Secure:   false,
+		SameSite: http.SameSiteLaxMode,
 		Expires:  time.Now().Add(24 * time.Hour),
 	})
 
-	return c.JSON(http.StatusOK, map[string]string{"message": "Vault Unlocked. VK in RAM."})
+	return c.JSON(http.StatusOK, map[string]string{
+		"message":    "Vault Unlocked. VK in RAM.",
+		"session_id": sessionID,
+	})
+}
+
+// LockVault terminates the current active Vault session and obliterates its key from RAM.
+func LockVault(c *echo.Context) error {
+	cookie, err := c.Cookie("swarm_session")
+	if err == nil && cookie != nil {
+		GlobalSessionStore.DeleteKey(cookie.Value)
+	}
+
+	c.SetCookie(&http.Cookie{
+		Name:     "swarm_session",
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		Expires:  time.Unix(0, 0),
+		HttpOnly: true,
+		Secure:   false,
+		SameSite: http.SameSiteLaxMode,
+	})
+
+	return c.JSON(http.StatusOK, map[string]string{
+		"status":  "locked",
+		"message": "Vault locked and session destroyed from RAM.",
+	})
 }

@@ -337,6 +337,12 @@ templ Layout(title string) {
 					this.fetchFolders();
 					this.fetchFiles();
 					this.fetchStorageStats();
+					try {
+						const sse = new EventSource('/sse');
+						sse.onmessage = () => {
+							this.fetchStorageStats();
+						};
+					} catch(e) {}
 				},
 
 				setTab(tab) {
@@ -344,7 +350,7 @@ templ Layout(title string) {
 						this.showVaultPasswordModal = true;
 						return; // Do not switch to vault tab or load its contents until unlocked
 					}
-					if (tab !== 'vault') {
+					if (tab !== 'vault' && this.isVaultUnlocked) {
 						this.lockVault(); // Automatically lock vault when leaving the tab
 					}
 					this.activeTab = tab;
@@ -429,17 +435,25 @@ templ Layout(title string) {
 							this.fetchFolders();
 							this.fetchFiles();
 						} else {
-							alert("Password salah!");
+							alert("Password master vault salah!");
 						}
 					} catch(e) {
 						console.error("Unlock vault error:", e);
 					}
 				},
 
-				lockVault() {
+				async lockVault() {
 					this.isVaultUnlocked = false;
 					this.files = [];
 					this.folders = [];
+					try {
+						await fetch('/api/vault/lock', {
+							method: 'POST',
+							headers: {
+								'X-CSRF-Token': this.getCsrfToken()
+							}
+						});
+					} catch(e) {}
 				},
 
 				getCsrfToken() {
@@ -471,36 +485,30 @@ templ Layout(title string) {
 					event.preventDefault();
 					this.dragCounter = 0;
 					this.isDragging = false;
-					if (this.isUploading) {
-						alert("Upload berkas lain sedang berjalan. Harap tunggu hingga proses selesai.");
-						return;
-					}
 					const dt = event.dataTransfer;
 					if (dt && dt.files && dt.files.length > 0) {
 						for (let i = 0; i < dt.files.length; i++) {
-							await this.processUpload(dt.files[i]);
+							const isLast = (i === dt.files.length - 1);
+							await this.executeUpload(dt.files[i], isLast);
 						}
 					}
 				},
 
 				async uploadFile(event) {
-					if (this.isUploading) {
-						alert("Upload berkas lain sedang berjalan. Harap tunggu hingga proses selesai.");
-						if (event.target) event.target.value = "";
-						return;
-					}
-					const file = event.target?.files?.[0];
-					if (file) {
-						await this.processUpload(file);
+					const files = event.target?.files;
+					if (files && files.length > 0) {
+						for (let i = 0; i < files.length; i++) {
+							const isLast = (i === files.length - 1);
+							await this.executeUpload(files[i], isLast);
+						}
 					}
 					if (event.target) {
 						event.target.value = "";
 					}
 				},
 
-				async processUpload(file) {
+				async executeUpload(file, isLast = true) {
 					if (!file) return;
-					if (this.isUploading) return;
 
 					this.uploadFileName = file.name;
 					this.isUploading = true;
@@ -538,17 +546,19 @@ templ Layout(title string) {
 
 						if (initData.status === "completed") {
 							await this.fetchFiles();
+							await this.fetchFolders();
 							await this.fetchStorageStats();
 							this.uploadProgress = 100;
 							this.uploadStatusText = 'Status: Instan (CAS)';
 							this.currentSpeedText = 'Instan (CAS)';
-							setTimeout(() => { 
+							if (isLast) {
+								await new Promise(r => setTimeout(r, 1200));
 								this.isUploading = false;
 								this.isTransferring = false;
 								this.currentSpeedText = 'Idle';
 								this.uploadProgress = 0;
 								this.uploadStatusText = 'Status: Processing';
-							}, 2000);
+							}
 							return;
 						}
 
@@ -574,7 +584,6 @@ templ Layout(title string) {
 										lastLoaded = event.loaded;
 										lastTime = now;
 									}
-									// Strictly monotonic granular mapping from 5% to 95%
 									const streamPercent = 5 + Math.round((event.loaded / event.total) * 90);
 									this.uploadProgress = Math.max(this.uploadProgress, Math.min(streamPercent, 95));
 								}
@@ -600,21 +609,21 @@ templ Layout(title string) {
 						const elapsedSec = (performance.now() - uploadStartTime) / 1000;
 						const avgSpeedMBps = ((file.size / (1024 * 1024)) / Math.max(elapsedSec, 0.05)).toFixed(1);
 						this.currentSpeedText = `${avgSpeedMBps} MB/s`;
-						this.uploadProgress = Math.max(this.uploadProgress, 95);
-						this.uploadStatusText = 'Status: Verifikasi CAS & DB';
-
-						await this.fetchFiles();
-						await this.fetchStorageStats();
 						this.uploadProgress = 100;
 						this.uploadStatusText = 'Status: Selesai';
 
-						setTimeout(() => { 
+						await this.fetchFiles();
+						await this.fetchFolders();
+						await this.fetchStorageStats();
+
+						if (isLast) {
+							await new Promise(r => setTimeout(r, 1200));
 							this.isUploading = false;
 							this.isTransferring = false;
 							this.currentSpeedText = 'Idle';
 							this.uploadProgress = 0;
 							this.uploadStatusText = 'Status: Processing';
-						}, 2500);
+						}
 
 					} catch (err) {
 						console.error("Upload error:", err);
@@ -627,11 +636,15 @@ templ Layout(title string) {
 					}
 				},
 
-				async deleteFile(file) {
+				async deleteFile(file, permanent = false) {
 					if (!file) return;
-					if (!confirm(`Apakah Anda yakin ingin menghapus berkas "${file.name}"?`)) return;
+					const promptMsg = permanent 
+						? `Apakah Anda yakin ingin MENGHAPUS PERMANEN berkas "${file.name}"? Data di CAS akan dimusnahkan.`
+						: `Apakah Anda yakin ingin memindahkan berkas "${file.name}" ke Sampah?`;
+					if (!confirm(promptMsg)) return;
 					try {
-						const res = await fetch(`/api/files/${file.id}`, {
+						const url = permanent ? `/api/files/${file.id}?permanent=true` : `/api/files/${file.id}`;
+						const res = await fetch(url, {
 							method: "DELETE",
 							headers: {
 								"X-CSRF-Token": this.getCsrfToken()
@@ -640,10 +653,49 @@ templ Layout(title string) {
 						if (res.ok) {
 							this.selectedFile = null;
 							this.fetchFiles();
+							this.fetchFolders();
 							this.fetchStorageStats();
 						}
 					} catch(e) {
 						alert("Gagal menghapus berkas");
+					}
+				},
+
+				async restoreFile(file) {
+					if (!file) return;
+					try {
+						const res = await fetch(`/api/files/${file.id}/restore`, {
+							method: "POST",
+							headers: {
+								"X-CSRF-Token": this.getCsrfToken()
+							}
+						});
+						if (res.ok) {
+							this.selectedFile = null;
+							this.fetchFiles();
+							this.fetchFolders();
+							this.fetchStorageStats();
+						}
+					} catch(e) {
+						alert("Gagal memulihkan berkas");
+					}
+				},
+
+				async toggleStar(file) {
+					if (!file) return;
+					try {
+						const res = await fetch(`/api/files/${file.id}/star`, {
+							method: "POST",
+							headers: {
+								"X-CSRF-Token": this.getCsrfToken()
+							}
+						});
+						if (res.ok) {
+							file.is_starred = !file.is_starred;
+							this.fetchFiles();
+						}
+					} catch(e) {
+						alert("Gagal mengubah status bintang");
 					}
 				},
 
@@ -667,10 +719,12 @@ templ Layout(title string) {
 						const data = await res.json();
 						alert("💀 PANIC PURGE SUKSES EXECUTED!\n\n- Status: " + data.status + "\n- Pesan: " + data.message);
 						this.fetchFiles();
+						this.fetchFolders();
 						this.fetchStorageStats();
 					} catch(err) {
 						alert("💀 PANIC PURGE EXECUTED!\n- Kunci RAM berhasil dimusnahkan.");
 						this.fetchFiles();
+						this.fetchFolders();
 						this.fetchStorageStats();
 					}
 				}

@@ -39,9 +39,9 @@ func NewSessionManager(tempDir string) (*SessionManager, error) {
 	}, nil
 }
 
-func generateID() string {
+func GenerateID() string {
 	b := make([]byte, 16)
-	rand.Read(b)
+	_, _ = rand.Read(b)
 	return hex.EncodeToString(b)
 }
 
@@ -49,7 +49,7 @@ func (sm *SessionManager) CreateSession(ownerID int, folderID, filename, mimeTyp
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
-	id := generateID()
+	id := GenerateID()
 	tempPath := filepath.Join(sm.TempDir, fmt.Sprintf("upload_%s.tmp", id))
 
 	// Pre-allocate or create empty temp file
@@ -86,5 +86,25 @@ func (sm *SessionManager) GetSession(id string) (*Session, bool) {
 func (sm *SessionManager) DeleteSession(id string) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
+	if sess, ok := sm.sessions[id]; ok {
+		_ = os.Remove(sess.TempFilePath)
+	}
 	delete(sm.sessions, id)
+}
+
+// CleanupStaleSessions removes expired sessions and unlinks abandoned temporary files.
+func (sm *SessionManager) CleanupStaleSessions(maxAge time.Duration) int {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	now := time.Now()
+	cleaned := 0
+	for id, sess := range sm.sessions {
+		if now.Sub(sess.LastActiveAt) > maxAge {
+			_ = os.Remove(sess.TempFilePath)
+			delete(sm.sessions, id)
+			cleaned++
+		}
+	}
+	return cleaned
 }

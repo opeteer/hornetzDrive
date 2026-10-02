@@ -11,6 +11,7 @@ import (
 
 	"github.com/labstack/echo/v5"
 
+	"ztatic-go-framework/data"
 	"ztatic-go-framework/internal/storage"
 	"ztatic-go-framework/realtime"
 )
@@ -18,6 +19,8 @@ import (
 type SecurityController struct {
 	CAS    *storage.CASEngine
 	Broker *realtime.MemoryBroker
+	DB     *data.DBEngine
+	TmpDir string
 }
 
 func (sc *SecurityController) PanicPurge(c *echo.Context) error {
@@ -53,12 +56,28 @@ func (sc *SecurityController) PanicPurge(c *echo.Context) error {
 		return nil
 	})
 
+	// 3. Clear database records so database doesn't reference shredded files
+	if sc.DB != nil && sc.DB.SQL != nil {
+		_, _ = sc.DB.SQL.Exec("DELETE FROM files")
+		_, _ = sc.DB.SQL.Exec("DELETE FROM folders WHERE id NOT IN ('f1', 'f2', 'f3')")
+	}
+
+	// 4. Overwrite and clean up temporary upload buffers
+	if sc.TmpDir != "" {
+		_ = filepath.Walk(sc.TmpDir, func(p string, info fs.FileInfo, err error) error {
+			if err == nil && !info.IsDir() {
+				_ = os.Remove(p)
+			}
+			return nil
+		})
+	}
+
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "Purge incomplete")
 	}
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"status":  "purged",
-		"message": "Vault permanently shredded.",
+		"message": "Vault permanently shredded and database synchronized.",
 	})
 }

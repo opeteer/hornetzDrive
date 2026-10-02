@@ -105,6 +105,9 @@ func main() {
 	app.GET("/api/storage/stats", fileCtrl.GetStorageStats)
 	app.GET("/api/files/:id/download", fileCtrl.DownloadFile)
 	app.DELETE("/api/files/:id", fileCtrl.DeleteFile)
+	app.POST("/api/files/:id/restore", fileCtrl.RestoreFile)
+	app.POST("/api/files/:id/star", fileCtrl.StarFile)
+	app.POST("/api/vault/lock", auth.LockVault)
 
 	uploadCtrl := &controllers.UploadController{
 		SessionMgr: sessionMgr,
@@ -117,11 +120,22 @@ func main() {
 	secCtrl := &controllers.SecurityController{
 		CAS:    casEngine,
 		Broker: broker,
+		DB:     dbEngine,
+		TmpDir: appCfg.TmpDir,
 	}
 	app.POST("/api/purge", secCtrl.PanicPurge)
 
 	shuffler := &storage.ChitinShuffler{CAS: casEngine}
 	shuffler.StartBackgroundWorker(context.Background(), 6*time.Hour)
+
+	// Background reaper worker for stale upload sessions and temp files
+	go func() {
+		ticker := time.NewTicker(1 * time.Hour)
+		defer ticker.Stop()
+		for range ticker.C {
+			sessionMgr.CleanupStaleSessions(24 * time.Hour)
+		}
+	}()
 
 	app.POST("/login", auth.LoginMock)
 

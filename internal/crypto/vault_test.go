@@ -53,3 +53,27 @@ func TestBlockEncryptionDecryption(t *testing.T) {
 		t.Fatalf("DecryptBlock should fail on corrupted ciphertext")
 	}
 }
+
+func TestVerifyPassword(t *testing.T) {
+	password := []byte("correct_horse_battery_staple")
+	salt := []byte("1234567890123456")
+	storedHash := DeriveMEK(password, salt)
+
+	// Valid password
+	if !VerifyPassword(password, salt, storedHash) {
+		t.Fatalf("VerifyPassword failed for valid password")
+	}
+
+	// Invalid password
+	if VerifyPassword([]byte("wrong_password"), salt, storedHash) {
+		t.Fatalf("VerifyPassword should fail for wrong password")
+	}
+
+	// Wrong salt
+	wrongSalt := []byte("different_salt_12")
+	if VerifyPassword(password, wrongSalt, storedHash) {
+		t.Fatalf("VerifyPassword should fail for different salt")
+	}
+}
+
+

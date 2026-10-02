@@ -122,3 +122,40 @@ func TestStream_TinyBufferReads(t *testing.T) {
 		t.Fatalf("Expected %q, got %q", string(payload), string(result))
 	}
 }
+
+func TestDecryptStream_BoundsChecks(t *testing.T) {
+	vk := DummyVK()
+
+	// 1. Chunk length exceeds MaxChunkSize (50MB)
+	var overBuf bytes.Buffer
+	// Write length 60MB: 60 * 1024 * 1024 = 62914560 (0x03C00000)
+	overBuf.Write([]byte{0x03, 0xC0, 0x00, 0x00})
+	overBuf.Write(make([]byte, 100))
+
+	decStream, err := NewDecryptStream(&overBuf, vk)
+	if err != nil {
+		t.Fatalf("NewDecryptStream failed: %v", err)
+	}
+
+	buf := make([]byte, 1024)
+	_, err = decStream.Read(buf)
+	if err == nil {
+		t.Fatalf("Expected error when chunk size exceeds MaxChunkSize")
+	}
+
+	// 2. Chunk length smaller than TagSize (16 bytes)
+	var underBuf bytes.Buffer
+	underBuf.Write([]byte{0x00, 0x00, 0x00, 0x08}) // 8 bytes < 16
+	underBuf.Write(make([]byte, 8))
+
+	decStream2, err := NewDecryptStream(&underBuf, vk)
+	if err != nil {
+		t.Fatalf("NewDecryptStream failed: %v", err)
+	}
+
+	_, err = decStream2.Read(buf)
+	if err == nil {
+		t.Fatalf("Expected error when chunk size is smaller than TagSize")
+	}
+}
+

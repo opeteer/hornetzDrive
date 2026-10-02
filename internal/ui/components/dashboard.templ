@@ -217,18 +217,45 @@ templ DashboardContent() {
 
 				<!-- Action Buttons -->
 				<div class="flex gap-3 pt-2">
-					<button 
-						@click="$store.drive.downloadFile($store.drive.selectedFile)" 
-						class="flex-1 hornetz-btn py-2.5 px-4 rounded-xl flex items-center justify-center gap-2 text-xs font-bold"
-					>
-						<span>📥</span> <span x-text="$store.drive.activeTab === 'vault' ? 'Dekripsi & Unduh' : 'Unduh Berkas'"></span>
-					</button>
-					<button 
-						@click="$store.drive.deleteFile($store.drive.selectedFile)" 
-						class="bg-red-500/10 hover:bg-red-600 text-red-400 hover:text-white border border-red-500/30 py-2.5 px-4 rounded-xl text-xs font-semibold transition-colors"
-					>
-						Hapus Berkas
-					</button>
+					<template x-if="$store.drive.activeTab === 'trash'">
+						<div class="flex gap-3 w-full">
+							<button 
+								@click="$store.drive.restoreFile($store.drive.selectedFile)" 
+								class="flex-1 hornetz-btn py-2.5 px-4 rounded-xl flex items-center justify-center gap-2 text-xs font-bold"
+							>
+								<span>♻️</span> Pulihkan Berkas
+							</button>
+							<button 
+								@click="$store.drive.deleteFile($store.drive.selectedFile, true)" 
+								class="bg-red-500/20 hover:bg-red-600 text-red-400 hover:text-white border border-red-500/40 py-2.5 px-4 rounded-xl text-xs font-semibold transition-colors"
+							>
+								Hapus Permanen
+							</button>
+						</div>
+					</template>
+
+					<template x-if="$store.drive.activeTab !== 'trash'">
+						<div class="flex gap-3 w-full">
+							<button 
+								@click="$store.drive.toggleStar($store.drive.selectedFile)" 
+								class="bg-[#201E1B] hover:bg-[#2E2B26] text-[#FACC15] border border-[#FACC15]/30 py-2.5 px-3 rounded-xl text-xs font-semibold transition-colors"
+							>
+								<span x-text="$store.drive.selectedFile && $store.drive.selectedFile.is_starred ? '★ Berbintang' : '☆ Beri Bintang'"></span>
+							</button>
+							<button 
+								@click="$store.drive.downloadFile($store.drive.selectedFile)" 
+								class="flex-1 hornetz-btn py-2.5 px-4 rounded-xl flex items-center justify-center gap-2 text-xs font-bold"
+							>
+								<span>📥</span> <span x-text="$store.drive.activeTab === 'vault' ? 'Dekripsi & Unduh' : 'Unduh Berkas'"></span>
+							</button>
+							<button 
+								@click="$store.drive.deleteFile($store.drive.selectedFile, false)" 
+								class="bg-red-500/10 hover:bg-red-600 text-red-400 hover:text-white border border-red-500/30 py-2.5 px-4 rounded-xl text-xs font-semibold transition-colors"
+							>
+								Ke Sampah
+							</button>
+						</div>
+					</template>
 				</div>
 			</div>
 		</div>
