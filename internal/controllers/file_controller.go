@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/labstack/echo/v5"
@@ -21,8 +22,9 @@ import (
 )
 
 type FileController struct {
-	DB  *data.DBEngine
-	CAS *storage.CASEngine
+	DB       *data.DBEngine
+	CAS      *storage.CASEngine
+	seedOnce sync.Once
 }
 
 type FileRecord struct {
@@ -37,6 +39,7 @@ type FileRecord struct {
 	Ext       string `json:"ext"`
 	IsStarred bool   `json:"is_starred"`
 	IsDeleted bool   `json:"is_deleted"`
+	IsVault   bool   `json:"is_vault"`
 	CreatedAt string `json:"created_at"`
 }
 
@@ -60,6 +63,15 @@ type StorageStats struct {
 
 // SeedInitialData populates database with initial real data if empty
 func (fc *FileController) SeedInitialData() {
+	if fc.DB == nil || fc.DB.SQL == nil {
+		return
+	}
+	fc.seedOnce.Do(func() {
+		fc.seedInitialDataInternal()
+	})
+}
+
+func (fc *FileController) seedInitialDataInternal() {
 	if fc.DB == nil || fc.DB.SQL == nil {
 		return
 	}
@@ -157,11 +169,14 @@ func (fc *FileController) GetAllVaultFolderIDs() []string {
 
 func (fc *FileController) vaultExcludeFilter() string {
 	ids := fc.GetAllVaultFolderIDs()
+	if len(ids) == 0 {
+		return "1=1"
+	}
 	escapedIDs := make([]string, len(ids))
 	for i, id := range ids {
 		escapedIDs[i] = fmt.Sprintf("'%s'", strings.ReplaceAll(id, "'", "''"))
 	}
-	return fmt.Sprintf("folder_id NOT IN (%s)", strings.Join(escapedIDs, ","))
+	return fmt.Sprintf("(folder_id IS NULL OR folder_id = '' OR folder_id NOT IN (%s))", strings.Join(escapedIDs, ","))
 }
 
 func (fc *FileController) GetFiles(c *echo.Context) error {
@@ -273,6 +288,7 @@ func (fc *FileController) GetFiles(c *echo.Context) error {
 		if err := rows.Scan(&f.ID, &f.OwnerID, &f.FolderID, &f.Name, &f.MimeType, &f.Size, &f.CasHash, &f.CreatedAt, &f.IsStarred, &f.IsDeleted); err == nil {
 			f.Icon = getFileIcon(f.Name, f.MimeType)
 			f.Ext = getFileExt(f.Name)
+			f.IsVault = fc.IsVaultFolder(f.FolderID)
 			files = append(files, f)
 		}
 	}
@@ -333,6 +349,21 @@ func (fc *FileController) GetFolders(c *echo.Context) error {
 	}
 
 	query += " GROUP BY f.id, f.owner_id, f.parent_id, f.name, f.created_at"
+
+	sortBy := c.QueryParam("sort_by")
+	order := strings.ToLower(c.QueryParam("order"))
+	orderDir := "ASC"
+	if order == "desc" {
+		orderDir = "DESC"
+	}
+	switch sortBy {
+	case "name":
+		query += " ORDER BY f.name " + orderDir
+	case "created_at":
+		query += " ORDER BY f.created_at " + orderDir
+	default:
+		query += " ORDER BY f.created_at DESC"
+	}
 	
 	query = fc.DB.Rebind(query)
 
@@ -416,6 +447,7 @@ func (fc *FileController) DownloadFile(c *echo.Context) error {
 	}
 
 	safeName := strings.ReplaceAll(f.Name, `"`, `_`)
+	safeName = strings.ReplaceAll(safeName, `\`, `_`)
 	safeName = strings.ReplaceAll(safeName, "\r", "")
 	safeName = strings.ReplaceAll(safeName, "\n", "")
 
@@ -482,7 +514,9 @@ func (fc *FileController) DownloadFile(c *echo.Context) error {
 				return c.NoContent(http.StatusRequestedRangeNotSatisfiable)
 			}
 			if start > 0 {
-				_, _ = io.CopyN(io.Discard, decStream, start)
+				if err := decStream.SeekTo(start); err != nil {
+					return echo.NewHTTPError(http.StatusInternalServerError, "failed to seek in encrypted stream")
+				}
 			}
 			chunkLen := end - start + 1
 			c.Response().Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, f.Size))

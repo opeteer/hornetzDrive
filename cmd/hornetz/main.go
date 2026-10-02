@@ -54,6 +54,7 @@ func main() {
 	cfg.Security.WAF.MaxBodySize = 50 * 1024 * 1024
 
 	app := ztatic.NewWithConfig(cfg)
+	app.Echo.IPExtractor = echo.ExtractIPFromXFFHeader(echo.TrustLoopback(true), echo.TrustLinkLocal(true))
 
 	dbEngine, err := data.NewDBEngine(appCfg.DBDriver, appCfg.DBDSN)
 	if err != nil {
@@ -128,18 +129,19 @@ func main() {
 		DB:     dbEngine,
 		TmpDir: appCfg.TmpDir,
 	}
-	app.POST("/api/purge", secCtrl.PanicPurge)
+	app.POST("/api/purge", secCtrl.PanicPurge, web.AdaptiveRateLimiterWithConfig(web.AuthRateLimiterConfig()))
 
 	shuffler := &storage.ChitinShuffler{CAS: casEngine}
 	shuffler.StartBackgroundWorker(context.Background(), 6*time.Hour)
 
 	// Background reaper worker for stale upload sessions, temp files, and expired vault keys
 	go func() {
-		ticker := time.NewTicker(1 * time.Hour)
+		ticker := time.NewTicker(10 * time.Minute)
 		defer ticker.Stop()
 		for range ticker.C {
 			sessionMgr.CleanupStaleSessions(24 * time.Hour)
 			auth.GlobalSessionStore.CleanupStaleKeys()
+			uploadCtrl.PruneCompletedSessions(5 * time.Minute)
 		}
 	}()
 

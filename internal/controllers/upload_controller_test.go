@@ -243,8 +243,9 @@ func TestUploadController_ZeroSecondDedup_InsertsFileRecord(t *testing.T) {
 	casFilePath := ctrl.CAS.Path(existingHash)
 	_ = os.WriteFile(casFilePath, []byte("dedup target payload"), 0644)
 
-	// User attempts to upload with matching cas_hash
-	body := []byte(`{"filename":"dedup_doc.pdf","mime_type":"application/pdf","size":1234,"folder_id":"root","cas_hash":"` + existingHash + `"}`)
+	// User attempts to upload with matching cas_hash and valid proof of ownership
+	proof := ctrl.GenerateProof(existingHash, "dedup_doc.pdf", 1234)
+	body := []byte(`{"filename":"dedup_doc.pdf","mime_type":"application/pdf","size":1234,"folder_id":"root","cas_hash":"` + existingHash + `","proof":"` + proof + `"}`)
 	req := httptest.NewRequest(http.MethodPost, "/upload/init", bytes.NewReader(body))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	rec := httptest.NewRecorder()
@@ -276,6 +277,65 @@ func TestUploadController_ZeroSecondDedup_InsertsFileRecord(t *testing.T) {
 	}
 	if fname != "dedup_doc.pdf" {
 		t.Fatalf("Expected filename 'dedup_doc.pdf', got %s", fname)
+	}
+}
+
+func TestUploadController_ZeroSecondDedup_WithoutProof_RequiresUpload(t *testing.T) {
+	e, ctrl := setupUploadTest(t)
+
+	dbEngine, err := data.NewDBEngine("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to create memory DB: %v", err)
+	}
+	defer dbEngine.Close()
+
+	_, err = dbEngine.SQL.Exec(`
+		CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, salt BLOB NOT NULL, encrypted_vault_key BLOB NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+		CREATE TABLE folders (id TEXT PRIMARY KEY, owner_id INTEGER NOT NULL, parent_id TEXT, name TEXT NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+		CREATE TABLE files (id TEXT PRIMARY KEY, owner_id INTEGER NOT NULL, folder_id TEXT, name TEXT NOT NULL, mime_type TEXT NOT NULL, size BIGINT NOT NULL, cas_hash TEXT NOT NULL, encrypted_metadata BLOB, is_starred BOOLEAN DEFAULT 0, is_deleted BOOLEAN DEFAULT 0, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+		INSERT INTO users (id, email, password_hash, salt, encrypted_vault_key) VALUES (1, 'test@hornetz.io', 'hash', 'salt', 'vk');
+		INSERT INTO folders (id, owner_id, parent_id, name) VALUES ('root', 1, NULL, 'Root');
+	`)
+	if err != nil {
+		t.Fatalf("DB setup failed: %v", err)
+	}
+	ctrl.DB = dbEngine
+
+	// Create an existing file in CAS
+	existingHash := "d41d8cd98f00b204e9800998ecf8427e0123456789abcdef0123456789abcdef"
+	casFilePath := ctrl.CAS.Path(existingHash)
+	_ = os.WriteFile(casFilePath, []byte("dedup target payload"), 0644)
+
+	// User attempts to upload with matching cas_hash but WITHOUT proof of ownership
+	body := []byte(`{"filename":"dedup_doc.pdf","mime_type":"application/pdf","size":1234,"folder_id":"root","cas_hash":"` + existingHash + `"}`)
+	req := httptest.NewRequest(http.MethodPost, "/upload/init", bytes.NewReader(body))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := ctrl.InitSession(c); err != nil {
+		t.Fatalf("InitSession error: %v", err)
+	}
+
+	// Should NOT immediately complete; should return 201 Created with a session_id for upload
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("Expected HTTP 201 created session for upload, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var res map[string]interface{}
+	json.Unmarshal(rec.Body.Bytes(), &res)
+	if res["status"] == "completed" {
+		t.Fatalf("Expected status not completed without proof, got %v", res["status"])
+	}
+	if res["session_id"] == "" || res["session_id"] == nil {
+		t.Fatalf("Expected session_id to be returned for standard upload")
+	}
+
+	// Verify that NO file row was inserted
+	var count int
+	_ = dbEngine.SQL.QueryRow("SELECT COUNT(*) FROM files WHERE cas_hash = ?", existingHash).Scan(&count)
+	if count != 0 {
+		t.Fatalf("Expected 0 file rows inserted without proof, got %d", count)
 	}
 }
 

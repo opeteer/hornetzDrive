@@ -476,6 +476,7 @@ templ Layout(title string) {
 					this.sortBy = by;
 					this.sortOrder = order;
 					this.fetchFiles();
+					this.fetchFolders();
 				},
 
 				dismissModals() {
@@ -493,7 +494,8 @@ templ Layout(title string) {
 						return; // Do not switch to vault tab or load its contents until unlocked
 					}
 					if (tab !== 'vault' && this.isVaultUnlocked) {
-						this.lockVault(); // Automatically lock vault when leaving the tab
+						this.isVaultUnlocked = false; // Synchronously lock UI state immediately
+						this.lockVault(); // Automatically lock vault in background when leaving the tab
 					}
 					this.activeTab = tab;
 					this.folderHistory = [];
@@ -555,7 +557,7 @@ templ Layout(title string) {
 
 				async fetchFolders() {
 					try {
-						const url = `/api/folders?tab=${this.activeTab}&parent_id=${encodeURIComponent(this.currentFolderId)}&q=${encodeURIComponent(this.searchQuery)}`;
+						const url = `/api/folders?tab=${this.activeTab}&parent_id=${encodeURIComponent(this.currentFolderId)}&q=${encodeURIComponent(this.searchQuery)}&sort_by=${encodeURIComponent(this.sortBy)}&order=${encodeURIComponent(this.sortOrder)}`;
 						const res = await fetch(url);
 						if (res.ok) {
 							this.folders = await res.json();
@@ -741,7 +743,7 @@ templ Layout(title string) {
 
 					let targetFolderId = this.currentFolderId;
 					if (!targetFolderId) {
-						targetFolderId = (this.activeTab === 'vault') ? 'f2' : 'f1';
+						targetFolderId = (this.activeTab === 'vault') ? 'f2' : '';
 					}
 
 					try {

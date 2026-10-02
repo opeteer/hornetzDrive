@@ -262,8 +262,8 @@ templ DashboardContent() {
 					<div class="flex justify-between text-[#A19A8F]">
 						<span>Status Enkripsi:</span>
 						<strong 
-							:class="$store.drive.activeTab === 'vault' ? 'text-emerald-400' : 'text-amber-400'"
-							x-text="$store.drive.activeTab === 'vault' ? 'AES-256-GCM (Swarm Vault)' : 'Penyimpanan Standar'"
+							:class="($store.drive.selectedFile && $store.drive.selectedFile.is_vault) ? 'text-emerald-400' : 'text-amber-400'"
+							x-text="($store.drive.selectedFile && $store.drive.selectedFile.is_vault) ? 'AES-256-GCM (Swarm Vault)' : 'Penyimpanan Standar'"
 						></strong>
 					</div>
 					<div class="flex justify-between text-[#A19A8F]">

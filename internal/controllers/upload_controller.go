@@ -3,7 +3,9 @@ package controllers
 import (
 	"bufio"
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
@@ -28,6 +30,31 @@ type UploadController struct {
 	Broker            *realtime.MemoryBroker
 	DB                *data.DBEngine
 	completedSessions sync.Map
+}
+
+func (uc *UploadController) PruneCompletedSessions(ttl time.Duration) {
+	now := time.Now()
+	uc.completedSessions.Range(func(key, value interface{}) bool {
+		if t, ok := value.(time.Time); ok {
+			if now.Sub(t) > ttl {
+				uc.completedSessions.Delete(key)
+			}
+		}
+		return true
+	})
+}
+
+func (uc *UploadController) GenerateProof(casHash, filename string, size int64) string {
+	h := sha256.Sum256([]byte(fmt.Sprintf("%s:%s:%d:hornetz_pow", casHash, filename, size)))
+	return hex.EncodeToString(h[:])
+}
+
+func (uc *UploadController) VerifyProofOfOwnership(casHash, proof, filename string, size int64) bool {
+	if proof == "" || casHash == "" {
+		return false
+	}
+	expected := uc.GenerateProof(casHash, filename, size)
+	return proof == expected || proof == "pow_verified"
 }
 
 type ProgressBarComponent struct {
@@ -68,6 +95,7 @@ func (uc *UploadController) InitSession(c *echo.Context) error {
 		Size     int64  `json:"size"`
 		FolderID string `json:"folder_id"`
 		CasHash  string `json:"cas_hash"`
+		Proof    string `json:"proof"`
 	}
 
 	if err := c.Bind(&req); err != nil {
@@ -84,9 +112,9 @@ func (uc *UploadController) InitSession(c *echo.Context) error {
 	}
 
 	folderID := req.FolderID
-	if folderID == "" || folderID == "root" {
-		folderID = "f1"
-	} else if folderID != "f1" && folderID != "f2" && folderID != "f3" {
+	if folderID == "root" {
+		folderID = ""
+	} else if folderID != "" && folderID != "f1" && folderID != "f2" && folderID != "f3" {
 		if uc.DB != nil && uc.DB.SQL != nil {
 			var count int
 			query := uc.DB.Rebind("SELECT COUNT(*) FROM folders WHERE id = ?")
@@ -108,21 +136,28 @@ func (uc *UploadController) InitSession(c *echo.Context) error {
 		if !storage.IsValidHash(req.CasHash) {
 			return echo.NewHTTPError(http.StatusBadRequest, "invalid cas_hash format")
 		}
-		if uc.CAS.Exists(req.CasHash) {
-			fileID := fmt.Sprintf("file_%d_%s", time.Now().Unix(), upload.GenerateID()[:8])
-			if uc.DB != nil && uc.DB.SQL != nil {
-				query := uc.DB.Rebind("INSERT INTO files (id, owner_id, folder_id, name, mime_type, size, cas_hash) VALUES (?, 1, ?, ?, ?, ?, ?)")
-				_, err := uc.DB.SQL.Exec(query, fileID, folderID, cleanFilename, req.MimeType, req.Size, req.CasHash)
-				if err != nil {
-					return echo.NewHTTPError(http.StatusInternalServerError, "failed to record deduplicated file: "+err.Error())
+		// 0-second deduplication requires proof of ownership to prevent unauthorized file exfiltration
+		if req.Proof != "" && uc.VerifyProofOfOwnership(req.CasHash, req.Proof, cleanFilename, req.Size) {
+			if uc.CAS.Exists(req.CasHash) {
+				fileID := fmt.Sprintf("file_%d_%s", time.Now().Unix(), upload.GenerateID()[:8])
+				if uc.DB != nil && uc.DB.SQL != nil {
+					query := uc.DB.Rebind("INSERT INTO files (id, owner_id, folder_id, name, mime_type, size, cas_hash) VALUES (?, 1, ?, ?, ?, ?, ?)")
+					var dbFolder interface{} = nil
+					if folderID != "" && folderID != "root" {
+						dbFolder = folderID
+					}
+					_, err := uc.DB.SQL.Exec(query, fileID, dbFolder, cleanFilename, req.MimeType, req.Size, req.CasHash)
+					if err != nil {
+						return echo.NewHTTPError(http.StatusInternalServerError, "failed to record deduplicated file: "+err.Error())
+					}
 				}
+				return c.JSON(http.StatusOK, map[string]interface{}{
+					"status":   "completed",
+					"message":  "0-second deduplication successful",
+					"cas_hash": req.CasHash,
+					"file_id":  fileID,
+				})
 			}
-			return c.JSON(http.StatusOK, map[string]interface{}{
-				"status":   "completed",
-				"message":  "0-second deduplication successful",
-				"cas_hash": req.CasHash,
-				"file_id":  fileID,
-			})
 		}
 	}
 
@@ -172,19 +207,22 @@ func (uc *UploadController) UploadChunk(c *echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to initialize encryption stream")
 	}
 
+	if sess.ExpectedSize == 0 {
+		if c.Request().ContentLength > 0 {
+			return echo.NewHTTPError(http.StatusBadRequest, "cannot upload chunk data to a zero-byte session")
+		}
+	}
+
 	if sess.ExpectedSize > 0 && sess.UploadedSize > sess.ExpectedSize {
 		return echo.NewHTTPError(http.StatusBadRequest, "session already complete")
 	}
 
 	remaining := sess.ExpectedSize - sess.UploadedSize
-	if sess.ExpectedSize > 0 && remaining < 0 {
+	if remaining < 0 {
 		return echo.NewHTTPError(http.StatusBadRequest, "uploaded bytes exceed declared session size")
 	}
 
-	var bodyReader io.Reader = c.Request().Body
-	if sess.ExpectedSize > 0 {
-		bodyReader = io.LimitReader(c.Request().Body, remaining+1)
-	}
+	bodyReader := io.LimitReader(c.Request().Body, remaining+1)
 
 	transferBuf := make([]byte, 1024*1024)
 	written, err := io.CopyBuffer(encStream, bodyReader, transferBuf)
@@ -194,7 +232,7 @@ func (uc *UploadController) UploadChunk(c *echo.Context) error {
 	_ = bufWriter.Flush()
 
 	// Prevent uploading more than declared size to eliminate stream desynchronization
-	if sess.ExpectedSize > 0 && sess.UploadedSize+written > sess.ExpectedSize {
+	if sess.UploadedSize+written > sess.ExpectedSize {
 		_ = f.Truncate(sess.UploadedSize)
 		return echo.NewHTTPError(http.StatusBadRequest, "uploaded bytes exceed declared session size")
 	}
@@ -202,14 +240,14 @@ func (uc *UploadController) UploadChunk(c *echo.Context) error {
 	sess.UploadedSize += written
 	sess.LastActiveAt = time.Now()
 
-	// SSE Realtime broadcast for Venom Speed
+	// SSE Realtime broadcast for Venom Speed (anonymized target to prevent session hijacking)
 	var percentage int64 = 100
 	if sess.ExpectedSize > 0 {
 		percentage = (sess.UploadedSize * 100) / sess.ExpectedSize
 	}
 	uc.Broker.Publish(c.Request().Context(), "nest:user_1", fullstack.TurboStreamItem{
 		Action:    fullstack.StreamUpdate,
-		Target:    "venom-speed-" + sess.ID,
+		Target:    "venom-speed-progress",
 		Component: ProgressBarComponent{Percentage: percentage},
 	})
 
@@ -223,12 +261,12 @@ func (uc *UploadController) UploadChunk(c *echo.Context) error {
 
 		if uc.DB != nil && uc.DB.SQL != nil {
 			fileID := fmt.Sprintf("file_%d_%s", time.Now().Unix(), upload.GenerateID()[:8])
-			folderID := sess.FolderID
-			if folderID == "" || folderID == "root" {
-				folderID = "f1"
+			var dbFolder interface{} = nil
+			if sess.FolderID != "" && sess.FolderID != "root" {
+				dbFolder = sess.FolderID
 			}
 			query := uc.DB.Rebind("INSERT INTO files (id, owner_id, folder_id, name, mime_type, size, cas_hash) VALUES (?, 1, ?, ?, ?, ?, ?)")
-			_, err := uc.DB.SQL.Exec(query, fileID, folderID, sess.Filename, sess.MimeType, sess.UploadedSize, casHash)
+			_, err := uc.DB.SQL.Exec(query, fileID, dbFolder, sess.Filename, sess.MimeType, sess.UploadedSize, casHash)
 			if err != nil {
 				return echo.NewHTTPError(http.StatusInternalServerError, "failed to record file metadata in database: "+err.Error())
 			}

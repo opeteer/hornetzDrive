@@ -3,7 +3,8 @@ package crypto
 import (
 	"crypto/aes"
 	"crypto/cipher"
-	"crypto/rand"
+	"crypto/hmac"
+	"crypto/sha256"
 	"encoding/binary"
 	"errors"
 	"io"
@@ -14,6 +15,7 @@ import (
 type EncryptStream struct {
 	w      io.Writer
 	aesgcm cipher.AEAD
+	key    []byte
 }
 
 func NewEncryptStream(w io.Writer, key []byte) (*EncryptStream, error) {
@@ -25,7 +27,9 @@ func NewEncryptStream(w io.Writer, key []byte) (*EncryptStream, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &EncryptStream{w: w, aesgcm: aesgcm}, nil
+	keyCopy := make([]byte, len(key))
+	copy(keyCopy, key)
+	return &EncryptStream{w: w, aesgcm: aesgcm, key: keyCopy}, nil
 }
 
 func (s *EncryptStream) Write(p []byte) (n int, err error) {
@@ -33,10 +37,11 @@ func (s *EncryptStream) Write(p []byte) (n int, err error) {
 		return 0, nil
 	}
 
-	nonce := make([]byte, NonceSize)
-	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-		return 0, err
-	}
+	// Convergent deterministic nonce derivation using HMAC-SHA256(key, chunk)
+	// Ensures identical plaintext produces identical ciphertext and CAS hash for deduplication
+	mac := hmac.New(sha256.New, s.key)
+	mac.Write(p)
+	nonce := mac.Sum(nil)[:NonceSize]
 
 	ciphertext := s.aesgcm.Seal(nil, nonce, p, nil)
 
@@ -125,4 +130,62 @@ func (s *DecryptStream) Read(p []byte) (n int, err error) {
 		s.buf = plaintext[n:]
 	}
 	return n, nil
+}
+
+// SeekTo skips forward to the requested plaintext byte offset in the stream.
+// If the underlying reader implements io.ReadSeeker, preceding chunks are skipped
+// on disk without decrypting them, eliminating sequential decryption DoS.
+func (s *DecryptStream) SeekTo(offset int64) error {
+	if offset < 0 {
+		return errors.New("negative offset not supported")
+	}
+	s.buf = nil
+	if offset == 0 {
+		return nil
+	}
+
+	seeker, isSeeker := s.r.(io.ReadSeeker)
+	if !isSeeker {
+		// Fallback to sequential discard
+		_, err := io.CopyN(io.Discard, s, offset)
+		return err
+	}
+
+	currentOffset := int64(0)
+	for currentOffset < offset {
+		lenBuf := make([]byte, 4)
+		if _, err := io.ReadFull(s.r, lenBuf); err != nil {
+			return err
+		}
+		chunkLen := binary.BigEndian.Uint32(lenBuf)
+		if chunkLen < TagSize || chunkLen > 50*1024*1024 {
+			return errors.New("invalid or excessive chunk length")
+		}
+		plainLen := int64(chunkLen - TagSize)
+		if currentOffset+plainLen <= offset {
+			// Skip this entire chunk on disk without decrypting
+			if _, err := seeker.Seek(int64(NonceSize)+int64(chunkLen), io.SeekCurrent); err != nil {
+				return err
+			}
+			currentOffset += plainLen
+		} else {
+			// The requested offset begins inside this chunk. Decrypt this chunk:
+			nonce := make([]byte, NonceSize)
+			if _, err := io.ReadFull(s.r, nonce); err != nil {
+				return err
+			}
+			ciphertext := make([]byte, chunkLen)
+			if _, err := io.ReadFull(s.r, ciphertext); err != nil {
+				return err
+			}
+			plaintext, err := s.aesgcm.Open(nil, nonce, ciphertext, nil)
+			if err != nil {
+				return errors.New("authentication failed")
+			}
+			skipInChunk := offset - currentOffset
+			s.buf = plaintext[skipInChunk:]
+			break
+		}
+	}
+	return nil
 }

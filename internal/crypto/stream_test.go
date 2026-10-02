@@ -159,3 +159,44 @@ func TestDecryptStream_BoundsChecks(t *testing.T) {
 	}
 }
 
+func TestDecryptStream_SeekTo(t *testing.T) {
+	vk := DummyVK()
+	// Write three chunks of 100 bytes each
+	var encBuf bytes.Buffer
+	encStream, err := NewEncryptStream(&encBuf, vk)
+	if err != nil {
+		t.Fatalf("NewEncryptStream failed: %v", err)
+	}
+
+	c1 := bytes.Repeat([]byte("A"), 100)
+	c2 := bytes.Repeat([]byte("B"), 100)
+	c3 := bytes.Repeat([]byte("C"), 100)
+
+	_, _ = encStream.Write(c1)
+	_, _ = encStream.Write(c2)
+	_, _ = encStream.Write(c3)
+
+	// Seek to offset 250 (inside chunk 3) using bytes.Reader which implements io.ReadSeeker
+	reader := bytes.NewReader(encBuf.Bytes())
+	decStream, err := NewDecryptStream(reader, vk)
+	if err != nil {
+		t.Fatalf("NewDecryptStream failed: %v", err)
+	}
+
+	if err := decStream.SeekTo(250); err != nil {
+		t.Fatalf("SeekTo failed: %v", err)
+	}
+
+	remaining := make([]byte, 50)
+	n, err := io.ReadFull(decStream, remaining)
+	if err != nil {
+		t.Fatalf("ReadFull failed: %v", err)
+	}
+	if n != 50 {
+		t.Fatalf("Expected 50 bytes, got %d", n)
+	}
+	if !bytes.Equal(remaining, bytes.Repeat([]byte("C"), 50)) {
+		t.Fatalf("Expected 50 'C' bytes, got %s", string(remaining))
+	}
+}
+
