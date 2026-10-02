@@ -27,7 +27,7 @@ func TestBreakpoint_TemplNestingAndGCDisable(t *testing.T) {
 
 			comp := MockNestedComponent{Depth: depth}
 			ctx := context.Background()
-
+			
 			// Render nested component
 			_, errRender := RenderStreamToString(ctx, TurboStreamItem{
 				Action:    StreamAppend,

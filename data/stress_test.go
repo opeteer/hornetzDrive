@@ -24,13 +24,13 @@ func TestStress_DatabaseContentionAndChaos(t *testing.T) {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
-
+			
 			// Context cancellation 15% of the time (1ms timeout)
 			timeout := 10 * time.Millisecond
 			if id%7 == 0 {
 				timeout = 1 * time.Microsecond // Trigger context timeout
 			}
-
+			
 			ctx, cancel := context.WithTimeout(context.Background(), timeout)
 			defer cancel()
 
@@ -45,10 +45,10 @@ func TestStress_DatabaseContentionAndChaos(t *testing.T) {
 				if id%5 == 0 {
 					panic("simulated chaos panic")
 				}
-
+				
 				// Simulate database work
 				time.Sleep(1 * time.Millisecond)
-
+				
 				if ctx.Err() != nil {
 					return ctx.Err() // Propagate timeout
 				}
@@ -68,6 +68,6 @@ func TestStress_DatabaseContentionAndChaos(t *testing.T) {
 	}
 
 	wg.Wait()
-	t.Logf("DB Stress Completed. Success: %d, Panics: %d, Timeouts: %d, Errors: %d",
+	t.Logf("DB Stress Completed. Success: %d, Panics: %d, Timeouts: %d, Errors: %d", 
 		successCount, panicRecoveryCount, timeoutCount, rollbackCount)
 }

@@ -41,7 +41,7 @@ func TestBreakpoint_RealtimeBroker_Escalation(t *testing.T) {
 	results := make([]BreakpointResult, 0)
 
 	for i, tier := range tiers {
-		t.Logf("=== Starting Escalation Tier %d: Subs=%d, Pubs=%d, Payload=%dKB ===",
+		t.Logf("=== Starting Escalation Tier %d: Subs=%d, Pubs=%d, Payload=%dKB ===", 
 			i+1, tier.Subscribers, tier.Publishers, tier.PayloadKB)
 
 		res := runTier(t, i+1, tier.Subscribers, tier.Publishers, tier.PayloadKB)
@@ -54,7 +54,7 @@ func TestBreakpoint_RealtimeBroker_Escalation(t *testing.T) {
 			t.Logf("💥 BREAKING POINT REACHED AT TIER %d!", i+1)
 			break
 		}
-
+		
 		// Force GC cleanup between tiers to reset baseline
 		runtime.GC()
 		time.Sleep(100 * time.Millisecond)

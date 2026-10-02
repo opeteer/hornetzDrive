@@ -8,7 +8,7 @@ import (
 // BenchmarkAssetManager_GetURL_Prod tests the speed of resolving hashed URLs in production.
 func BenchmarkAssetManager_GetURL_Prod(b *testing.B) {
 	tempDir := b.TempDir()
-
+	
 	manifestContent := `{"css/app.css": "css/app.a8f9b2.css", "js/app.js": "js/app.b7d8c1.js"}`
 	os.WriteFile(tempDir+"/manifest.json", []byte(manifestContent), 0644)
 

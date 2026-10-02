@@ -86,4 +86,17 @@ func TestProcessStruct_SliceOfPointers(t *testing.T) {
 	}
 }
 
-func TestProcessStruct_UnaddressableSliceError(t *testing.T) { t.Skip() }
+func TestProcessStruct_UnaddressableArrayError(t *testing.T) {
+	key := bytes.Repeat([]byte("k"), 32)
+	cs, _ := NewCipherSuite(key)
+
+	// Direct non-pointer array value (unaddressable)
+	users := [1]UserProfile{
+		{ID: "1", SSN: "111-11-1111"},
+	}
+
+	err := ProcessStruct(users, cs, true)
+	if err != ErrUnaddressableSlice {
+		t.Errorf("expected ErrUnaddressableSlice when passing unaddressable value array, got %v", err)
+	}
+}

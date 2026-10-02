@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"io/fs"
 	"net/http"
-	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -14,14 +14,14 @@ import (
 // DefaultAssetManager is the global asset manager instance used by the AssetURL helper.
 var DefaultAssetManager *AssetManager
 
-// AssetManager seamlessly bridges Development (live reload, un-hashed) and
+// AssetManager seamlessly bridges Development (live reload, un-hashed) and 
 // Production (embed.FS, hashed, immutable) static asset serving.
 type AssetManager struct {
-	fs          fs.FS
-	isDev       bool
-	urlPrefix   string
-	manifest    Manifest
-	startupTime int64
+	fs           fs.FS
+	isDev        bool
+	urlPrefix    string
+	manifest     Manifest
+	startupTime  int64
 }
 
 // NewAssetManager initializes a dual-mode asset engine.
@@ -77,39 +77,45 @@ func (am *AssetManager) Mount(e *echo.Echo) {
 // In Development: Appends a startup timestamp to bust cache (`/static/css/app.css?v=1695500000`)
 // In Production: Looks up the content-hashed filename from manifest (`/static/css/app.a8f9b2.css`)
 func (am *AssetManager) GetURL(assetPath string) string {
+	cleanPath := strings.TrimPrefix(assetPath, "/")
 	if am.isDev {
-		return fmt.Sprintf("%s/%s?v=%d", am.urlPrefix, assetPath, am.startupTime)
+		return fmt.Sprintf("%s/%s?v=%d", am.urlPrefix, cleanPath, am.startupTime)
 	}
 
-	// Look up hashed name in manifest
-	if hashedName, ok := am.manifest[assetPath]; ok {
+	// 1. Direct match with clean path (e.g. "css/app.css" or "app.css")
+	if hashedName, ok := am.manifest[cleanPath]; ok {
 		return fmt.Sprintf("%s/%s", am.urlPrefix, hashedName)
 	}
 
-	// Fallback to original name if manifest fails
-	return fmt.Sprintf("%s/%s", am.urlPrefix, assetPath)
+	// 2. Match with source "assets/" prefix stripped (e.g. "assets/css/app.css" -> "css/app.css")
+	trimmedAssets := strings.TrimPrefix(cleanPath, "assets/")
+	if hashedName, ok := am.manifest[trimmedAssets]; ok {
+		return fmt.Sprintf("%s/%s", am.urlPrefix, hashedName)
+	}
+
+	// 3. Basename match (e.g. "assets/css/app.css" -> "app.css")
+	base := filepath.Base(cleanPath)
+	if hashedName, ok := am.manifest[base]; ok {
+		return fmt.Sprintf("%s/%s", am.urlPrefix, hashedName)
+	}
+
+	// Fallback to original clean name if manifest fails
+	return fmt.Sprintf("%s/%s", am.urlPrefix, cleanPath)
 }
 
-// AssetURL is a global helper function designed to be called directly from
+// AssetURL is a global helper function designed to be called directly from 
 // Templ view components. E.g. <link rel="stylesheet" href={ fullstack.AssetURL("css/app.css") } />
 func AssetURL(assetPath string) string {
 	if DefaultAssetManager == nil {
 		// Fallback if AssetManager was not initialized
-		return "/static/" + assetPath
+		return "/static/" + strings.TrimPrefix(assetPath, "/")
 	}
 	return DefaultAssetManager.GetURL(assetPath)
 }
 
 // MountAssets is a convenience builder for wiring the asset manager quickly.
-func MountAssets(e *echo.Echo, dirPath string, isDev bool) error {
-	var fileSystem fs.FS
-	if isDev {
-		fileSystem = os.DirFS(dirPath)
-	} else {
-		// In a real application, you would pass your //go:embed fs.FS here
-		fileSystem = os.DirFS(dirPath) // Fallback for demonstration
-	}
-
+// In development, you can pass os.DirFS("dist"). In production, pass the embed.FS.
+func MountAssets(e *echo.Echo, fileSystem fs.FS, isDev bool) error {
 	am, err := NewAssetManager(fileSystem, isDev, "/static")
 	if err != nil {
 		return err

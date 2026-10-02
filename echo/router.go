@@ -449,7 +449,6 @@ func (r *DefaultRouter) Remove(method string, path string) error {
 	r.routes = append(r.routes[:rIndex], r.routes[rIndex+1:]...)
 
 	if !nodeToRemove.isHandler && nodeToRemove.isLeaf {
-		// TODO: if !nodeToRemove.isLeaf and has at least 2 children merge paths for remaining nodes?
 		current := nodeToRemove
 		for {
 			parent := current.parent
@@ -475,10 +474,16 @@ func (r *DefaultRouter) Remove(method string, path string) error {
 
 			parent.refreshLeaf()
 			if !parent.isLeaf || parent.isHandler {
+				// Pruning of empty leaves is done. Now, optionally compact the parent
+				// if it only has a single child left.
+				parent.compactNode()
 				break
 			}
 			current = parent
 		}
+	} else if !nodeToRemove.isHandler {
+		// Even if the removed node wasn't a leaf, it might now be eligible for compaction
+		nodeToRemove.compactNode()
 	}
 
 	return nil
@@ -794,6 +799,41 @@ func newNode(
 // is nil or an emptied-but-non-nil slice left behind after a removal.
 func (n *node) refreshLeaf() {
 	n.isLeaf = len(n.staticChildren) == 0 && n.paramChild == nil && n.anyChild == nil
+}
+
+// compactNode merges a node with its single static child if the node is not a handler
+// and has no other children, reducing the depth of the radix tree.
+func (n *node) compactNode() {
+	// Do not compact root node (parent == nil), handler nodes, or nodes with multiple/non-static children
+	if n.parent == nil || n.isHandler || len(n.staticChildren) != 1 || n.paramChild != nil || n.anyChild != nil {
+		return
+	}
+
+	child := n.staticChildren[0]
+
+	// Merge child into n
+	n.prefix += child.prefix
+	n.methods = child.methods
+	n.isHandler = child.isHandler
+	n.originalPath = child.originalPath
+	n.paramsCount = child.paramsCount
+	n.staticChildren = child.staticChildren
+	n.scLabels = child.scLabels
+	n.paramChild = child.paramChild
+	n.anyChild = child.anyChild
+
+	// Update parent pointers of adopted children
+	for _, c := range n.staticChildren {
+		c.parent = n
+	}
+	if n.paramChild != nil {
+		n.paramChild.parent = n
+	}
+	if n.anyChild != nil {
+		n.anyChild.parent = n
+	}
+
+	n.refreshLeaf()
 }
 
 func (n *node) addStaticChild(c *node) {

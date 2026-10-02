@@ -2,8 +2,6 @@ package main
 
 import (
 	"context"
-	"log"
-	"os"
 	"time"
 
 	"github.com/labstack/echo/v5"
@@ -18,42 +16,57 @@ import (
 	"ztatic-go-framework/internal/storage"
 	"ztatic-go-framework/internal/ui/components"
 	"ztatic-go-framework/internal/upload"
+	"ztatic-go-framework/log"
 	"ztatic-go-framework/realtime"
+	frameworkUpload "ztatic-go-framework/upload"
 )
 
-func getEnv(key, fallback string) string {
-	if value, ok := os.LookupEnv(key); ok {
-		return value
-	}
-	return fallback
+// AppConfig defines the type-safe environment configuration schema for Hornetz Drive.
+type AppConfig struct {
+	Port     string `env:"PORT" envDefault:"8071"`
+	DBDriver string `env:"DB_DRIVER" envDefault:"sqlite3"`
+	DBDSN    string `env:"DB_DSN" envDefault:"file:hornetz.db?cache=shared&mode=rwc&_journal_mode=WAL"`
+	CASDir   string `env:"CAS_DIR" envDefault:"storage/cas"`
+	TmpDir   string `env:"TMP_DIR" envDefault:"storage/tmp"`
 }
 
 func main() {
-	app := ztatic.NewSecure()
-	app.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c *echo.Context) error {
-			c.Response().Header().Set("Content-Security-Policy", "default-src * 'unsafe-inline' 'unsafe-eval' blob: data:; font-src * data:; style-src * 'unsafe-inline'; script-src * 'unsafe-inline' 'unsafe-eval' blob: https://cdn.tailwindcss.com https://cdn.skypack.dev https://cdn.jsdelivr.net;")
-			return next(c)
-		}
-	})
-
-	dbDriver := getEnv("DB_DRIVER", "sqlite3")
-	dbDsn := getEnv("DB_DSN", "file:hornetz.db?cache=shared&mode=rwc&_journal_mode=WAL")
-	port := getEnv("PORT", "8071")
-
-	dbEngine, err := data.NewDBEngine(dbDriver, dbDsn)
+	appCfg, err := ztatic.LoadConfig[AppConfig]()
 	if err != nil {
-		log.Fatalf("Failed to initialize DB: %v", err)
+		appCfg = &AppConfig{
+			Port:     "8071",
+			DBDriver: "sqlite3",
+			DBDSN:    "file:hornetz.db?cache=shared&mode=rwc&_journal_mode=WAL",
+			CASDir:   "storage/cas",
+			TmpDir:   "storage/tmp",
+		}
+	}
+
+	cfg := ztatic.DefaultConfig()
+	// Set Content-Security-Policy to allow Tailwind, Turbo, Alpine.js, and Google Fonts CDNs cleanly
+	cfg.Security.Headers.ContentSecurityPolicy = "default-src * 'unsafe-inline' 'unsafe-eval' blob: data:; font-src * data: https://fonts.gstatic.com; style-src * 'unsafe-inline' https://fonts.googleapis.com; script-src * 'unsafe-inline' 'unsafe-eval' blob: https://cdn.tailwindcss.com https://cdn.skypack.dev https://cdn.jsdelivr.net;"
+	// Allow client-side JavaScript (Alpine.js) to read _csrf cookie
+	cfg.Security.CSRF.CookieHTTPOnly = false
+	// Allow chunk uploads up to 50MB
+	cfg.Security.WAF.MaxBodySize = 50 * 1024 * 1024
+
+	app := ztatic.NewWithConfig(cfg)
+
+	dbEngine, err := data.NewDBEngine(appCfg.DBDriver, appCfg.DBDSN)
+	if err != nil {
+		log.Error("Failed to initialize DB", "error", err)
+		return
 	}
 	defer dbEngine.Close()
 
 	migrationEngine := data.NewMigrationEngine(dbEngine.SQL)
 	migDir := "data/migrations_sqlite3"
-	if dbDriver == "postgres" {
+	if appCfg.DBDriver == "postgres" {
 		migDir = "data/migrations_postgres"
 	}
-	if err := migrationEngine.RunMigrations(ztatic.MigrationFS, migDir, dbDriver); err != nil {
-		log.Fatalf("Failed to run migrations: %v", err)
+	if err := migrationEngine.RunMigrations(ztatic.MigrationFS, migDir, appCfg.DBDriver); err != nil {
+		log.Error("Failed to run migrations", "error", err)
+		return
 	}
 
 	broker := realtime.NewMemoryBroker()
@@ -62,18 +75,21 @@ func main() {
 	// Mount Static Assets from embedded FS
 	assetMgr, err := fullstack.NewAssetManager(ztatic.AssetsFS, false, "/assets")
 	if err != nil {
-		log.Fatalf("Failed to init asset manager: %v", err)
+		log.Error("Failed to init asset manager", "error", err)
+		return
 	}
 	assetMgr.Mount(app.Echo)
 
-	casEngine, err := storage.NewCASEngine("storage/cas")
+	casEngine, err := storage.NewCASEngine(appCfg.CASDir)
 	if err != nil {
-		log.Fatalf("Failed to init CAS Engine: %v", err)
+		log.Error("Failed to init CAS Engine", "error", err)
+		return
 	}
 
-	sessionMgr, err := upload.NewSessionManager("storage/tmp")
+	sessionMgr, err := upload.NewSessionManager(appCfg.TmpDir)
 	if err != nil {
-		log.Fatalf("Failed to init Session Manager: %v", err)
+		log.Error("Failed to init Session Manager", "error", err)
+		return
 	}
 
 	fileCtrl := &controllers.FileController{
@@ -107,8 +123,8 @@ func main() {
 
 	app.POST("/login", auth.LoginMock)
 
-	// Protected Upload Routes
-	uploadGroup := app.Group("/upload", auth.VaultKeyMiddleware())
+	// Protected Upload Routes with RouteLimit
+	uploadGroup := app.Group("/upload", auth.VaultKeyMiddleware(), frameworkUpload.RouteLimit(50*1024*1024))
 	uploadGroup.POST("/init", uploadCtrl.InitSession)
 	uploadGroup.PUT("/:session_id", uploadCtrl.UploadChunk)
 	uploadGroup.GET("/:session_id", uploadCtrl.GetStatus)
@@ -117,6 +133,8 @@ func main() {
 		return components.Dashboard(c).Render(c.Request().Context(), c.Response())
 	})
 
-	log.Println("Starting Hornetz Drive on :" + port + "...")
-	log.Fatal(app.Start(":" + port))
+	log.Info("Starting Hornetz Drive", "port", appCfg.Port, "driver", appCfg.DBDriver)
+	if err := app.Start(":" + appCfg.Port); err != nil {
+		log.Error("Server stopped", "error", err)
+	}
 }

@@ -46,7 +46,7 @@ func TestStress_MemoryLeakAndHeapPressure(t *testing.T) {
 	// Force GC and measure baseline for Render
 	runtime.GC()
 	runtime.ReadMemStats(&m1)
-
+	
 	// Stress Test 2: Deep Component Nesting (15 levels deep, 50,000 renders)
 	ctx := context.Background()
 	comp := MockNestedComponent{Depth: 15}
@@ -57,14 +57,14 @@ func TestStress_MemoryLeakAndHeapPressure(t *testing.T) {
 			Component: comp,
 		})
 	}
-
+	
 	runtime.ReadMemStats(&m2)
 	allocsRender := m2.Mallocs - m1.Mallocs
 	bytesRender := m2.TotalAlloc - m1.TotalAlloc
 
 	t.Logf("Asset Lookups (5M): Allocs=%d, BytesAllocated=%d", allocsURL, bytesURL)
 	t.Logf("Deep Renders (50k): Allocs=%d, BytesAllocated=%d", allocsRender, bytesRender)
-
+	
 	// Assert no runaway heap leaks (RSS check)
 	if m2.Alloc > 50*1024*1024 { // 50MB
 		t.Errorf("Heap usage too high, potential leak: %d bytes", m2.Alloc)

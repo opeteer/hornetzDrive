@@ -56,7 +56,7 @@ func TestMemoryBroker_Unsubscribe(t *testing.T) {
 	ctx := context.Background()
 
 	_, unsubscribe := broker.Subscribe(ctx, "room:101")
-
+	
 	// Unsubscribe immediately
 	unsubscribe()
 

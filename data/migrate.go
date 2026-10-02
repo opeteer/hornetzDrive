@@ -24,20 +24,22 @@ func NewMigrationEngine(db *sql.DB) *MigrationEngine {
 func (m *MigrationEngine) RunMigrations(fileSystem fs.FS, dir string, dialect string) error {
 	goose.SetBaseFS(fileSystem)
 	if err := goose.SetDialect(dialect); err != nil {
-		return fmt.Errorf("failed to set dialect: %w", err)
+		return fmt.Errorf("ztatic/data: failed to set dialect %s: %w", dialect, err)
 	}
 	if err := goose.Up(m.db, dir); err != nil {
-		return fmt.Errorf("failed to run migrations: %w", err)
+		return fmt.Errorf("ztatic/data: failed to run migrations: %w", err)
 	}
-	fmt.Printf("hornetzDrive/data: Successfully applied migrations for dialect '%s' from directory '%s'\n", dialect, dir)
 	return nil
 }
 
 // Rollback reverts the most recently applied migration (Goose Down).
-func (m *MigrationEngine) Rollback(dir string) error {
-	if err := goose.Down(m.db, dir); err != nil {
-		return fmt.Errorf("failed to rollback migration: %w", err)
+func (m *MigrationEngine) Rollback(fileSystem fs.FS, dir string, dialect string) error {
+	goose.SetBaseFS(fileSystem)
+	if err := goose.SetDialect(dialect); err != nil {
+		return fmt.Errorf("ztatic/data: failed to set dialect %s: %w", dialect, err)
 	}
-	fmt.Printf("hornetzDrive/data: Successfully rolled back last migration in directory '%s'\n", dir)
+	if err := goose.Down(m.db, dir); err != nil {
+		return fmt.Errorf("ztatic/data: failed to rollback migration: %w", err)
+	}
 	return nil
 }

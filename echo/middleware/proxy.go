@@ -23,7 +23,6 @@ import (
 	"github.com/labstack/echo/v5"
 )
 
-// TODO: Handle TLS proxy
 
 // ProxyConfig defines the config for Proxy middleware.
 type ProxyConfig struct {
@@ -87,13 +86,18 @@ type ProxyConfig struct {
 
 	// ModifyResponse defines function to modify response from ProxyTarget.
 	ModifyResponse func(*http.Response) error
+
+	// TLSConfig defines the default TLS configuration for all HTTPS upstream targets.
+	// It is used if a ProxyTarget does not provide its own TLSConfig and Transport is nil.
+	TLSConfig *tls.Config
 }
 
 // ProxyTarget defines the upstream target.
 type ProxyTarget struct {
-	Name string
-	URL  *url.URL
-	Meta map[string]any
+	Name      string
+	URL       *url.URL
+	Meta      map[string]any
+	TLSConfig *tls.Config // Custom TLS configuration for this specific target
 }
 
 // ProxyBalancer defines an interface to implement a load balancing technique.
@@ -129,14 +133,28 @@ var DefaultProxyConfig = ProxyConfig{
 
 func proxyRaw(c *echo.Context, t *ProxyTarget, config ProxyConfig) http.Handler {
 	var dialFunc func(ctx context.Context, network, addr string) (net.Conn, error)
+	
+	tlsConfig := t.TLSConfig
+	if tlsConfig == nil {
+		tlsConfig = config.TLSConfig
+	}
+	
 	if transport, ok := config.Transport.(*http.Transport); ok {
 		if transport.TLSClientConfig != nil {
-			d := tls.Dialer{
-				Config: transport.TLSClientConfig,
-			}
-			dialFunc = d.DialContext
+			tlsConfig = transport.TLSClientConfig
 		}
 	}
+	
+	if t.URL.Scheme == "https" || tlsConfig != nil {
+		if tlsConfig == nil {
+			tlsConfig = &tls.Config{InsecureSkipVerify: false}
+		}
+		d := tls.Dialer{
+			Config: tlsConfig,
+		}
+		dialFunc = d.DialContext
+	}
+	
 	if dialFunc == nil {
 		var d net.Dialer
 		dialFunc = d.DialContext
@@ -444,6 +462,26 @@ func proxyHTTP(c *echo.Context, tgt *ProxyTarget, config ProxyConfig) http.Handl
 		}
 	}
 	proxy.Transport = config.Transport
+	
+	if proxy.Transport == nil {
+		tlsConfig := tgt.TLSConfig
+		if tlsConfig == nil {
+			tlsConfig = config.TLSConfig
+		}
+		if tgt.URL.Scheme == "https" || tlsConfig != nil {
+			if tlsConfig == nil {
+				tlsConfig = &tls.Config{InsecureSkipVerify: false}
+			}
+			proxy.Transport = &http.Transport{
+				TLSClientConfig: tlsConfig,
+				DialContext: (&net.Dialer{
+					Timeout:   30 * time.Second,
+					KeepAlive: 30 * time.Second,
+				}).DialContext,
+			}
+		}
+	}
+	
 	proxy.ModifyResponse = config.ModifyResponse
 	return proxy
 }

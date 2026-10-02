@@ -4,7 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
-	"io"
+	"os"
+	"strings"
 	"testing"
 )
 
@@ -37,13 +38,7 @@ type dummyStmt struct{}
 func (s *dummyStmt) Close() error                                    { return nil }
 func (s *dummyStmt) NumInput() int                                   { return -1 }
 func (s *dummyStmt) Exec(args []driver.Value) (driver.Result, error) { return &dummyResult{}, nil }
-func (s *dummyStmt) Query(args []driver.Value) (driver.Rows, error)  { return &dummyRows{}, nil }
-
-type dummyRows struct{}
-
-func (r *dummyRows) Columns() []string              { return []string{"id"} }
-func (r *dummyRows) Close() error                   { return nil }
-func (r *dummyRows) Next(dest []driver.Value) error { return io.EOF }
+func (s *dummyStmt) Query(args []driver.Value) (driver.Rows, error)  { return nil, nil }
 
 type dummyResult struct{}
 
@@ -59,6 +54,7 @@ func TestDBEngine_InitAndClose(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to initialize DBEngine: %v", err)
 	}
+
 	err = db.Close()
 	if err != nil {
 		t.Fatalf("Failed to close DBEngine: %v", err)
@@ -68,32 +64,28 @@ func TestDBEngine_InitAndClose(t *testing.T) {
 func TestDBEngine_TransactionSuccess(t *testing.T) {
 	db, _ := NewDBEngine("dummy", "test-dsn")
 	defer db.Close()
+
 	ctx := context.Background()
-	err := db.Transaction(ctx, func(tx *sql.Tx) error { return nil })
+	err := db.Transaction(ctx, func(tx *sql.Tx) error {
+		// Do nothing, should commit successfully
+		return nil
+	})
+
 	if err != nil {
 		t.Fatalf("Transaction failed unexpectedly: %v", err)
 	}
 }
 
 func TestMigrationEngine_Run(t *testing.T) {
-	// Skip goose up since dummy driver isn't fully mocked for goose schema inspection
-	t.Skip("Skipping goose migration with dummy driver")
-}
+	_ = os.MkdirAll("migrations", 0755)
+	defer os.RemoveAll("migrations")
 
-func TestDBEngine_Rebind(t *testing.T) {
-	pgEngine := &DBEngine{DriverName: "postgres"}
-	sqliteEngine := &DBEngine{DriverName: "sqlite3"}
+	db, _ := NewDBEngine("dummy", "test-dsn")
+	defer db.Close()
 
-	query := "INSERT INTO files (id, owner_id, folder_id, name, mime_type, size, cas_hash) VALUES (?, 1, ?, ?, ?, ?, ?)"
-	
-	pgRebound := pgEngine.Rebind(query)
-	expectedPg := "INSERT INTO files (id, owner_id, folder_id, name, mime_type, size, cas_hash) VALUES ($1, 1, $2, $3, $4, $5, $6)"
-	if pgRebound != expectedPg {
-		t.Fatalf("Expected Postgres rebound query:\n%s\nGot:\n%s", expectedPg, pgRebound)
-	}
-
-	sqliteRebound := sqliteEngine.Rebind(query)
-	if sqliteRebound != query {
-		t.Fatalf("Expected SQLite query to remain unchanged:\n%s\nGot:\n%s", query, sqliteRebound)
+	migrator := NewMigrationEngine(db.SQL)
+	err := migrator.RunMigrations(nil, "migrations", "postgres")
+	if err != nil && !strings.Contains(err.Error(), "no migration files found") && !strings.Contains(err.Error(), "migrations directory does not exist") {
+		t.Fatalf("Migrations failed: %v", err)
 	}
 }

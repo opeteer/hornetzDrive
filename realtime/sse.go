@@ -1,8 +1,8 @@
 package realtime
 
 import (
-	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/labstack/echo/v5"
 )
@@ -22,7 +22,7 @@ func SSEHandler(broker EventBroker) echo.HandlerFunc {
 		res.Header().Set("Content-Type", "text/event-stream")
 		res.Header().Set("Cache-Control", "no-cache")
 		res.Header().Set("Connection", "keep-alive")
-
+		
 		// Disable proxy buffering for Nginx to ensure real-time packet delivery
 		res.Header().Set("X-Accel-Buffering", "no")
 
@@ -34,7 +34,7 @@ func SSEHandler(broker EventBroker) echo.HandlerFunc {
 		// Subscribe to the topic broker
 		ctx := c.Request().Context()
 		stream, unsubscribe := broker.Subscribe(ctx, topic)
-
+		
 		// Ensure cleanup when the HTTP request ends (client disconnects)
 		defer unsubscribe()
 
@@ -52,13 +52,23 @@ func SSEHandler(broker EventBroker) echo.HandlerFunc {
 
 				// W3C EventSource Format for Turbo Streams
 				// The native Turbo `<turbo-stream-from>` element listens for standard "message" events
-				// containing `<turbo-stream>` HTML in the data payload.
-				_, err := fmt.Fprintf(res, "event: message\ndata: %s\n\n", msg)
+				// containing `<turbo-stream>` HTML in the data payload. Multi-line payloads must prefix each line with "data: ".
+				lines := strings.Split(msg, "\n")
+				var buf strings.Builder
+				buf.WriteString("event: message\n")
+				for _, line := range lines {
+					buf.WriteString("data: ")
+					buf.WriteString(line)
+					buf.WriteByte('\n')
+				}
+				buf.WriteByte('\n')
+
+				_, err := res.Write([]byte(buf.String()))
 				if err != nil {
 					// Write error, client likely disconnected
 					return nil
 				}
-
+				
 				// Push the buffer to the client immediately
 				if flusher, ok := res.(http.Flusher); ok {
 					flusher.Flush()

@@ -2,83 +2,90 @@ package fullstack
 
 import (
 	"fmt"
+	"os"
+
+	"github.com/evanw/esbuild/pkg/api"
 )
 
-// In a non-sandbox production environment, uncomment this import:
-// import "github.com/evanw/esbuild/pkg/api"
-
-// --- Shim for sandbox compilation without network access ---
-type ESBuildAPI struct{}
-
-const (
-	ES2022          = 2022
-	SourceMapInline = 1
-	LoaderCSS       = "css"
-	LoaderJS        = "js"
-	LoaderTS        = "ts"
-)
-
-type BuildOptions struct {
-	EntryPoints       []string
-	Outdir            string
-	Bundle            bool
-	Write             bool
-	Target            int
-	MinifyWhitespace  bool
-	MinifyIdentifiers bool
-	MinifySyntax      bool
-	Sourcemap         int
-	Loader            map[string]string
-}
-
-type Message struct {
-	Text string
-}
-
-type BuildResult struct {
-	Errors []Message
-}
-
-func Build(opts BuildOptions) BuildResult {
-	// Stub simulating the native esbuild execution
-	return BuildResult{}
-}
-
-// --- End Shim ---
-
+// BundlerOptions defines user-configurable options for the asset compilation pipeline.
 type BundlerOptions struct {
 	EntryPoints  []string
 	OutDir       string
 	IsProduction bool
+	Target       string            // e.g. "es2022", "chrome100" (default: "es2022")
+	Define       map[string]string // Compile-time constant replacements (e.g. process.env.NODE_ENV)
+}
+
+// AssetBundleError represents a structured error returned when bundling fails.
+type AssetBundleError struct {
+	File    string
+	Line    int
+	Column  int
+	Message string
+	Snippet string
+}
+
+func (e *AssetBundleError) Error() string {
+	if e.File != "" {
+		return fmt.Sprintf("esbuild error in %s:%d:%d: %s", e.File, e.Line, e.Column, e.Message)
+	}
+	return fmt.Sprintf("esbuild error: %s", e.Message)
 }
 
 // BundleAssets invokes the native esbuild Go API to compile TypeScript, JavaScript, and CSS.
 // This runs entirely in Go memory in sub-10ms without requiring Node.js or npm.
-func BundleAssets(opts BundlerOptions) (*BuildResult, error) {
+func BundleAssets(opts BundlerOptions) (*api.BuildResult, error) {
 	if len(opts.EntryPoints) == 0 {
 		return nil, fmt.Errorf("esbuild bundle error: no entry points provided")
 	}
 
-	buildOpts := BuildOptions{
+	if err := os.MkdirAll(opts.OutDir, 0755); err != nil {
+		return nil, fmt.Errorf("esbuild failed to create output directory: %w", err)
+	}
+
+	sourcemap := api.SourceMapInline
+	if opts.IsProduction {
+		sourcemap = api.SourceMapLinked
+	}
+
+	buildOpts := api.BuildOptions{
 		EntryPoints:       opts.EntryPoints,
 		Outdir:            opts.OutDir,
 		Bundle:            true,
 		Write:             true,
-		Target:            ES2022,
+		Target:            api.ES2022,
 		MinifyWhitespace:  opts.IsProduction,
 		MinifyIdentifiers: opts.IsProduction,
 		MinifySyntax:      opts.IsProduction,
-		Sourcemap:         SourceMapInline,
-		Loader: map[string]string{
-			".css": LoaderCSS,
-			".js":  LoaderJS,
-			".ts":  LoaderTS,
+		Sourcemap:         sourcemap,
+		Define:            opts.Define,
+		Loader: map[string]api.Loader{
+			".css":   api.LoaderCSS,
+			".js":    api.LoaderJS,
+			".ts":    api.LoaderTS,
+			".tsx":   api.LoaderTSX,
+			".svg":   api.LoaderFile,
+			".png":   api.LoaderFile,
+			".jpg":   api.LoaderFile,
+			".woff2": api.LoaderFile,
 		},
+		LogLevel: api.LogLevelWarning,
 	}
 
-	result := Build(buildOpts)
+	result := api.Build(buildOpts)
+	
 	if len(result.Errors) > 0 {
-		return nil, fmt.Errorf("esbuild bundle error: %s", result.Errors[0].Text)
+		msg := result.Errors[0]
+		bundleErr := &AssetBundleError{
+			Message: msg.Text,
+		}
+		if msg.Location != nil {
+			bundleErr.File = msg.Location.File
+			bundleErr.Line = msg.Location.Line
+			bundleErr.Column = msg.Location.Column
+			bundleErr.Snippet = msg.Location.LineText
+		}
+		return &result, bundleErr
 	}
 
 	return &result, nil

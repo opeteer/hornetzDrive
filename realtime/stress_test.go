@@ -13,7 +13,7 @@ import (
 
 func TestStress_MemoryBroker_ConcurrencyAndChurn(t *testing.T) {
 	broker := NewMemoryBroker()
-
+	
 	// Run stress test for 3 seconds
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -35,7 +35,7 @@ func TestStress_MemoryBroker_ConcurrencyAndChurn(t *testing.T) {
 			defer wg.Done()
 			topic := topics[id%1000]
 			ch, unsub := broker.Subscribe(ctx, topic)
-
+			
 			// 20% are slow readers (Slowloris simulation)
 			isSlow := id%5 == 0
 
@@ -70,19 +70,19 @@ func TestStress_MemoryBroker_ConcurrencyAndChurn(t *testing.T) {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
-
+			
 			// Payload scaling: 1KB string
 			largePayload := make([]byte, 1024)
 			for j := range largePayload {
 				largePayload[j] = 'a'
 			}
-
+			
 			item := fullstack.TurboStreamItem{
 				Action:    fullstack.StreamUpdate,
 				Target:    "target",
 				Component: MockComponent{Content: string(largePayload)},
 			}
-
+			
 			for {
 				select {
 				case <-ctx.Done():

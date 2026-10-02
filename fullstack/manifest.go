@@ -9,15 +9,18 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
+
+var hashPattern = regexp.MustCompile(`\.[0-9a-f]{8}(\.[a-zA-Z0-9]+)?$`)
 
 // Manifest represents the mapping from original asset names to content-hashed asset names.
 // e.g., "js/app.js" -> "js/app.a8f9b2.js"
 type Manifest map[string]string
 
-// GenerateManifest walks the provided output directory, generates SHA-256 content hashes
-// for all files, renames them with the hash, and writes a manifest.json file.
+// GenerateManifest walks the provided output directory, generates SHA-256 content hashes 
+// for all files, copies them with the hash, and writes a manifest.json file.
 func GenerateManifest(outDir string) (Manifest, error) {
 	manifest := make(Manifest)
 
@@ -25,7 +28,14 @@ func GenerateManifest(outDir string) (Manifest, error) {
 		if err != nil {
 			return err
 		}
-		if info.IsDir() || filepath.Base(path) == "manifest.json" {
+		base := filepath.Base(path)
+		// Skip directories, hidden files (.gitkeep, .DS_Store), and manifest.json
+		if info.IsDir() || strings.HasPrefix(base, ".") || base == "manifest.json" {
+			return nil
+		}
+
+		// Skip already hashed files so repeated/incremental builds are idempotent
+		if hashPattern.MatchString(base) {
 			return nil
 		}
 
@@ -45,14 +55,17 @@ func GenerateManifest(outDir string) (Manifest, error) {
 		// Generate hashed filename: app.js -> app.a8f9b2.js
 		dir := filepath.Dir(path)
 		ext := filepath.Ext(path)
-		baseName := strings.TrimSuffix(filepath.Base(path), ext)
+		baseName := strings.TrimSuffix(base, ext)
 		hashedName := fmt.Sprintf("%s.%s%s", baseName, hashString, ext)
 		hashedPath := filepath.Join(dir, hashedName)
 
-		// Rename file
-		f.Close() // Close before rename
-		if err := os.Rename(path, hashedPath); err != nil {
-			return err
+		f.Close() // Close before copying
+
+		// Copy file to hashed name if not identical, leaving original intact for dev mode
+		if hashedPath != path {
+			if err := copyFile(path, hashedPath); err != nil {
+				return err
+			}
 		}
 
 		// Compute relative paths for manifest
@@ -101,4 +114,21 @@ func LoadManifest(fileSystem fs.FS, manifestPath string) (Manifest, error) {
 	}
 
 	return manifest, nil
+}
+
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	_, err = io.Copy(out, in)
+	return err
 }
