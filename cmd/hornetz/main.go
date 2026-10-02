@@ -18,6 +18,7 @@ import (
 	"ztatic-go-framework/internal/upload"
 	"ztatic-go-framework/log"
 	"ztatic-go-framework/realtime"
+	"ztatic-go-framework/security/web"
 	frameworkUpload "ztatic-go-framework/upload"
 )
 
@@ -103,8 +104,11 @@ func main() {
 	app.GET("/api/files", fileCtrl.GetFiles)
 	app.GET("/api/folders", fileCtrl.GetFolders)
 	app.POST("/api/folders", fileCtrl.CreateFolder)
+	app.DELETE("/api/folders/:id", fileCtrl.DeleteFolder)
+	app.PATCH("/api/folders/:id", fileCtrl.RenameFolder)
 	app.GET("/api/storage/stats", fileCtrl.GetStorageStats)
 	app.GET("/api/files/:id/download", fileCtrl.DownloadFile)
+	app.DELETE("/api/files/trash/empty", fileCtrl.EmptyTrash)
 	app.DELETE("/api/files/:id", fileCtrl.DeleteFile)
 	app.POST("/api/files/:id/restore", fileCtrl.RestoreFile)
 	app.POST("/api/files/:id/star", fileCtrl.StarFile)
@@ -129,22 +133,24 @@ func main() {
 	shuffler := &storage.ChitinShuffler{CAS: casEngine}
 	shuffler.StartBackgroundWorker(context.Background(), 6*time.Hour)
 
-	// Background reaper worker for stale upload sessions and temp files
+	// Background reaper worker for stale upload sessions, temp files, and expired vault keys
 	go func() {
 		ticker := time.NewTicker(1 * time.Hour)
 		defer ticker.Stop()
 		for range ticker.C {
 			sessionMgr.CleanupStaleSessions(24 * time.Hour)
+			auth.GlobalSessionStore.CleanupStaleKeys()
 		}
 	}()
 
-	app.POST("/login", auth.LoginMock)
+	app.POST("/login", auth.LoginMock, web.AdaptiveRateLimiterWithConfig(web.AuthRateLimiterConfig()))
 
 	// Protected Upload Routes with RouteLimit
 	uploadGroup := app.Group("/upload", auth.VaultKeyMiddleware(), frameworkUpload.RouteLimit(50*1024*1024))
 	uploadGroup.POST("/init", uploadCtrl.InitSession)
 	uploadGroup.PUT("/:session_id", uploadCtrl.UploadChunk)
 	uploadGroup.GET("/:session_id", uploadCtrl.GetStatus)
+	uploadGroup.DELETE("/:session_id", uploadCtrl.AbortSession)
 
 	app.GET("/", func(c *echo.Context) error {
 		return components.Dashboard(c).Render(c.Request().Context(), c.Response())

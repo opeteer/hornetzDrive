@@ -401,5 +401,62 @@ func TestUploadController_NonexistentFolderID_Rejection(t *testing.T) {
 	}
 }
 
+func TestUploadController_AbortSession_CleansTempFile(t *testing.T) {
+	e, ctrl := setupUploadTest(t)
+	e.DELETE("/upload/:session_id", ctrl.AbortSession)
+
+	sess, err := ctrl.SessionMgr.CreateSession(1, "f1", "abort_test.bin", "application/octet-stream", 1024)
+	if err != nil {
+		t.Fatalf("CreateSession failed: %v", err)
+	}
+
+	// Write some temp data
+	_ = os.WriteFile(sess.TempFilePath, []byte("temporary data"), 0644)
+	if _, err := os.Stat(sess.TempFilePath); os.IsNotExist(err) {
+		t.Fatalf("Temp file does not exist before abort")
+	}
+
+	req := httptest.NewRequest(http.MethodDelete, "/upload/"+sess.ID, nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Expected HTTP 200 on AbortSession, got %d", rec.Code)
+	}
+
+	// Verify temp file was removed
+	if _, err := os.Stat(sess.TempFilePath); !os.IsNotExist(err) {
+		t.Fatalf("Temp file was not cleaned up after abort")
+	}
+
+	// Verify session is deleted
+	if _, exists := ctrl.SessionMgr.GetSession(sess.ID); exists {
+		t.Fatalf("Session was not removed from SessionMgr")
+	}
+}
+
+func TestUploadController_GetStatus_CompletedSession(t *testing.T) {
+	e, ctrl := setupUploadTest(t)
+	e.GET("/upload/:session_id", ctrl.GetStatus)
+
+	// Simulate completed session stored in completedSessions cache
+	ctrl.completedSessions.Store("completed_sess_1", time.Now())
+
+	req := httptest.NewRequest(http.MethodGet, "/upload/completed_sess_1", nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Expected HTTP 200 for completed session status, got %d", rec.Code)
+	}
+
+	var res map[string]interface{}
+	json.Unmarshal(rec.Body.Bytes(), &res)
+	if res["status"] != "completed" {
+		t.Fatalf("Expected status 'completed', got %v", res["status"])
+	}
+}
+
+
 
 

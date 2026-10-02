@@ -421,7 +421,11 @@ templ Layout(title string) {
 			Alpine.store('drive', {
 				activeTab: 'storage',
 				searchQuery: '',
-				viewMode: 'grid',
+				viewMode: localStorage.getItem('hornetz_view_mode') || 'grid',
+				sortBy: 'created_at',
+				sortOrder: 'desc',
+				uploadQueue: [],
+				isProcessingQueue: false,
 				files: [],
 				folders: [],
 				selectedFile: null,
@@ -460,6 +464,19 @@ templ Layout(title string) {
 					} catch(e) {}
 				},
 
+				setViewMode(mode) {
+					this.viewMode = mode;
+					try {
+						localStorage.setItem('hornetz_view_mode', mode);
+					} catch(e) {}
+				},
+
+				setSort(by, order) {
+					this.sortBy = by;
+					this.sortOrder = order;
+					this.fetchFiles();
+				},
+
 				dismissModals() {
 					this.showVaultPasswordModal = false;
 					this.showCreateFolderModal = false;
@@ -489,12 +506,14 @@ templ Layout(title string) {
 					this.currentFolderId = folder.id;
 					this.currentFolderName = folder.name;
 					this.fetchFiles();
+					this.fetchFolders();
 				},
 
 				clearFolder() {
 					this.currentFolderId = '';
 					this.currentFolderName = '';
 					this.fetchFiles();
+					this.fetchFolders();
 				},
 
 				clearSearch() {
@@ -504,7 +523,7 @@ templ Layout(title string) {
 
 				async fetchFiles() {
 					try {
-						const url = `/api/files?tab=${this.activeTab}&q=${encodeURIComponent(this.searchQuery)}&folder_id=${encodeURIComponent(this.currentFolderId)}`;
+						const url = `/api/files?tab=${this.activeTab}&q=${encodeURIComponent(this.searchQuery)}&folder_id=${encodeURIComponent(this.currentFolderId)}&sort_by=${this.sortBy}&order=${this.sortOrder}`;
 						const res = await fetch(url);
 						if (res.ok) {
 							this.files = await res.json();
@@ -516,7 +535,7 @@ templ Layout(title string) {
 
 				async fetchFolders() {
 					try {
-						const url = `/api/folders?tab=${this.activeTab}`;
+						const url = `/api/folders?tab=${this.activeTab}&parent_id=${encodeURIComponent(this.currentFolderId)}`;
 						const res = await fetch(url);
 						if (res.ok) {
 							this.folders = await res.json();
@@ -632,6 +651,20 @@ templ Layout(title string) {
 					this.isDragging = true;
 				},
 
+				async computeSha256(file) {
+					if (!window.crypto || !window.crypto.subtle) return null;
+					if (file.size > 100 * 1024 * 1024) return null;
+					try {
+						const buffer = await file.arrayBuffer();
+						const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
+						const hashArray = Array.from(new Uint8Array(hashBuffer));
+						return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+					} catch(e) {
+						console.warn("Client hash compute skipped:", e);
+						return null;
+					}
+				},
+
 				async handleDrop(event) {
 					event.preventDefault();
 					this.dragCounter = 0;
@@ -639,9 +672,9 @@ templ Layout(title string) {
 					const dt = event.dataTransfer;
 					if (dt && dt.files && dt.files.length > 0) {
 						for (let i = 0; i < dt.files.length; i++) {
-							const isLast = (i === dt.files.length - 1);
-							await this.executeUpload(dt.files[i], isLast);
+							this.uploadQueue.push(dt.files[i]);
 						}
+						this.processUploadQueue();
 					}
 				},
 
@@ -649,13 +682,24 @@ templ Layout(title string) {
 					const files = event.target?.files;
 					if (files && files.length > 0) {
 						for (let i = 0; i < files.length; i++) {
-							const isLast = (i === files.length - 1);
-							await this.executeUpload(files[i], isLast);
+							this.uploadQueue.push(files[i]);
 						}
+						this.processUploadQueue();
 					}
 					if (event.target) {
 						event.target.value = "";
 					}
+				},
+
+				async processUploadQueue() {
+					if (this.isProcessingQueue) return;
+					this.isProcessingQueue = true;
+					while (this.uploadQueue.length > 0) {
+						const file = this.uploadQueue.shift();
+						const isLast = (this.uploadQueue.length === 0);
+						await this.executeUpload(file, isLast);
+					}
+					this.isProcessingQueue = false;
 				},
 
 				async executeUpload(file, isLast = true) {
@@ -669,24 +713,35 @@ templ Layout(title string) {
 					this.currentSpeedText = 'Menghubungkan...';
 					const uploadStartTime = performance.now();
 
+					let clientCasHash = "";
+					if (file.size <= 100 * 1024 * 1024) {
+						this.uploadStatusText = 'Status: Menghitung SHA-256';
+						clientCasHash = await this.computeSha256(file) || "";
+					}
+
 					let targetFolderId = this.currentFolderId;
 					if (!targetFolderId) {
 						targetFolderId = (this.activeTab === 'vault') ? 'f2' : 'f1';
 					}
 
 					try {
+						const initPayload = {
+							filename: file.name,
+							mime_type: file.type || "application/octet-stream",
+							size: file.size,
+							folder_id: targetFolderId
+						};
+						if (clientCasHash) {
+							initPayload.cas_hash = clientCasHash;
+						}
+
 						const initRes = await fetch("/upload/init", {
 							method: "POST",
 							headers: {
 								"Content-Type": "application/json",
 								"X-CSRF-Token": this.getCsrfToken()
 							},
-							body: JSON.stringify({
-								filename: file.name,
-								mime_type: file.type || "application/octet-stream",
-								size: file.size,
-								folder_id: targetFolderId
-							})
+							body: JSON.stringify(initPayload)
 						});
 
 						if (!initRes.ok) {
@@ -917,6 +972,74 @@ templ Layout(title string) {
 						this.fetchStorageStats();
 					} catch(err) {
 						alert("Gagal melakukan panic purge: " + err.message);
+					}
+				},
+
+				async emptyTrash() {
+					if (!confirm("Apakah Anda yakin ingin MENGOSONGKAN SAMPAH? Semua berkas di sampah akan dimusnahkan secara permanen.")) return;
+					try {
+						const res = await fetch("/api/files/trash/empty", {
+							method: "DELETE",
+							headers: {
+								"X-CSRF-Token": this.getCsrfToken()
+							}
+						});
+						if (res.ok) {
+							this.fetchFiles();
+							this.fetchFolders();
+							this.fetchStorageStats();
+						} else {
+							alert("Gagal mengosongkan sampah");
+						}
+					} catch(e) {
+						alert("Gagal mengosongkan sampah: " + e.message);
+					}
+				},
+
+				async deleteFolder(folder) {
+					if (!folder) return;
+					if (!confirm(`Hapus folder "${folder.name}" beserta isinya?`)) return;
+					try {
+						const res = await fetch(`/api/folders/${folder.id}`, {
+							method: "DELETE",
+							headers: {
+								"X-CSRF-Token": this.getCsrfToken()
+							}
+						});
+						if (res.ok) {
+							this.fetchFolders();
+							this.fetchFiles();
+							this.fetchStorageStats();
+						} else {
+							alert("Gagal menghapus folder");
+						}
+					} catch(e) {
+						alert("Gagal menghapus folder: " + e.message);
+					}
+				},
+
+				async renameFolder(folder) {
+					if (!folder) return;
+					const newName = prompt("Nama baru untuk folder:", folder.name);
+					if (!newName || !newName.trim() || newName.trim() === folder.name) return;
+					try {
+						const res = await fetch(`/api/folders/${folder.id}`, {
+							method: "PATCH",
+							headers: {
+								"Content-Type": "application/json",
+								"X-CSRF-Token": this.getCsrfToken()
+							},
+							body: JSON.stringify({ name: newName.trim() })
+						});
+						if (res.ok) {
+							this.fetchFolders();
+							this.fetchFiles();
+						} else {
+							const data = await res.json().catch(() => ({}));
+							alert(data.message || "Gagal mengubah nama folder");
+						}
+					} catch(e) {
+						alert("Gagal mengubah nama folder: " + e.message);
 					}
 				}
 			});

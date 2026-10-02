@@ -90,7 +90,7 @@ func DefaultCSRFConfig() middleware.CSRFConfig {
 			path := c.Request().URL.Path
 			// Sensitive mutating endpoints require CSRF protection
 			if path == "/api/purge" || strings.HasPrefix(path, "/api/files") || strings.HasPrefix(path, "/api/vault") || strings.HasPrefix(path, "/api/folders") {
-				if c.Request().Method == http.MethodPost || c.Request().Method == http.MethodDelete || c.Request().Method == http.MethodPut {
+				if c.Request().Method == http.MethodPost || c.Request().Method == http.MethodDelete || c.Request().Method == http.MethodPut || c.Request().Method == http.MethodPatch {
 					return false
 				}
 			}
@@ -128,6 +128,29 @@ func DefaultRateLimiterConfig() middleware.RateLimiterConfig {
 		DenyHandler: func(c *echo.Context, identifier string, err error) error {
 			c.Logger().Warn("Rate limit exceeded", "ip", identifier)
 			return echo.NewHTTPError(http.StatusTooManyRequests, "Rate limit exceeded. Please try again later.")
+		},
+	}
+}
+
+// AuthRateLimiterConfig returns a strict rate limiter for authentication endpoints like /login.
+func AuthRateLimiterConfig() middleware.RateLimiterConfig {
+	return middleware.RateLimiterConfig{
+		Skipper: middleware.DefaultSkipper,
+		Store: middleware.NewRateLimiterMemoryStoreWithConfig(
+			middleware.RateLimiterMemoryStoreConfig{
+				Rate:      5.0 / 60.0, // 5 requests per minute
+				Burst:     10,
+				ExpiresIn: 5 * time.Minute,
+			},
+		),
+		IdentifierExtractor: func(c *echo.Context) (string, error) {
+			return c.RealIP(), nil
+		},
+		ErrorHandler: func(c *echo.Context, err error) error {
+			return echo.NewHTTPError(http.StatusTooManyRequests, "Too Many Requests")
+		},
+		DenyHandler: func(c *echo.Context, identifier string, err error) error {
+			return echo.NewHTTPError(http.StatusTooManyRequests, "Too many login attempts. Please wait before trying again.")
 		},
 	}
 }

@@ -120,8 +120,19 @@ func TestFileController_GetFiles_FolderAndVaultFiltering(t *testing.T) {
 		}
 	}
 
-	// 2. Test vault tab filtering: tab=vault should return vault files (folder_id=f2)
+	// 2. Test vault tab filtering: unauthenticated tab=vault must return 401 Unauthorized (BUG-SEC-18)
+	reqVaultUnauth := httptest.NewRequest(http.MethodGet, "/api/files?tab=vault", nil)
+	recVaultUnauth := httptest.NewRecorder()
+	cVaultUnauth := e.NewContext(reqVaultUnauth, recVaultUnauth)
+	errUnauth := fileCtrl.GetFiles(cVaultUnauth)
+	if errUnauth == nil {
+		t.Fatalf("Expected 401 Unauthorized for unauthenticated vault access")
+	}
+
+	// Authenticated access with valid vault session
+	auth.GlobalSessionStore.SetKey("test_vault_sess", crypto.DummyVK())
 	reqVault := httptest.NewRequest(http.MethodGet, "/api/files?tab=vault", nil)
+	reqVault.AddCookie(&http.Cookie{Name: "swarm_session", Value: "test_vault_sess"})
 	recVault := httptest.NewRecorder()
 	cVault := e.NewContext(reqVault, recVault)
 	if err := fileCtrl.GetFiles(cVault); err != nil {
@@ -203,7 +214,7 @@ func TestFileController_DownloadFile_ContentLengthAndDecryption(t *testing.T) {
 	_, err = dbEngine.SQL.Exec(`
 		CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, salt BLOB NOT NULL, encrypted_vault_key BLOB NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);
 		CREATE TABLE folders (id TEXT PRIMARY KEY, owner_id INTEGER NOT NULL, parent_id TEXT, name TEXT NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);
-		CREATE TABLE files (id TEXT PRIMARY KEY, owner_id INTEGER NOT NULL, folder_id TEXT, name TEXT NOT NULL, mime_type TEXT NOT NULL, size BIGINT NOT NULL, cas_hash TEXT NOT NULL, encrypted_metadata BLOB, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+		CREATE TABLE files (id TEXT PRIMARY KEY, owner_id INTEGER NOT NULL, folder_id TEXT, name TEXT NOT NULL, mime_type TEXT NOT NULL, size BIGINT NOT NULL, cas_hash TEXT NOT NULL, encrypted_metadata BLOB, is_starred BOOLEAN DEFAULT FALSE, is_deleted BOOLEAN DEFAULT FALSE, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);
 	`)
 	if err != nil {
 		t.Fatalf("Migration failed: %v", err)
@@ -562,5 +573,190 @@ func TestFileController_NotFoundOnNonexistent(t *testing.T) {
 		t.Fatalf("Expected HTTP 404 for StarFile nonexistent, got %d", recStar.Code)
 	}
 }
+
+func TestFileController_DeleteFolder_And_RenameFolder(t *testing.T) {
+	e := echo.New()
+	dbEngine, err := data.NewDBEngine("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to create memory DB: %v", err)
+	}
+	defer dbEngine.Close()
+
+	_, _ = dbEngine.SQL.Exec(`
+		CREATE TABLE folders (id TEXT PRIMARY KEY, owner_id INTEGER NOT NULL, parent_id TEXT, name TEXT NOT NULL);
+		CREATE TABLE files (id TEXT PRIMARY KEY, owner_id INTEGER NOT NULL, folder_id TEXT, name TEXT NOT NULL, is_deleted BOOLEAN DEFAULT FALSE);
+		INSERT INTO folders (id, owner_id, parent_id, name) VALUES ('f_test', 1, NULL, 'Original Folder');
+		INSERT INTO files (id, owner_id, folder_id, name, is_deleted) VALUES ('file_inside', 1, 'f_test', 'test.txt', FALSE);
+	`)
+
+	fileCtrl := &FileController{DB: dbEngine}
+	e.DELETE("/api/folders/:id", fileCtrl.DeleteFolder)
+	e.PATCH("/api/folders/:id", fileCtrl.RenameFolder)
+
+	// 1. Rename folder
+	renameBody := `{"name": "Renamed Folder"}`
+	reqRename := httptest.NewRequest(http.MethodPatch, "/api/folders/f_test", strings.NewReader(renameBody))
+	reqRename.Header.Set("Content-Type", "application/json")
+	recRename := httptest.NewRecorder()
+	e.ServeHTTP(recRename, reqRename)
+
+	if recRename.Code != http.StatusOK {
+		t.Fatalf("RenameFolder returned %d: %s", recRename.Code, recRename.Body.String())
+	}
+
+	var folderName string
+	_ = dbEngine.SQL.QueryRow("SELECT name FROM folders WHERE id = 'f_test'").Scan(&folderName)
+	if folderName != "Renamed Folder" {
+		t.Fatalf("Expected folder name 'Renamed Folder', got %s", folderName)
+	}
+
+	// 2. Delete folder
+	reqDel := httptest.NewRequest(http.MethodDelete, "/api/folders/f_test", nil)
+	recDel := httptest.NewRecorder()
+	e.ServeHTTP(recDel, reqDel)
+
+	if recDel.Code != http.StatusOK {
+		t.Fatalf("DeleteFolder returned %d: %s", recDel.Code, recDel.Body.String())
+	}
+
+	var count int
+	_ = dbEngine.SQL.QueryRow("SELECT COUNT(*) FROM folders WHERE id = 'f_test'").Scan(&count)
+	if count != 0 {
+		t.Fatalf("Expected folder to be deleted from DB")
+	}
+
+	// Check that file was soft deleted
+	var isDeleted bool
+	_ = dbEngine.SQL.QueryRow("SELECT is_deleted FROM files WHERE id = 'file_inside'").Scan(&isDeleted)
+	if !isDeleted {
+		t.Fatalf("Expected file inside deleted folder to be marked deleted")
+	}
+}
+
+func TestFileController_EmptyTrash(t *testing.T) {
+	e := echo.New()
+	dbEngine, err := data.NewDBEngine("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to create memory DB: %v", err)
+	}
+	defer dbEngine.Close()
+
+	_, _ = dbEngine.SQL.Exec(`
+		CREATE TABLE files (id TEXT PRIMARY KEY, owner_id INTEGER NOT NULL, folder_id TEXT, name TEXT NOT NULL, cas_hash TEXT NOT NULL, is_deleted BOOLEAN DEFAULT FALSE);
+		INSERT INTO files (id, owner_id, folder_id, name, cas_hash, is_deleted) VALUES 
+			('f_active', 1, 'f1', 'active.txt', 'hash1', FALSE),
+			('f_trash1', 1, 'f1', 'del1.txt', 'hash2', TRUE),
+			('f_trash2', 1, 'f1', 'del2.txt', 'hash3', TRUE);
+	`)
+
+	fileCtrl := &FileController{DB: dbEngine}
+	e.DELETE("/api/files/trash/empty", fileCtrl.EmptyTrash)
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/files/trash/empty", nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("EmptyTrash returned %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var totalFiles, trashFiles int
+	_ = dbEngine.SQL.QueryRow("SELECT COUNT(*) FROM files").Scan(&totalFiles)
+	_ = dbEngine.SQL.QueryRow("SELECT COUNT(*) FROM files WHERE is_deleted = TRUE").Scan(&trashFiles)
+
+	if totalFiles != 1 || trashFiles != 0 {
+		t.Fatalf("Expected only 1 active file left and 0 trash files, got %d total, %d trash", totalFiles, trashFiles)
+	}
+}
+
+func TestFileController_RangeRequest_And_DeletedDownload(t *testing.T) {
+	e := echo.New()
+	dbEngine, err := data.NewDBEngine("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to create memory DB: %v", err)
+	}
+	defer dbEngine.Close()
+
+	_, _ = dbEngine.SQL.Exec(`
+		CREATE TABLE files (id TEXT PRIMARY KEY, owner_id INTEGER NOT NULL, folder_id TEXT, name TEXT NOT NULL, mime_type TEXT NOT NULL, size BIGINT NOT NULL, cas_hash TEXT NOT NULL, is_deleted BOOLEAN DEFAULT FALSE);
+		INSERT INTO files (id, owner_id, folder_id, name, mime_type, size, cas_hash, is_deleted) VALUES 
+			('mock_active', 1, 'f1', 'test.txt', 'text/plain', 50, 'hash1', FALSE),
+			('mock_trashed', 1, 'f1', 'trash.txt', 'text/plain', 50, 'hash2', TRUE);
+	`)
+
+	fileCtrl := &FileController{DB: dbEngine}
+	e.GET("/api/files/:id/download", fileCtrl.DownloadFile)
+
+	// 1. Download trashed file -> 404 (BUG-SEC-21)
+	reqTrash := httptest.NewRequest(http.MethodGet, "/api/files/mock_trashed/download", nil)
+	recTrash := httptest.NewRecorder()
+	e.ServeHTTP(recTrash, reqTrash)
+	if recTrash.Code != http.StatusNotFound {
+		t.Fatalf("Expected HTTP 404 downloading trashed file, got %d", recTrash.Code)
+	}
+
+	// 2. HTTP Range request bytes=0-10 -> 206 Partial Content (BUG-SYS-20)
+	reqRange := httptest.NewRequest(http.MethodGet, "/api/files/mock_active/download", nil)
+	reqRange.Header.Set("Range", "bytes=0-10")
+	recRange := httptest.NewRecorder()
+	e.ServeHTTP(recRange, reqRange)
+
+	if recRange.Code != http.StatusPartialContent {
+		t.Fatalf("Expected HTTP 206 Partial Content for range request, got %d", recRange.Code)
+	}
+	if recRange.Header().Get("Accept-Ranges") != "bytes" {
+		t.Errorf("Expected Accept-Ranges: bytes, got %q", recRange.Header().Get("Accept-Ranges"))
+	}
+	if !strings.HasPrefix(recRange.Header().Get("Content-Range"), "bytes 0-10/") {
+		t.Errorf("Unexpected Content-Range: %q", recRange.Header().Get("Content-Range"))
+	}
+	if len(recRange.Body.Bytes()) != 11 {
+		t.Errorf("Expected 11 bytes returned for bytes=0-10, got %d", len(recRange.Body.Bytes()))
+	}
+}
+
+func TestFileController_SortAndPagination(t *testing.T) {
+	e := echo.New()
+	dbEngine, err := data.NewDBEngine("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to create memory DB: %v", err)
+	}
+	defer dbEngine.Close()
+
+	_, _ = dbEngine.SQL.Exec(`
+		CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, salt BLOB NOT NULL, encrypted_vault_key BLOB NOT NULL);
+		CREATE TABLE folders (id TEXT PRIMARY KEY, owner_id INTEGER NOT NULL, parent_id TEXT, name TEXT NOT NULL);
+		CREATE TABLE files (id TEXT PRIMARY KEY, owner_id INTEGER NOT NULL, folder_id TEXT, name TEXT NOT NULL, mime_type TEXT NOT NULL, size BIGINT NOT NULL, cas_hash TEXT NOT NULL, is_starred BOOLEAN DEFAULT FALSE, is_deleted BOOLEAN DEFAULT FALSE, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+		INSERT INTO users (id, email, password_hash, salt, encrypted_vault_key) VALUES (1, 'u', 'p', 's', 'k');
+		INSERT INTO files (id, owner_id, folder_id, name, mime_type, size, cas_hash, is_starred, is_deleted, created_at) VALUES 
+			('f1', 1, 'folder1', 'alpha.txt', 'text/plain', 100, 'h1', FALSE, FALSE, '2026-01-01 10:00:00'),
+			('f2', 1, 'folder1', 'beta.txt', 'text/plain', 500, 'h2', FALSE, FALSE, '2026-01-02 10:00:00'),
+			('f3', 1, 'folder1', 'gamma.txt', 'text/plain', 300, 'h3', FALSE, FALSE, '2026-01-03 10:00:00');
+	`)
+
+	fileCtrl := &FileController{DB: dbEngine}
+	e.GET("/api/files", fileCtrl.GetFiles)
+
+	// Sort by name ASC
+	reqSort := httptest.NewRequest(http.MethodGet, "/api/files?sort_by=name&order=asc", nil)
+	recSort := httptest.NewRecorder()
+	e.ServeHTTP(recSort, reqSort)
+	var sortedFiles []FileRecord
+	json.Unmarshal(recSort.Body.Bytes(), &sortedFiles)
+	if len(sortedFiles) != 3 || sortedFiles[0].Name != "alpha.txt" || sortedFiles[2].Name != "gamma.txt" {
+		t.Fatalf("Unexpected sort by name asc result: %+v", sortedFiles)
+	}
+
+	// Pagination limit=1&offset=1
+	reqPage := httptest.NewRequest(http.MethodGet, "/api/files?sort_by=name&order=asc&limit=1&offset=1", nil)
+	recPage := httptest.NewRecorder()
+	e.ServeHTTP(recPage, reqPage)
+	var pagedFiles []FileRecord
+	json.Unmarshal(recPage.Body.Bytes(), &pagedFiles)
+	if len(pagedFiles) != 1 || pagedFiles[0].Name != "beta.txt" {
+		t.Fatalf("Unexpected paged result: %+v", pagedFiles)
+	}
+}
+
 
 

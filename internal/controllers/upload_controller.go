@@ -8,7 +8,9 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
+
 	"github.com/labstack/echo/v5"
 	"ztatic-go-framework/data"
 	"ztatic-go-framework/fullstack"
@@ -19,10 +21,11 @@ import (
 )
 
 type UploadController struct {
-	SessionMgr *upload.SessionManager
-	CAS        *storage.CASEngine
-	Broker     *realtime.MemoryBroker
-	DB         *data.DBEngine
+	SessionMgr        *upload.SessionManager
+	CAS               *storage.CASEngine
+	Broker            *realtime.MemoryBroker
+	DB                *data.DBEngine
+	completedSessions sync.Map
 }
 
 type ProgressBarComponent struct {
@@ -169,6 +172,7 @@ func (uc *UploadController) UploadChunk(c *echo.Context) error {
 		if err != nil {
 			return echo.NewHTTPError(http.StatusInternalServerError, "cas storage failed")
 		}
+		uc.completedSessions.Store(sess.ID, time.Now())
 		uc.SessionMgr.DeleteSession(sess.ID)
 
 		if uc.DB != nil && uc.DB.SQL != nil {
@@ -200,6 +204,15 @@ func (uc *UploadController) GetStatus(c *echo.Context) error {
 	sessionID := c.Param("session_id")
 	sess, exists := uc.SessionMgr.GetSession(sessionID)
 	if !exists {
+		if val, ok := uc.completedSessions.Load(sessionID); ok {
+			completedAt := val.(time.Time)
+			if time.Since(completedAt) < 2*time.Minute {
+				return c.JSON(http.StatusOK, map[string]interface{}{
+					"status": "completed",
+				})
+			}
+			uc.completedSessions.Delete(sessionID)
+		}
 		return echo.NewHTTPError(http.StatusNotFound, "session not found")
 	}
 
@@ -207,6 +220,29 @@ func (uc *UploadController) GetStatus(c *echo.Context) error {
 		"status":   "incomplete",
 		"uploaded": sess.UploadedSize,
 		"expected": sess.ExpectedSize,
+	})
+}
+
+func (uc *UploadController) AbortSession(c *echo.Context) error {
+	sessionID := c.Param("session_id")
+	sess, exists := uc.SessionMgr.GetSession(sessionID)
+	if !exists {
+		return echo.NewHTTPError(http.StatusNotFound, "session not found")
+	}
+
+	sess.Mu.Lock()
+	tempPath := sess.TempFilePath
+	sess.Mu.Unlock()
+
+	uc.SessionMgr.DeleteSession(sessionID)
+	uc.completedSessions.Delete(sessionID)
+	if tempPath != "" {
+		_ = os.Remove(tempPath)
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{
+		"status":  "aborted",
+		"message": "upload session cancelled and temporary data cleaned",
 	})
 }
 

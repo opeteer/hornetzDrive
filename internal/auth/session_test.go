@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/labstack/echo/v5"
 
@@ -148,4 +149,32 @@ func TestLockVault(t *testing.T) {
 		t.Fatalf("Expected key to be removed from GlobalSessionStore after LockVault")
 	}
 }
+
+func TestSessionStore_CleanupStaleKeys(t *testing.T) {
+	sessionStore := &SessionStore{
+		vaultKeys: make(map[string]sessionEntry),
+	}
+
+	// 1. Add expired key (-1 hour)
+	sessionStore.SetKeyWithTTL("expired_sess", []byte("12345678123456781234567812345678"), -1*time.Hour)
+	// 2. Add valid key (+1 hour)
+	sessionStore.SetKeyWithTTL("valid_sess", []byte("12345678123456781234567812345678"), 1*time.Hour)
+
+	if sessionStore.HasKey("expired_sess") {
+		t.Fatalf("Expected expired_sess to return false on HasKey")
+	}
+	if !sessionStore.HasKey("valid_sess") {
+		t.Fatalf("Expected valid_sess to return true on HasKey")
+	}
+
+	cleaned := sessionStore.CleanupStaleKeys()
+	if cleaned != 1 {
+		t.Fatalf("Expected 1 key cleaned, got %d", cleaned)
+	}
+
+	if _, exists := sessionStore.GetKey("valid_sess"); !exists {
+		t.Fatalf("Expected valid_sess to remain active")
+	}
+}
+
 

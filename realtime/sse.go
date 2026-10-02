@@ -3,6 +3,7 @@ package realtime
 import (
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/labstack/echo/v5"
 )
@@ -39,11 +40,22 @@ func SSEHandler(broker EventBroker) echo.HandlerFunc {
 		defer unsubscribe()
 
 		// Keep-alive Streaming Loop
+		ticker := time.NewTicker(25 * time.Second)
+		defer ticker.Stop()
+
 		for {
 			select {
 			case <-ctx.Done():
 				// Client disconnected (e.g., closed browser tab or navigated away)
 				return nil
+			case <-ticker.C:
+				// SSE comment heartbeat to prevent reverse proxies from dropping idle connections
+				if _, err := res.Write([]byte(": keepalive\n\n")); err != nil {
+					return nil
+				}
+				if flusher, ok := res.(http.Flusher); ok {
+					flusher.Flush()
+				}
 			case msg, ok := <-stream:
 				if !ok {
 					// Stream closed by broker

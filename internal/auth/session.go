@@ -14,46 +14,81 @@ import (
 
 // SessionStore holds RAM-only Vault Keys mapped by a volatile Session ID.
 // If the server restarts, or a panic purge is triggered, these keys are irrevocably lost.
+type sessionEntry struct {
+	key       []byte
+	expiresAt time.Time
+}
+
 type SessionStore struct {
 	mu        sync.RWMutex
-	vaultKeys map[string][]byte
+	vaultKeys map[string]sessionEntry
 }
 
 var GlobalSessionStore = &SessionStore{
-	vaultKeys: make(map[string][]byte),
+	vaultKeys: make(map[string]sessionEntry),
 }
 
-// SetKey stores the Vault Key in RAM.
+// SetKey stores the Vault Key in RAM with a 24-hour expiration.
 func (s *SessionStore) SetKey(sessionID string, vk []byte) {
+	s.SetKeyWithTTL(sessionID, vk, 24*time.Hour)
+}
+
+// SetKeyWithTTL stores the Vault Key in RAM with a specific TTL.
+func (s *SessionStore) SetKeyWithTTL(sessionID string, vk []byte, ttl time.Duration) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.vaultKeys[sessionID] = vk
+	s.vaultKeys[sessionID] = sessionEntry{
+		key:       vk,
+		expiresAt: time.Now().Add(ttl),
+	}
 }
 
-// GetKey retrieves the Vault Key from RAM.
+// GetKey retrieves the Vault Key from RAM if not expired.
 func (s *SessionStore) GetKey(sessionID string) ([]byte, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	vk, ok := s.vaultKeys[sessionID]
-	return vk, ok
+	entry, ok := s.vaultKeys[sessionID]
+	if !ok || time.Now().After(entry.expiresAt) {
+		return nil, false
+	}
+	return entry.key, true
 }
 
 // DeleteKey removes a specific Vault Key from RAM.
 func (s *SessionStore) DeleteKey(sessionID string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if vk, ok := s.vaultKeys[sessionID]; ok {
-		rand.Read(vk)
+	if entry, ok := s.vaultKeys[sessionID]; ok {
+		rand.Read(entry.key)
 		delete(s.vaultKeys, sessionID)
 	}
 }
 
-// HasKey checks if a Vault Key exists in RAM for the session.
+// HasKey checks if a non-expired Vault Key exists in RAM for the session.
 func (s *SessionStore) HasKey(sessionID string) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	_, ok := s.vaultKeys[sessionID]
-	return ok
+	entry, ok := s.vaultKeys[sessionID]
+	if !ok || time.Now().After(entry.expiresAt) {
+		return false
+	}
+	return true
+}
+
+// CleanupStaleKeys removes expired session keys from RAM.
+func (s *SessionStore) CleanupStaleKeys() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := time.Now()
+	cleaned := 0
+	for id, entry := range s.vaultKeys {
+		if now.After(entry.expiresAt) {
+			rand.Read(entry.key)
+			delete(s.vaultKeys, id)
+			cleaned++
+		}
+	}
+	return cleaned
 }
 
 // Purge completely obliterates all Vault Keys from RAM.
@@ -61,8 +96,8 @@ func (s *SessionStore) Purge() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	// Overwrite existing keys with random bytes before deletion to prevent memory forensics
-	for k, vk := range s.vaultKeys {
-		rand.Read(vk)
+	for k, entry := range s.vaultKeys {
+		rand.Read(entry.key)
 		delete(s.vaultKeys, k)
 	}
 }
