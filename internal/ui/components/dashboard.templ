@@ -134,7 +134,7 @@ templ DashboardContent() {
 							<div class="mt-2">
 								<div class="font-semibold text-xs text-white truncate group-hover:text-[#FACC15] transition-colors" x-text="file.name"></div>
 								<div class="flex justify-between text-[10px] text-[#A19A8F] font-mono mt-1">
-									<span x-text="(file.size / 1024 > 1024) ? (file.size / (1024*1024)).toFixed(1) + ' MB' : (file.size / 1024).toFixed(1) + ' KB'"></span>
+									<span x-text="(file.size >= 1073741824) ? (file.size / 1073741824).toFixed(2) + ' GB' : (file.size >= 1048576) ? (file.size / 1048576).toFixed(1) + ' MB' : (file.size / 1024).toFixed(1) + ' KB'"></span>
 									<span class="text-emerald-400 font-semibold">DATABASE</span>
 								</div>
 							</div>
@@ -160,7 +160,7 @@ templ DashboardContent() {
 								</div>
 							</div>
 							<div class="flex items-center gap-6 text-xs font-mono">
-								<span class="text-[#A19A8F]" x-text="(file.size / 1024 > 1024) ? (file.size / (1024*1024)).toFixed(1) + ' MB' : (file.size / 1024).toFixed(1) + ' KB'"></span>
+								<span class="text-[#A19A8F]" x-text="(file.size >= 1073741824) ? (file.size / 1073741824).toFixed(2) + ' GB' : (file.size >= 1048576) ? (file.size / 1048576).toFixed(1) + ' MB' : (file.size / 1024).toFixed(1) + ' KB'"></span>
 								<span class="px-2 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded font-semibold text-[10px]">DATABASE</span>
 								<button class="text-[#FACC15] hover:underline font-bold">Detail →</button>
 							</div>
@@ -190,7 +190,7 @@ templ DashboardContent() {
 						</div>
 						<div>
 							<h3 class="font-bold text-base text-white" x-text="$store.drive.selectedFile ? $store.drive.selectedFile.name : ''"></h3>
-							<p class="text-xs text-[#A19A8F] font-mono" x-text="$store.drive.selectedFile ? `Ukuran: ${($store.drive.selectedFile.size / 1024).toFixed(1)} KB` : ''"></p>
+							<p class="text-xs text-[#A19A8F] font-mono" x-text="$store.drive.selectedFile ? 'Ukuran: ' + ($store.drive.selectedFile.size >= 1073741824 ? ($store.drive.selectedFile.size / 1073741824).toFixed(2) + ' GB' : $store.drive.selectedFile.size >= 1048576 ? ($store.drive.selectedFile.size / 1048576).toFixed(1) + ' MB' : ($store.drive.selectedFile.size / 1024).toFixed(1) + ' KB') : ''"></p>
 						</div>
 					</div>
 					<button @click="$store.drive.selectedFile = null" class="text-[#A19A8F] hover:text-white text-lg">✕</button>

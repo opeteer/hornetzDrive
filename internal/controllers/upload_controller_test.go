@@ -9,6 +9,7 @@ import (
 
 	"github.com/labstack/echo/v5"
 
+	"ztatic-go-framework/data"
 	"ztatic-go-framework/internal/crypto"
 	"ztatic-go-framework/internal/storage"
 	"ztatic-go-framework/internal/upload"
@@ -153,3 +154,64 @@ func TestUploadController_WithCSRFProtection(t *testing.T) {
 		t.Fatalf("Expected HTTP 201 with valid CSRF token, got %d (body: %s)", rec2.Code, rec2.Body.String())
 	}
 }
+
+func TestUploadController_LargeFileMetadataOver2GB(t *testing.T) {
+	e, ctrl := setupUploadTest(t)
+
+	dbEngine, err := data.NewDBEngine("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to create memory DB: %v", err)
+	}
+	defer dbEngine.Close()
+
+	_, err = dbEngine.SQL.Exec(`
+		CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, salt BLOB NOT NULL, encrypted_vault_key BLOB NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+		CREATE TABLE folders (id TEXT PRIMARY KEY, owner_id INTEGER NOT NULL, parent_id TEXT, name TEXT NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+		CREATE TABLE files (id TEXT PRIMARY KEY, owner_id INTEGER NOT NULL, folder_id TEXT, name TEXT NOT NULL, mime_type TEXT NOT NULL, size BIGINT NOT NULL, cas_hash TEXT NOT NULL, encrypted_metadata BLOB, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+		INSERT INTO users (id, email, password_hash, salt, encrypted_vault_key) VALUES (1, 'test@hornetz.io', 'hash', 'salt', 'vk');
+		INSERT INTO folders (id, owner_id, parent_id, name) VALUES ('f1', 1, NULL, 'Test Folder');
+	`)
+	if err != nil {
+		t.Fatalf("DB setup failed: %v", err)
+	}
+
+	ctrl.DB = dbEngine
+
+	// 4,064,980,992 bytes (~4.06 GB, > 2^31 - 1 = 2,147,483,647)
+	largeFileSize := int64(4064980992)
+	sess, err := ctrl.SessionMgr.CreateSession(1, "f1", "ultramarine-plasma-44-live-anaconda-x86_64.iso", "application/x-iso9660-image", largeFileSize)
+	if err != nil {
+		t.Fatalf("CreateSession failed: %v", err)
+	}
+
+	// Fast-forward UploadedSize to largeFileSize to simulate completing byte transmission
+	sess.UploadedSize = largeFileSize
+
+	req := httptest.NewRequest(http.MethodPut, "/upload/"+sess.ID, bytes.NewReader([]byte{}))
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetPathValues(echo.PathValues{{Name: "session_id", Value: sess.ID}})
+	c.Set("vault_key", crypto.DummyVK())
+
+	if err := ctrl.UploadChunk(c); err != nil {
+		t.Fatalf("UploadChunk error: %v", err)
+	}
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Expected HTTP 200 on completion, got %d, body: %s", rec.Code, rec.Body.String())
+	}
+
+	var rowSize int64
+	var rowName string
+	err = dbEngine.SQL.QueryRow("SELECT name, size FROM files WHERE size > 2147483647").Scan(&rowName, &rowSize)
+	if err != nil {
+		t.Fatalf("Failed to query inserted large file: %v", err)
+	}
+	if rowSize != largeFileSize {
+		t.Fatalf("Expected size %d, got %d", largeFileSize, rowSize)
+	}
+	if rowName != "ultramarine-plasma-44-live-anaconda-x86_64.iso" {
+		t.Fatalf("Expected filename 'ultramarine-plasma-44-live-anaconda-x86_64.iso', got %s", rowName)
+	}
+}
+

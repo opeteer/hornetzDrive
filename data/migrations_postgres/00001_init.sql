@@ -27,7 +27,7 @@ CREATE TABLE files (
     folder_id TEXT,
     name TEXT NOT NULL,
     mime_type TEXT NOT NULL,
-    size INTEGER NOT NULL,
+    size BIGINT NOT NULL,
     cas_hash TEXT NOT NULL, -- The SHA-256 content addressable hash
     encrypted_metadata BYTEA,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
