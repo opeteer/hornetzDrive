@@ -11,6 +11,7 @@ import (
 )
 
 type Session struct {
+	Mu           sync.Mutex
 	ID           string
 	OwnerID      int
 	FolderID     string

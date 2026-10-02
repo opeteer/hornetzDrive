@@ -8,12 +8,14 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/labstack/echo/v5"
 	_ "github.com/mattn/go-sqlite3"
 
 	"ztatic-go-framework/data"
+	"ztatic-go-framework/internal/auth"
 	"ztatic-go-framework/internal/crypto"
 	"ztatic-go-framework/internal/storage"
 )
@@ -429,4 +431,136 @@ func TestFileController_DeleteRestoreAndStar(t *testing.T) {
 		t.Fatalf("Expected CAS blob %s to be garbage collected", casHash)
 	}
 }
+
+func TestFileController_CreateFolder(t *testing.T) {
+	e := echo.New()
+	dbEngine, err := data.NewDBEngine("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to create memory DB: %v", err)
+	}
+	defer dbEngine.Close()
+
+	_, _ = dbEngine.SQL.Exec(`
+		CREATE TABLE folders (id TEXT PRIMARY KEY, owner_id INTEGER NOT NULL, parent_id TEXT, name TEXT NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+		INSERT INTO folders (id, owner_id, parent_id, name) VALUES ('f1', 1, NULL, 'Dokumen Utama');
+	`)
+
+	fileCtrl := &FileController{DB: dbEngine}
+	e.POST("/api/folders", fileCtrl.CreateFolder)
+
+	// 1. Success create folder
+	body := `{"name": "Proyek Alpha", "parent_id": "f1"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/folders", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("Expected HTTP 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// 2. Empty name should return 400
+	bodyEmpty := `{"name": "   ", "parent_id": "f1"}`
+	reqEmpty := httptest.NewRequest(http.MethodPost, "/api/folders", strings.NewReader(bodyEmpty))
+	reqEmpty.Header.Set("Content-Type", "application/json")
+	recEmpty := httptest.NewRecorder()
+	e.ServeHTTP(recEmpty, reqEmpty)
+
+	if recEmpty.Code != http.StatusBadRequest {
+		t.Fatalf("Expected HTTP 400 for empty folder name, got %d", recEmpty.Code)
+	}
+
+	// 3. Nonexistent parent folder should return 400
+	bodyBadParent := `{"name": "Subfolder", "parent_id": "nonexistent_f"}`
+	reqBadParent := httptest.NewRequest(http.MethodPost, "/api/folders", strings.NewReader(bodyBadParent))
+	reqBadParent.Header.Set("Content-Type", "application/json")
+	recBadParent := httptest.NewRecorder()
+	e.ServeHTTP(recBadParent, reqBadParent)
+
+	if recBadParent.Code != http.StatusBadRequest {
+		t.Fatalf("Expected HTTP 400 for bad parent_id, got %d", recBadParent.Code)
+	}
+}
+
+func TestFileController_VaultDownload_Authentication(t *testing.T) {
+	e := echo.New()
+	dbEngine, err := data.NewDBEngine("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to create memory DB: %v", err)
+	}
+	defer dbEngine.Close()
+
+	_, _ = dbEngine.SQL.Exec(`
+		CREATE TABLE files (id TEXT PRIMARY KEY, owner_id INTEGER NOT NULL, folder_id TEXT, name TEXT NOT NULL, mime_type TEXT NOT NULL, size BIGINT NOT NULL, cas_hash TEXT NOT NULL, encrypted_metadata BLOB, is_starred BOOLEAN DEFAULT FALSE, is_deleted BOOLEAN DEFAULT FALSE, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+		INSERT INTO files (id, owner_id, folder_id, name, mime_type, size, cas_hash) VALUES ('vault_file_1', 1, 'f2', 'secret.kdbx', 'application/octet-stream', 100, 'somehash');
+	`)
+
+	fileCtrl := &FileController{DB: dbEngine}
+	e.GET("/api/files/:id/download", fileCtrl.DownloadFile)
+
+	// 1. Without session cookie -> 401
+	reqNoAuth := httptest.NewRequest(http.MethodGet, "/api/files/vault_file_1/download", nil)
+	recNoAuth := httptest.NewRecorder()
+	e.ServeHTTP(recNoAuth, reqNoAuth)
+
+	if recNoAuth.Code != http.StatusUnauthorized {
+		t.Fatalf("Expected HTTP 401 for unauthenticated vault download, got %d", recNoAuth.Code)
+	}
+
+	// 2. With valid session cookie -> 200 (mock fallback)
+	auth.GlobalSessionStore.SetKey("sess_test_vault", []byte("32byteslongsecretkeyforaesgcm123"))
+	defer auth.GlobalSessionStore.DeleteKey("sess_test_vault")
+
+	reqAuth := httptest.NewRequest(http.MethodGet, "/api/files/vault_file_1/download", nil)
+	reqAuth.AddCookie(&http.Cookie{Name: "swarm_session", Value: "sess_test_vault"})
+	recAuth := httptest.NewRecorder()
+	e.ServeHTTP(recAuth, reqAuth)
+
+	if recAuth.Code != http.StatusOK {
+		t.Fatalf("Expected HTTP 200 with valid session, got %d", recAuth.Code)
+	}
+}
+
+func TestFileController_NotFoundOnNonexistent(t *testing.T) {
+	e := echo.New()
+	dbEngine, err := data.NewDBEngine("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to create memory DB: %v", err)
+	}
+	defer dbEngine.Close()
+
+	_, _ = dbEngine.SQL.Exec(`
+		CREATE TABLE files (id TEXT PRIMARY KEY, owner_id INTEGER NOT NULL, folder_id TEXT, name TEXT NOT NULL, mime_type TEXT NOT NULL, size BIGINT NOT NULL, cas_hash TEXT NOT NULL, is_starred BOOLEAN DEFAULT FALSE, is_deleted BOOLEAN DEFAULT FALSE);
+	`)
+
+	fileCtrl := &FileController{DB: dbEngine}
+	e.DELETE("/api/files/:id", fileCtrl.DeleteFile)
+	e.POST("/api/files/:id/restore", fileCtrl.RestoreFile)
+	e.POST("/api/files/:id/star", fileCtrl.StarFile)
+
+	// Delete nonexistent
+	reqDel := httptest.NewRequest(http.MethodDelete, "/api/files/no_such_file", nil)
+	recDel := httptest.NewRecorder()
+	e.ServeHTTP(recDel, reqDel)
+	if recDel.Code != http.StatusNotFound {
+		t.Fatalf("Expected HTTP 404 for DeleteFile nonexistent, got %d", recDel.Code)
+	}
+
+	// Restore nonexistent
+	reqRest := httptest.NewRequest(http.MethodPost, "/api/files/no_such_file/restore", nil)
+	recRest := httptest.NewRecorder()
+	e.ServeHTTP(recRest, reqRest)
+	if recRest.Code != http.StatusNotFound {
+		t.Fatalf("Expected HTTP 404 for RestoreFile nonexistent, got %d", recRest.Code)
+	}
+
+	// Star nonexistent
+	reqStar := httptest.NewRequest(http.MethodPost, "/api/files/no_such_file/star", nil)
+	recStar := httptest.NewRecorder()
+	e.ServeHTTP(recStar, reqStar)
+	if recStar.Code != http.StatusNotFound {
+		t.Fatalf("Expected HTTP 404 for StarFile nonexistent, got %d", recStar.Code)
+	}
+}
+
 

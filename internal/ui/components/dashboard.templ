@@ -77,10 +77,18 @@ templ DashboardContent() {
 
 			<!-- SECTION 1: FOLDERS / CELLS (Only shown on Storage / Vault tab when no folder selected) -->
 			<div x-show="!$store.drive.currentFolderId && ($store.drive.activeTab === 'storage' || $store.drive.activeTab === 'vault')" class="space-y-4">
-				<h3 class="text-xs font-mono text-[#FACC15] uppercase tracking-wider font-bold flex items-center gap-2">
-					<span x-text="$store.drive.activeTab === 'vault' ? '🛡️' : '📁'"></span>
-					<span x-text="$store.drive.activeTab === 'vault' ? 'VAULT CELLS TERENKRIPSI' : 'FOLDER UTAMA'"></span>
-				</h3>
+				<div class="flex justify-between items-center">
+					<h3 class="text-xs font-mono text-[#FACC15] uppercase tracking-wider font-bold flex items-center gap-2">
+						<span x-text="$store.drive.activeTab === 'vault' ? '🛡️' : '📁'"></span>
+						<span x-text="$store.drive.activeTab === 'vault' ? 'VAULT CELLS TERENKRIPSI' : 'FOLDER UTAMA'"></span>
+					</h3>
+					<button 
+						@click="$store.drive.showCreateFolderModal = true" 
+						class="text-xs bg-[#201E1B] hover:bg-[#2A2723] text-[#FACC15] border border-[#FACC15]/30 px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 transition-colors"
+					>
+						<span>+</span> Buat Folder Baru
+					</button>
+				</div>
 				<div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
 					<template x-for="folder in $store.drive.folders" :key="folder.id">
 						<div 
@@ -110,7 +118,7 @@ templ DashboardContent() {
 				<div class="flex justify-between items-center">
 					<h3 class="text-xs font-mono text-[#A19A8F] uppercase tracking-wider font-bold flex items-center gap-2">
 						<span x-text="$store.drive.activeTab === 'vault' ? '🛡️' : '⚡'"></span>
-						<span x-text="$store.drive.activeTab === 'vault' ? 'DAFTAR BERKAS TERENKRIPSI VAULT (DATABASE SQLITE / POSTGRES)' : 'DAFTAR BERKAS (DATABASE SQLITE / POSTGRES)'"></span>
+						<span x-text="$store.drive.activeTab === 'vault' ? 'DAFTAR BERKAS TERENKRIPSI VAULT' : 'DAFTAR BERKAS TERSINKRON'"></span>
 					</h3>
 					<span class="text-xs text-[#6E675E] font-mono" x-text="`Menampilkan ${$store.drive.files.length} berkas asli`"></span>
 				</div>
@@ -133,10 +141,11 @@ templ DashboardContent() {
 							</div>
 							<div class="mt-2">
 								<div class="font-semibold text-xs text-white truncate group-hover:text-[#FACC15] transition-colors" x-text="file.name"></div>
-								<div class="flex justify-between text-[10px] text-[#A19A8F] font-mono mt-1">
-									<span x-text="(file.size >= 1073741824) ? (file.size / 1073741824).toFixed(2) + ' GB' : (file.size >= 1048576) ? (file.size / 1048576).toFixed(1) + ' MB' : (file.size / 1024).toFixed(1) + ' KB'"></span>
-									<span class="text-emerald-400 font-semibold">DATABASE</span>
+								<div class="flex justify-between items-center text-[10px] text-[#A19A8F] font-mono mt-1">
+									<span x-text="(file.size >= 1073741824) ? (file.size / 1073741824).toFixed(2) + ' GB' : (file.size >= 1048576) ? (file.size / 1048576).toFixed(1) + ' MB' : (file.size >= 1024) ? (file.size / 1024).toFixed(1) + ' KB' : file.size + ' B'"></span>
+									<span class="text-emerald-400 font-semibold text-[9px]">TERSINKRON</span>
 								</div>
+								<div class="text-[9px] text-[#6E675E] font-mono truncate mt-0.5" x-text="file.created_at ? new Date(file.created_at).toLocaleDateString('id-ID') : ''"></div>
 							</div>
 						</div>
 					</template>
@@ -160,8 +169,9 @@ templ DashboardContent() {
 								</div>
 							</div>
 							<div class="flex items-center gap-6 text-xs font-mono">
-								<span class="text-[#A19A8F]" x-text="(file.size >= 1073741824) ? (file.size / 1073741824).toFixed(2) + ' GB' : (file.size >= 1048576) ? (file.size / 1048576).toFixed(1) + ' MB' : (file.size / 1024).toFixed(1) + ' KB'"></span>
-								<span class="px-2 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded font-semibold text-[10px]">DATABASE</span>
+								<span class="text-[#6E675E] text-[11px] hidden sm:inline" x-text="file.created_at ? new Date(file.created_at).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' }) : ''"></span>
+								<span class="text-[#A19A8F]" x-text="(file.size >= 1073741824) ? (file.size / 1073741824).toFixed(2) + ' GB' : (file.size >= 1048576) ? (file.size / 1048576).toFixed(1) + ' MB' : (file.size >= 1024) ? (file.size / 1024).toFixed(1) + ' KB' : file.size + ' B'"></span>
+								<span class="px-2 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded font-semibold text-[10px]">TERSINKRON</span>
 								<button class="text-[#FACC15] hover:underline font-bold">Detail →</button>
 							</div>
 						</div>
@@ -190,7 +200,7 @@ templ DashboardContent() {
 						</div>
 						<div>
 							<h3 class="font-bold text-base text-white" x-text="$store.drive.selectedFile ? $store.drive.selectedFile.name : ''"></h3>
-							<p class="text-xs text-[#A19A8F] font-mono" x-text="$store.drive.selectedFile ? 'Ukuran: ' + ($store.drive.selectedFile.size >= 1073741824 ? ($store.drive.selectedFile.size / 1073741824).toFixed(2) + ' GB' : $store.drive.selectedFile.size >= 1048576 ? ($store.drive.selectedFile.size / 1048576).toFixed(1) + ' MB' : ($store.drive.selectedFile.size / 1024).toFixed(1) + ' KB') : ''"></p>
+							<p class="text-xs text-[#A19A8F] font-mono" x-text="$store.drive.selectedFile ? 'Ukuran: ' + ($store.drive.selectedFile.size >= 1073741824 ? ($store.drive.selectedFile.size / 1073741824).toFixed(2) + ' GB' : $store.drive.selectedFile.size >= 1048576 ? ($store.drive.selectedFile.size / 1048576).toFixed(1) + ' MB' : $store.drive.selectedFile.size >= 1024 ? ($store.drive.selectedFile.size / 1024).toFixed(1) + ' KB' : $store.drive.selectedFile.size + ' B') : ''"></p>
 						</div>
 					</div>
 					<button @click="$store.drive.selectedFile = null" class="text-[#A19A8F] hover:text-white text-lg">✕</button>
@@ -212,6 +222,10 @@ templ DashboardContent() {
 					<div class="flex justify-between text-[#A19A8F]">
 						<span>MIME Type:</span>
 						<strong class="text-white" x-text="$store.drive.selectedFile ? $store.drive.selectedFile.mime_type : ''"></strong>
+					</div>
+					<div class="flex justify-between text-[#A19A8F]">
+						<span>Waktu Dibuat:</span>
+						<strong class="text-white" x-text="$store.drive.selectedFile && $store.drive.selectedFile.created_at ? new Date($store.drive.selectedFile.created_at).toLocaleString('id-ID') : '-'"></strong>
 					</div>
 				</div>
 

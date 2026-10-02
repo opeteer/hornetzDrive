@@ -89,7 +89,7 @@ func DefaultCSRFConfig() middleware.CSRFConfig {
 		Skipper: func(c *echo.Context) bool {
 			path := c.Request().URL.Path
 			// Sensitive mutating endpoints require CSRF protection
-			if path == "/api/purge" || strings.HasPrefix(path, "/api/files") || strings.HasPrefix(path, "/api/vault") {
+			if path == "/api/purge" || strings.HasPrefix(path, "/api/files") || strings.HasPrefix(path, "/api/vault") || strings.HasPrefix(path, "/api/folders") {
 				if c.Request().Method == http.MethodPost || c.Request().Method == http.MethodDelete || c.Request().Method == http.MethodPut {
 					return false
 				}

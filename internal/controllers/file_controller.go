@@ -6,13 +6,18 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
+	"time"
+
+	"github.com/labstack/echo/v5"
+
 	"ztatic-go-framework/data"
 	"ztatic-go-framework/internal/auth"
 	"ztatic-go-framework/internal/crypto"
 	"ztatic-go-framework/internal/storage"
-
-	"github.com/labstack/echo/v5"
+	"ztatic-go-framework/internal/upload"
 )
 
 type FileController struct {
@@ -60,8 +65,8 @@ func (fc *FileController) SeedInitialData() {
 	}
 
 	// Ensure schema columns exist
-	_, _ = fc.DB.SQL.Exec("ALTER TABLE files ADD COLUMN is_starred BOOLEAN DEFAULT 0")
-	_, _ = fc.DB.SQL.Exec("ALTER TABLE files ADD COLUMN is_deleted BOOLEAN DEFAULT 0")
+	_, _ = fc.DB.SQL.Exec("ALTER TABLE files ADD COLUMN is_starred BOOLEAN DEFAULT FALSE")
+	_, _ = fc.DB.SQL.Exec("ALTER TABLE files ADD COLUMN is_deleted BOOLEAN DEFAULT FALSE")
 
 	var count int
 	_ = fc.DB.SQL.QueryRow("SELECT COUNT(*) FROM users").Scan(&count)
@@ -113,15 +118,15 @@ func (fc *FileController) GetFiles(c *echo.Context) error {
 		}
 	}
 
-	query := "SELECT id, owner_id, COALESCE(folder_id, ''), name, mime_type, size, cas_hash, created_at, COALESCE(is_starred, 0), COALESCE(is_deleted, 0) FROM files WHERE 1=1"
+	query := "SELECT id, owner_id, COALESCE(folder_id, ''), name, mime_type, size, cas_hash, created_at, COALESCE(is_starred, FALSE), COALESCE(is_deleted, FALSE) FROM files WHERE 1=1"
 	args := []interface{}{}
 
 	if tab == "trash" {
-		query += " AND is_deleted = 1"
+		query += " AND is_deleted = TRUE"
 	} else {
-		query += " AND is_deleted = 0"
+		query += " AND is_deleted = FALSE"
 		if tab == "starred" {
-			query += " AND is_starred = 1"
+			query += " AND is_starred = TRUE"
 		} else if tab == "vault" {
 			query += " AND folder_id = 'f2'"
 		} else {
@@ -211,19 +216,36 @@ func (fc *FileController) GetFolders(c *echo.Context) error {
 func (fc *FileController) DownloadFile(c *echo.Context) error {
 	id := c.Param("id")
 	var f FileRecord
-	query := fc.DB.Rebind("SELECT id, name, mime_type, size, cas_hash FROM files WHERE id = ?")
-	err := fc.DB.SQL.QueryRow(query, id).Scan(&f.ID, &f.Name, &f.MimeType, &f.Size, &f.CasHash)
+	query := fc.DB.Rebind("SELECT id, COALESCE(folder_id, ''), name, mime_type, size, cas_hash FROM files WHERE id = ?")
+	err := fc.DB.SQL.QueryRow(query, id).Scan(&f.ID, &f.FolderID, &f.Name, &f.MimeType, &f.Size, &f.CasHash)
 	if err == sql.ErrNoRows {
 		return echo.NewHTTPError(http.StatusNotFound, "File not found")
 	}
 
-	path := fc.CAS.Path(f.CasHash)
-	file, err := os.Open(path)
+	// Protect confidential Vault files: require active unlocked vault session
+	if f.FolderID == "f2" {
+		cookie, err := c.Cookie("swarm_session")
+		if err != nil || cookie == nil || !auth.GlobalSessionStore.HasKey(cookie.Value) {
+			return echo.NewHTTPError(http.StatusUnauthorized, "Vault locked. Master password required to download this file.")
+		}
+	}
+
+	safeName := strings.ReplaceAll(f.Name, `"`, `_`)
+	safeName = strings.ReplaceAll(safeName, "\r", "")
+	safeName = strings.ReplaceAll(safeName, "\n", "")
+
+	var file *os.File
+	if fc.CAS != nil {
+		path := fc.CAS.Path(f.CasHash)
+		file, err = os.Open(path)
+	} else {
+		err = os.ErrNotExist
+	}
 	if err != nil {
 		// Fallback for mock files: set Content-Length to actual mock body size to prevent connection hangs
 		mockBody := "Decrypted Content of " + f.Name
 		c.Response().Header().Set("Content-Type", "text/plain; charset=utf-8")
-		c.Response().Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", f.Name))
+		c.Response().Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", safeName))
 		c.Response().Header().Set("Content-Length", strconv.Itoa(len(mockBody)))
 		return c.String(http.StatusOK, mockBody)
 	}
@@ -245,7 +267,7 @@ func (fc *FileController) DownloadFile(c *echo.Context) error {
 	}
 
 	c.Response().Header().Set("Content-Type", f.MimeType)
-	c.Response().Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", f.Name))
+	c.Response().Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", safeName))
 	if f.Size > 0 {
 		c.Response().Header().Set("Content-Length", strconv.FormatInt(f.Size, 10))
 	}
@@ -262,12 +284,15 @@ func (fc *FileController) DeleteFile(c *echo.Context) error {
 		_ = fc.DB.SQL.QueryRow(fc.DB.Rebind("SELECT cas_hash FROM files WHERE id = ?"), id).Scan(&casHash)
 
 		query := fc.DB.Rebind("DELETE FROM files WHERE id = ?")
-		_, err := fc.DB.SQL.Exec(query, id)
+		res, err := fc.DB.SQL.Exec(query, id)
 		if err != nil {
 			return echo.NewHTTPError(http.StatusInternalServerError, "Failed to delete file: "+err.Error())
 		}
+		if rows, _ := res.RowsAffected(); rows == 0 {
+			return echo.NewHTTPError(http.StatusNotFound, "File not found")
+		}
 
-		if casHash != "" {
+		if casHash != "" && storage.IsValidHash(casHash) {
 			var count int
 			_ = fc.DB.SQL.QueryRow(fc.DB.Rebind("SELECT COUNT(*) FROM files WHERE cas_hash = ?"), casHash).Scan(&count)
 			if count == 0 {
@@ -278,30 +303,39 @@ func (fc *FileController) DeleteFile(c *echo.Context) error {
 	}
 
 	// Soft delete: move to trash
-	query := fc.DB.Rebind("UPDATE files SET is_deleted = 1 WHERE id = ?")
-	_, err := fc.DB.SQL.Exec(query, id)
+	query := fc.DB.Rebind("UPDATE files SET is_deleted = TRUE WHERE id = ?")
+	res, err := fc.DB.SQL.Exec(query, id)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to move file to trash: "+err.Error())
+	}
+	if rows, _ := res.RowsAffected(); rows == 0 {
+		return echo.NewHTTPError(http.StatusNotFound, "File not found")
 	}
 	return c.JSON(http.StatusOK, map[string]string{"status": "trashed"})
 }
 
 func (fc *FileController) RestoreFile(c *echo.Context) error {
 	id := c.Param("id")
-	query := fc.DB.Rebind("UPDATE files SET is_deleted = 0 WHERE id = ?")
-	_, err := fc.DB.SQL.Exec(query, id)
+	query := fc.DB.Rebind("UPDATE files SET is_deleted = FALSE WHERE id = ?")
+	res, err := fc.DB.SQL.Exec(query, id)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to restore file: "+err.Error())
+	}
+	if rows, _ := res.RowsAffected(); rows == 0 {
+		return echo.NewHTTPError(http.StatusNotFound, "File not found")
 	}
 	return c.JSON(http.StatusOK, map[string]string{"status": "restored"})
 }
 
 func (fc *FileController) StarFile(c *echo.Context) error {
 	id := c.Param("id")
-	query := fc.DB.Rebind("UPDATE files SET is_starred = CASE WHEN is_starred = 1 THEN 0 ELSE 1 END WHERE id = ?")
-	_, err := fc.DB.SQL.Exec(query, id)
+	query := fc.DB.Rebind("UPDATE files SET is_starred = CASE WHEN is_starred = TRUE THEN FALSE ELSE TRUE END WHERE id = ?")
+	res, err := fc.DB.SQL.Exec(query, id)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to toggle star: "+err.Error())
+	}
+	if rows, _ := res.RowsAffected(); rows == 0 {
+		return echo.NewHTTPError(http.StatusNotFound, "File not found")
 	}
 	return c.JSON(http.StatusOK, map[string]string{"status": "starred_toggled"})
 }
@@ -311,7 +345,7 @@ func (fc *FileController) GetStorageStats(c *echo.Context) error {
 
 	var totalBytes sql.NullInt64
 	var fileCount int
-	query := fc.DB.Rebind("SELECT COALESCE(SUM(size), 0), COUNT(*) FROM files WHERE owner_id = ? AND is_deleted = 0")
+	query := fc.DB.Rebind("SELECT COALESCE(SUM(size), 0), COUNT(*) FROM files WHERE owner_id = ? AND is_deleted = FALSE")
 	err := fc.DB.SQL.QueryRow(query, 1).Scan(&totalBytes, &fileCount)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to query storage stats: "+err.Error())
@@ -345,16 +379,36 @@ func formatBytes(b int64) string {
 }
 
 func getFileIcon(name, mime string) string {
-	if len(name) > 4 && name[len(name)-4:] == ".pdf" {
+	ext := strings.ToLower(getFileExt(name))
+	switch ext {
+	case "pdf":
+		return "📄"
+	case "key", "pem", "crt", "pub":
+		return "🔑"
+	case "tar.gz", "zip", "tar", "gz", "7z", "rar":
+		return "📦"
+	case "png", "jpg", "jpeg", "gif", "webp", "svg":
+		return "🖼️"
+	case "mp4", "mkv", "webm", "mov", "avi":
+		return "🎬"
+	case "mp3", "wav", "ogg", "flac":
+		return "🎵"
+	case "go", "js", "ts", "html", "css", "json", "sql", "sh", "py", "md", "rs", "cpp", "c":
+		return "💻"
+	case "xls", "xlsx", "csv":
+		return "📊"
+	case "doc", "docx", "txt", "rtf":
+		return "📄"
+	default:
+		if strings.HasPrefix(mime, "image/") {
+			return "🖼️"
+		} else if strings.HasPrefix(mime, "video/") {
+			return "🎬"
+		} else if strings.HasPrefix(mime, "audio/") {
+			return "🎵"
+		}
 		return "📄"
 	}
-	if len(name) > 4 && name[len(name)-4:] == ".key" {
-		return "🔑"
-	}
-	if len(name) > 7 && name[len(name)-7:] == ".tar.gz" {
-		return "📦"
-	}
-	return "📄"
 }
 
 func getFileExt(name string) string {
@@ -366,9 +420,50 @@ func getFileExt(name string) string {
 	return "FILE"
 }
 
+type CreateFolderRequest struct {
+	Name     string `json:"name"`
+	ParentID string `json:"parent_id"`
+}
+
+func (fc *FileController) CreateFolder(c *echo.Context) error {
+	var req CreateFolderRequest
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid request")
+	}
+	name := strings.TrimSpace(req.Name)
+	if name == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, "Folder name cannot be empty")
+	}
+	cleanName := filepath.Base(filepath.Clean(name))
+	if cleanName == "." || cleanName == "/" || cleanName == "" {
+		cleanName = "Folder Baru"
+	}
+
+	if req.ParentID != "" {
+		var parentExists bool
+		err := fc.DB.SQL.QueryRow(fc.DB.Rebind("SELECT EXISTS(SELECT 1 FROM folders WHERE id = ?)"), req.ParentID).Scan(&parentExists)
+		if err != nil || !parentExists {
+			return echo.NewHTTPError(http.StatusBadRequest, "Invalid parent folder")
+		}
+	}
+
+	folderID := fmt.Sprintf("f_%d_%s", time.Now().Unix(), upload.GenerateID()[:8])
+	query := fc.DB.Rebind("INSERT INTO folders (id, owner_id, parent_id, name) VALUES (?, 1, NULLIF(?, ''), ?)")
+	_, err := fc.DB.SQL.Exec(query, folderID, req.ParentID, cleanName)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to create folder: "+err.Error())
+	}
+
+	return c.JSON(http.StatusCreated, map[string]string{
+		"id":   folderID,
+		"name": cleanName,
+	})
+}
+
 func min(a, b int) int {
 	if a < b {
 		return a
 	}
 	return b
 }
+

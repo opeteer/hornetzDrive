@@ -59,23 +59,37 @@ func (uc *UploadController) InitSession(c *echo.Context) error {
 	folderID := req.FolderID
 	if folderID == "" || folderID == "root" {
 		folderID = "f1"
-	}
-
-	if req.CasHash != "" && uc.CAS.Exists(req.CasHash) {
-		fileID := fmt.Sprintf("file_%d_%s", time.Now().Unix(), upload.GenerateID()[:8])
+	} else if folderID != "f1" && folderID != "f2" && folderID != "f3" {
 		if uc.DB != nil && uc.DB.SQL != nil {
-			query := uc.DB.Rebind("INSERT INTO files (id, owner_id, folder_id, name, mime_type, size, cas_hash) VALUES (?, 1, ?, ?, ?, ?, ?)")
-			_, err := uc.DB.SQL.Exec(query, fileID, folderID, cleanFilename, req.MimeType, req.Size, req.CasHash)
-			if err != nil {
-				return echo.NewHTTPError(http.StatusInternalServerError, "failed to record deduplicated file: "+err.Error())
+			var count int
+			query := uc.DB.Rebind("SELECT COUNT(*) FROM folders WHERE id = ?")
+			_ = uc.DB.SQL.QueryRow(query, folderID).Scan(&count)
+			if count == 0 {
+				return echo.NewHTTPError(http.StatusBadRequest, "folder not found")
 			}
 		}
-		return c.JSON(http.StatusOK, map[string]interface{}{
-			"status":   "completed",
-			"message":  "0-second deduplication successful",
-			"cas_hash": req.CasHash,
-			"file_id":  fileID,
-		})
+	}
+
+	if req.CasHash != "" {
+		if !storage.IsValidHash(req.CasHash) {
+			return echo.NewHTTPError(http.StatusBadRequest, "invalid cas_hash format")
+		}
+		if uc.CAS.Exists(req.CasHash) {
+			fileID := fmt.Sprintf("file_%d_%s", time.Now().Unix(), upload.GenerateID()[:8])
+			if uc.DB != nil && uc.DB.SQL != nil {
+				query := uc.DB.Rebind("INSERT INTO files (id, owner_id, folder_id, name, mime_type, size, cas_hash) VALUES (?, 1, ?, ?, ?, ?, ?)")
+				_, err := uc.DB.SQL.Exec(query, fileID, folderID, cleanFilename, req.MimeType, req.Size, req.CasHash)
+				if err != nil {
+					return echo.NewHTTPError(http.StatusInternalServerError, "failed to record deduplicated file: "+err.Error())
+				}
+			}
+			return c.JSON(http.StatusOK, map[string]interface{}{
+				"status":   "completed",
+				"message":  "0-second deduplication successful",
+				"cas_hash": req.CasHash,
+				"file_id":  fileID,
+			})
+		}
 	}
 
 	sess, err := uc.SessionMgr.CreateSession(1, folderID, cleanFilename, req.MimeType, req.Size)
@@ -96,6 +110,9 @@ func (uc *UploadController) UploadChunk(c *echo.Context) error {
 	if !exists {
 		return echo.NewHTTPError(http.StatusNotFound, "session not found")
 	}
+
+	sess.Mu.Lock()
+	defer sess.Mu.Unlock()
 
 	f, err := os.OpenFile(sess.TempFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
@@ -173,7 +190,7 @@ func (uc *UploadController) UploadChunk(c *echo.Context) error {
 		})
 	}
 
-	return c.JSON(308, map[string]interface{}{
+	return c.JSON(http.StatusOK, map[string]interface{}{
 		"status":   "incomplete",
 		"uploaded": sess.UploadedSize,
 	})
@@ -186,9 +203,10 @@ func (uc *UploadController) GetStatus(c *echo.Context) error {
 		return echo.NewHTTPError(http.StatusNotFound, "session not found")
 	}
 
-	return c.JSON(308, map[string]interface{}{
+	return c.JSON(http.StatusOK, map[string]interface{}{
 		"status":   "incomplete",
 		"uploaded": sess.UploadedSize,
 		"expected": sess.ExpectedSize,
 	})
 }
+

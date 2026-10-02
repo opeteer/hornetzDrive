@@ -359,4 +359,47 @@ func TestUploadController_ChunkOverflow_Rejection(t *testing.T) {
 	}
 }
 
+func TestUploadController_InvalidCasHashTraversal_Rejection(t *testing.T) {
+	e, ctrl := setupUploadTest(t)
+	e.POST("/upload/init", ctrl.InitSession)
+
+	body := []byte(`{"filename":"test.txt","mime_type":"text/plain","size":100,"folder_id":"root","cas_hash":"../../etc/passwd"}`)
+	req := httptest.NewRequest(http.MethodPost, "/upload/init", bytes.NewReader(body))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("Expected HTTP 400 for path traversal cas_hash, got %d", rec.Code)
+	}
+}
+
+func TestUploadController_NonexistentFolderID_Rejection(t *testing.T) {
+	e, ctrl := setupUploadTest(t)
+	dbEngine, err := data.NewDBEngine("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to create memory DB: %v", err)
+	}
+	defer dbEngine.Close()
+
+	_, _ = dbEngine.SQL.Exec(`
+		CREATE TABLE folders (id TEXT PRIMARY KEY, owner_id INTEGER NOT NULL, parent_id TEXT, name TEXT NOT NULL);
+		INSERT INTO folders (id, owner_id, parent_id, name) VALUES ('f1', 1, NULL, 'Root');
+	`)
+	ctrl.DB = dbEngine
+	e.POST("/upload/init", ctrl.InitSession)
+
+	// Attempt init with nonexistent folder
+	body := []byte(`{"filename":"test.txt","mime_type":"text/plain","size":100,"folder_id":"nonexistent_folder_xyz"}`)
+	req := httptest.NewRequest(http.MethodPost, "/upload/init", bytes.NewReader(body))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("Expected HTTP 400 for nonexistent folder_id, got %d", rec.Code)
+	}
+}
+
+
 

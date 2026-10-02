@@ -21,14 +21,32 @@ func NewCASEngine(baseDir string) (*CASEngine, error) {
 	return &CASEngine{BaseDir: baseDir}, nil
 }
 
+// IsValidHash validates that the hash is a strict 64-character hexadecimal SHA-256 string.
+func IsValidHash(hash string) bool {
+	if len(hash) != 64 {
+		return false
+	}
+	for i := 0; i < len(hash); i++ {
+		c := hash[i]
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			return false
+		}
+	}
+	return true
+}
+
 func (c *CASEngine) Exists(hash string) bool {
+	if !IsValidHash(hash) {
+		return false
+	}
 	_, err := os.Stat(c.Path(hash))
 	return err == nil
 }
 
 func (c *CASEngine) Path(hash string) string {
-	if len(hash) < 4 {
-		return filepath.Join(c.BaseDir, hash)
+	if !IsValidHash(hash) {
+		// Prevent path traversal outside BaseDir
+		return filepath.Join(c.BaseDir, "invalid_hash")
 	}
 	// Path Shuffling / Obfuscation (e.g., ab/cd/abcdef...)
 	dir := filepath.Join(c.BaseDir, hash[0:2], hash[2:4])
@@ -66,7 +84,28 @@ func (c *CASEngine) MoveToCAS(tempPath string) (string, error) {
 	}
 
 	if err := os.Rename(tempPath, destPath); err != nil {
-		return "", err
+		// Fallback for cross-device links (EXDEV) when TMP_DIR and CAS_DIR are on different filesystems
+		srcFile, errOpen := os.Open(tempPath)
+		if errOpen != nil {
+			return "", err
+		}
+		defer srcFile.Close()
+
+		dstFile, errCreate := os.Create(destPath)
+		if errCreate != nil {
+			return "", err
+		}
+		defer dstFile.Close()
+
+		if _, errCopy := io.Copy(dstFile, srcFile); errCopy != nil {
+			os.Remove(destPath)
+			return "", errCopy
+		}
+		_ = dstFile.Sync()
+		_ = srcFile.Close()
+		_ = dstFile.Close()
+		_ = os.Remove(tempPath)
 	}
 	return hash, nil
 }
+

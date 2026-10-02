@@ -2,6 +2,7 @@ package auth
 
 import (
 	"crypto/rand"
+	"encoding/hex"
 	"net/http"
 	"sync"
 	"time"
@@ -9,6 +10,7 @@ import (
 	"github.com/labstack/echo/v5"
 	"ztatic-go-framework/internal/crypto"
 )
+
 
 // SessionStore holds RAM-only Vault Keys mapped by a volatile Session ID.
 // If the server restarts, or a panic purge is triggered, these keys are irrevocably lost.
@@ -107,7 +109,9 @@ func LoginMock(c *echo.Context) error {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Invalid master password"})
 	}
 
-	sessionID := "mock-session-12345"
+	sessBytes := make([]byte, 16)
+	_, _ = rand.Read(sessBytes)
+	sessionID := "sess_" + hex.EncodeToString(sessBytes)
 	vk := crypto.DummyVK() // Derived using Argon2id in a full implementation
 
 	GlobalSessionStore.SetKey(sessionID, vk)

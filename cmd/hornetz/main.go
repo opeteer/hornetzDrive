@@ -25,7 +25,7 @@ import (
 type AppConfig struct {
 	Port     string `env:"PORT" envDefault:"8071"`
 	DBDriver string `env:"DB_DRIVER" envDefault:"sqlite3"`
-	DBDSN    string `env:"DB_DSN" envDefault:"file:hornetz.db?cache=shared&mode=rwc&_journal_mode=WAL"`
+	DBDSN    string `env:"DB_DSN" envDefault:"file:hornetz.db?cache=shared&mode=rwc&_journal_mode=WAL&_foreign_keys=on"`
 	CASDir   string `env:"CAS_DIR" envDefault:"storage/cas"`
 	TmpDir   string `env:"TMP_DIR" envDefault:"storage/tmp"`
 }
@@ -36,7 +36,7 @@ func main() {
 		appCfg = &AppConfig{
 			Port:     "8071",
 			DBDriver: "sqlite3",
-			DBDSN:    "file:hornetz.db?cache=shared&mode=rwc&_journal_mode=WAL",
+			DBDSN:    "file:hornetz.db?cache=shared&mode=rwc&_journal_mode=WAL&_foreign_keys=on",
 			CASDir:   "storage/cas",
 			TmpDir:   "storage/tmp",
 		}
@@ -102,6 +102,7 @@ func main() {
 
 	app.GET("/api/files", fileCtrl.GetFiles)
 	app.GET("/api/folders", fileCtrl.GetFolders)
+	app.POST("/api/folders", fileCtrl.CreateFolder)
 	app.GET("/api/storage/stats", fileCtrl.GetStorageStats)
 	app.GET("/api/files/:id/download", fileCtrl.DownloadFile)
 	app.DELETE("/api/files/:id", fileCtrl.DeleteFile)

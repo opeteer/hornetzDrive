@@ -47,20 +47,26 @@ templ Layout(title string) {
 		@dragleave="$store.drive.handleDragLeave($event)"
 		@dragover.prevent="$store.drive.handleDragOver($event)"
 		@drop.prevent="$store.drive.handleDrop($event)"
+		@keydown.escape.window="$store.drive.dismissModals()"
 	>
 		<!-- TOP HEADER / NAVBAR -->
 		<header class="h-16 bg-[#171614] border-b border-[#2A2723] px-6 flex items-center justify-between z-20 shrink-0">
 			<!-- Logo & Title -->
-			<div class="flex items-center gap-3 cursor-pointer" @click="$store.drive.setTab('storage')">
-				<div class="w-9 h-9 rounded-lg bg-[#FACC15] text-[#0F0E0D] flex items-center justify-center font-black text-xl shadow-[0_0_12px_rgba(250,204,21,0.3)]">
-					🐝
-				</div>
-				<div>
-					<div class="flex items-center gap-2">
-						<span class="font-extrabold text-base tracking-tight text-white">Hornetz <span class="text-[#FACC15]">Drive</span></span>
-						<span class="text-[10px] px-2 py-0.5 bg-[#2E2B26] text-[#FACC15] rounded font-mono font-semibold">v2.0 Cloud</span>
+			<div class="flex items-center gap-3">
+				<button @click="$store.drive.isMobileMenuOpen = !$store.drive.isMobileMenuOpen" class="md:hidden text-[#FACC15] mr-1 text-2xl font-bold focus:outline-none">
+					☰
+				</button>
+				<div class="flex items-center gap-3 cursor-pointer" @click="$store.drive.setTab('storage')">
+					<div class="w-9 h-9 rounded-lg bg-[#FACC15] text-[#0F0E0D] flex items-center justify-center font-black text-xl shadow-[0_0_12px_rgba(250,204,21,0.3)]">
+						🐝
 					</div>
-					<p class="text-[11px] text-[#A19A8F]">Penyimpanan Awan Terenkripsi Real-Time</p>
+					<div>
+						<div class="flex items-center gap-2">
+							<span class="font-extrabold text-base tracking-tight text-white">Hornetz <span class="text-[#FACC15]">Drive</span></span>
+							<span class="text-[10px] px-2 py-0.5 bg-[#2E2B26] text-[#FACC15] rounded font-mono font-semibold">v2.0 Cloud</span>
+						</div>
+						<p class="text-[11px] text-[#A19A8F]">Penyimpanan Awan Terenkripsi Real-Time</p>
+					</div>
 				</div>
 			</div>
 
@@ -103,9 +109,19 @@ templ Layout(title string) {
 		</header>
 
 		<!-- MAIN BODY (SIDEBAR + CONTENT) -->
-		<div class="flex-1 flex overflow-hidden">
+		<div class="flex-1 flex overflow-hidden relative">
+			<!-- Mobile Overlay Backdrop -->
+			<div 
+				x-show="$store.drive && $store.drive.isMobileMenuOpen" 
+				@click="$store.drive.isMobileMenuOpen = false" 
+				class="fixed inset-0 bg-black/70 z-30 md:hidden"
+				x-cloak
+			></div>
 			<!-- SIDEBAR -->
-			<aside class="w-64 bg-[#171614] border-r border-[#2A2723] p-4 flex flex-col justify-between shrink-0">
+			<aside 
+				:class="$store.drive.isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'"
+				class="fixed md:static inset-y-0 left-0 z-40 w-64 bg-[#171614] border-r border-[#2A2723] p-4 flex flex-col justify-between shrink-0 transition-transform duration-200"
+			>
 				<div class="space-y-6">
 					<!-- Upload Button -->
 					<div>
@@ -288,6 +304,100 @@ templ Layout(title string) {
 			</div>
 		</div>
 
+		<!-- Create Folder Modal -->
+		<div 
+			x-show="$store.drive && $store.drive.showCreateFolderModal" 
+			x-cloak
+			style="display: none;"
+			x-transition 
+			class="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[100] p-4"
+		>
+			<div 
+				@click.away="$store.drive.showCreateFolderModal = false" 
+				class="bg-[#171614] border-2 border-[#FACC15] w-full max-w-sm rounded-2xl p-6 shadow-2xl space-y-6"
+			>
+				<div class="text-center space-y-2">
+					<div class="w-16 h-16 mx-auto bg-[#FACC15]/10 border border-[#FACC15]/40 rounded-full flex items-center justify-center text-4xl text-[#FACC15]">
+						📁
+					</div>
+					<h3 class="font-bold text-lg text-white">Buat Folder Baru</h3>
+					<p class="text-xs text-[#A19A8F]">Masukkan nama folder untuk mengelompokkan berkas Anda.</p>
+				</div>
+				
+				<div class="space-y-4">
+					<input 
+						type="text" 
+						x-model="$store.drive.newFolderName" 
+						@keydown.enter="$store.drive.createFolder($store.drive.newFolderName)"
+						placeholder="Nama Folder (misal: Laporan 2026)" 
+						class="w-full bg-[#0F0E0D] border border-[#2A2723] text-sm text-white px-4 py-3 rounded-lg focus:outline-none focus:border-[#FACC15] transition-colors placeholder-[#6E675E]"
+					/>
+					
+					<div class="flex gap-3">
+						<button 
+							@click="$store.drive.showCreateFolderModal = false; $store.drive.newFolderName = ''" 
+							class="flex-1 py-3 bg-[#0F0E0D] border border-[#2A2723] text-[#A19A8F] hover:text-white rounded-lg text-sm font-bold transition-colors"
+						>
+							Batal
+						</button>
+						<button 
+							@click="$store.drive.createFolder($store.drive.newFolderName)" 
+							class="flex-1 py-3 hornetz-btn font-bold text-sm rounded-lg"
+						>
+							Buat Folder
+						</button>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<!-- Panic Purge Password Modal -->
+		<div 
+			x-show="$store.drive && $store.drive.showPurgeConfirmModal" 
+			x-cloak
+			style="display: none;"
+			x-transition 
+			class="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center z-[110] p-4"
+		>
+			<div 
+				@click.away="$store.drive.showPurgeConfirmModal = false" 
+				class="bg-[#171614] border-2 border-red-500 w-full max-w-sm rounded-2xl p-6 shadow-2xl space-y-6"
+			>
+				<div class="text-center space-y-2">
+					<div class="w-16 h-16 mx-auto bg-red-500/10 border border-red-500/40 rounded-full flex items-center justify-center text-4xl text-red-500 animate-pulse">
+						🚨
+					</div>
+					<h3 class="font-bold text-lg text-white">Konfirmasi Panic Purge</h3>
+					<p class="text-xs text-red-400">PERINGATAN: Seluruh berkas di CAS dan database akan dimusnahkan seketika. Masukkan kata sandi master untuk konfirmasi.</p>
+				</div>
+				
+				<div class="space-y-4">
+					<input 
+						type="password" 
+						x-model="$store.drive.purgePassword" 
+						@keydown.enter="$store.drive.executePanicPurge()"
+						placeholder="Kata Sandi Master Vault" 
+						class="w-full bg-[#0F0E0D] border border-[#2A2723] text-sm text-white px-4 py-3 rounded-lg focus:outline-none focus:border-red-500 transition-colors placeholder-[#6E675E]"
+					/>
+					
+					<div class="flex gap-3">
+						<button 
+							@click="$store.drive.showPurgeConfirmModal = false; $store.drive.purgePassword = ''" 
+							class="flex-1 py-3 bg-[#0F0E0D] border border-[#2A2723] text-[#A19A8F] hover:text-white rounded-lg text-sm font-bold transition-colors"
+						>
+							Batal
+						</button>
+						<button 
+							@click="$store.drive.executePanicPurge()" 
+							class="flex-1 py-3 bg-red-600 hover:bg-red-700 text-white font-bold text-sm rounded-lg transition-colors shadow-lg shadow-red-600/30"
+						>
+							Musnahkan Data
+						</button>
+					</div>
+				</div>
+			</div>
+		</div>
+
 		<!-- Drag & Drop Dropzone Overlay -->
 		<div 
 			x-show="$store.drive && $store.drive.isDragging" 
@@ -324,6 +434,11 @@ templ Layout(title string) {
 				isVaultUnlocked: false,
 				showVaultPasswordModal: false,
 				vaultPassword: '',
+				showCreateFolderModal: false,
+				newFolderName: '',
+				showPurgeConfirmModal: false,
+				purgePassword: '',
+				isMobileMenuOpen: false,
 				isDragging: false,
 				dragCounter: 0,
 				storageUsedBytes: 0,
@@ -338,14 +453,23 @@ templ Layout(title string) {
 					this.fetchFiles();
 					this.fetchStorageStats();
 					try {
-						const sse = new EventSource('/sse');
+						const sse = new EventSource('/sse?topic=nest:user_1');
 						sse.onmessage = () => {
 							this.fetchStorageStats();
 						};
 					} catch(e) {}
 				},
 
+				dismissModals() {
+					this.showVaultPasswordModal = false;
+					this.showCreateFolderModal = false;
+					this.showPurgeConfirmModal = false;
+					this.selectedFile = null;
+					this.isMobileMenuOpen = false;
+				},
+
 				setTab(tab) {
+					this.isMobileMenuOpen = false;
 					if (tab === 'vault' && !this.isVaultUnlocked) {
 						this.showVaultPasswordModal = true;
 						return; // Do not switch to vault tab or load its contents until unlocked
@@ -399,6 +523,33 @@ templ Layout(title string) {
 						}
 					} catch(e) {
 						console.error("Fetch folders error:", e);
+					}
+				},
+
+				async createFolder(name) {
+					if (!name || !name.trim()) return;
+					try {
+						const res = await fetch('/api/folders', {
+							method: 'POST',
+							headers: {
+								'Content-Type': 'application/json',
+								'X-CSRF-Token': this.getCsrfToken()
+							},
+							body: JSON.stringify({
+								name: name.trim(),
+								parent_id: this.currentFolderId || (this.activeTab === 'vault' ? 'f2' : 'f1')
+							})
+						});
+						if (res.ok) {
+							this.showCreateFolderModal = false;
+							this.newFolderName = '';
+							this.fetchFolders();
+						} else {
+							const data = await res.json().catch(() => ({}));
+							alert(data.message || 'Gagal membuat folder');
+						}
+					} catch(e) {
+						alert('Gagal membuat folder: ' + e.message);
 					}
 				},
 
@@ -565,46 +716,63 @@ templ Layout(title string) {
 						const sessionId = initData.session_id;
 						this.uploadStatusText = 'Status: Mengunggah';
 
-						await new Promise((resolve, reject) => {
-							const xhr = new XMLHttpRequest();
-							xhr.open("PUT", `/upload/${sessionId}`);
-							xhr.setRequestHeader("X-CSRF-Token", this.getCsrfToken());
+						// Chunked upload: 2MB chunks to stay well below 50MB RouteLimit
+						const chunkSize = 2 * 1024 * 1024;
+						let offset = 0;
+						const totalSize = file.size;
 
-							let lastLoaded = 0;
-							let lastTime = performance.now();
+						while (offset < totalSize || totalSize === 0) {
+							const end = Math.min(offset + chunkSize, totalSize);
+							const chunk = file.slice(offset, end);
+							const currentOffset = offset;
 
-							xhr.upload.onprogress = (event) => {
-								if (event.lengthComputable && event.total > 0) {
-									const now = performance.now();
-									const timeDiff = (now - lastTime) / 1000;
-									if (timeDiff >= 0.25) {
-										const bytesDiff = event.loaded - lastLoaded;
-										const speedMBps = ((bytesDiff / (1024 * 1024)) / timeDiff).toFixed(1);
-										this.currentSpeedText = `${speedMBps} MB/s`;
-										lastLoaded = event.loaded;
-										lastTime = now;
+							await new Promise((resolve, reject) => {
+								const xhr = new XMLHttpRequest();
+								xhr.open("PUT", `/upload/${sessionId}`);
+								xhr.setRequestHeader("X-CSRF-Token", this.getCsrfToken());
+								xhr.setRequestHeader("Content-Type", "application/octet-stream");
+								xhr.setRequestHeader("Content-Range", `bytes ${currentOffset}-${end > 0 ? end - 1 : 0}/${totalSize}`);
+
+								let lastLoaded = 0;
+								let lastTime = performance.now();
+
+								xhr.upload.onprogress = (event) => {
+									if (event.lengthComputable && event.total > 0) {
+										const now = performance.now();
+										const timeDiff = (now - lastTime) / 1000;
+										if (timeDiff >= 0.25) {
+											const bytesDiff = event.loaded - lastLoaded;
+											const speedMBps = ((bytesDiff / (1024 * 1024)) / timeDiff).toFixed(1);
+											this.currentSpeedText = `${speedMBps} MB/s`;
+											lastLoaded = event.loaded;
+											lastTime = now;
+										}
+										const loadedTotal = currentOffset + event.loaded;
+										const streamPercent = 5 + Math.round((loadedTotal / Math.max(totalSize, 1)) * 90);
+										this.uploadProgress = Math.max(this.uploadProgress, Math.min(streamPercent, 95));
 									}
-									const streamPercent = 5 + Math.round((event.loaded / event.total) * 90);
-									this.uploadProgress = Math.max(this.uploadProgress, Math.min(streamPercent, 95));
-								}
-							};
+								};
 
-							xhr.onload = () => {
-								if (xhr.status >= 200 && xhr.status < 300) {
-									resolve(xhr.response);
-								} else {
-									let errMsg = `Gagal mengunggah payload berkas (Status HTTP ${xhr.status})`;
-									try {
-										const errJson = JSON.parse(xhr.responseText);
-										if (errJson.message) errMsg = errJson.message;
-									} catch(e) {}
-									reject(new Error(errMsg));
-								}
-							};
+								xhr.onload = () => {
+									if (xhr.status >= 200 && xhr.status < 300) {
+										resolve(xhr.response);
+									} else {
+										let errMsg = `Gagal mengunggah payload berkas (Status HTTP ${xhr.status})`;
+										try {
+											const errJson = JSON.parse(xhr.responseText);
+											if (errJson.message) errMsg = errJson.message;
+										} catch(e) {}
+										reject(new Error(errMsg));
+									}
+								};
 
-							xhr.onerror = () => reject(new Error("Network transfer error during upload"));
-							xhr.send(file);
-						});
+								xhr.onerror = () => reject(new Error("Network transfer error during upload"));
+								xhr.send(chunk);
+							});
+
+							offset = end;
+							if (totalSize === 0) break;
+						}
 
 						const elapsedSec = (performance.now() - uploadStartTime) / 1000;
 						const avgSpeedMBps = ((file.size / (1024 * 1024)) / Math.max(elapsedSec, 0.05)).toFixed(1);
@@ -701,31 +869,54 @@ templ Layout(title string) {
 
 				downloadFile(file) {
 					if (!file) return;
-					window.open(`/api/files/${file.id}/download`, '_blank');
+					const a = document.createElement('a');
+					a.href = `/api/files/${file.id}/download`;
+					a.download = file.name || '';
+					document.body.appendChild(a);
+					a.click();
+					a.remove();
 					this.selectedFile = null;
 				},
 
-				async triggerPanicPurge() {
-					const confirmed = confirm("🚨 PERINGATAN DARURAT: EMERGENCY PANIC PURGE!\n\nApakah Anda yakin ingin memusnahkan Kunci Memori (RAM Vault Key) dan menimpa seluruh berkas terenkripsi dengan data acak (os.urandom) sebelum dihapus permanen?");
-					if (!confirmed) return;
+				triggerPanicPurge() {
+					this.purgePassword = '';
+					this.showPurgeConfirmModal = true;
+				},
 
+				async executePanicPurge() {
+					if (!this.purgePassword) {
+						alert("Kata sandi master wajib diisi!");
+						return;
+					}
 					try {
+						const verifyRes = await fetch('/login', {
+							method: 'POST',
+							headers: {
+								'Content-Type': 'application/json',
+								'X-CSRF-Token': this.getCsrfToken()
+							},
+							body: JSON.stringify({ password: this.purgePassword })
+						});
+						if (!verifyRes.ok) {
+							alert("Kata sandi master salah! Panic purge dibatalkan.");
+							return;
+						}
 						const res = await fetch("/api/purge", {
 							method: "POST",
 							headers: {
+								"Content-Type": "application/json",
 								"X-CSRF-Token": this.getCsrfToken()
 							}
 						});
-						const data = await res.json();
-						alert("💀 PANIC PURGE SUKSES EXECUTED!\n\n- Status: " + data.status + "\n- Pesan: " + data.message);
+						const data = await res.json().catch(() => ({}));
+						this.showPurgeConfirmModal = false;
+						this.purgePassword = '';
+						alert("💀 PANIC PURGE SUKSES EXECUTED!\n\n- Status: " + (data.status || 'purged') + "\n- Pesan: " + (data.message || ''));
 						this.fetchFiles();
 						this.fetchFolders();
 						this.fetchStorageStats();
 					} catch(err) {
-						alert("💀 PANIC PURGE EXECUTED!\n- Kunci RAM berhasil dimusnahkan.");
-						this.fetchFiles();
-						this.fetchFolders();
-						this.fetchStorageStats();
+						alert("Gagal melakukan panic purge: " + err.message);
 					}
 				}
 			});
