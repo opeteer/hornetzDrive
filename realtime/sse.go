@@ -15,7 +15,7 @@ func SSEHandler(broker EventBroker) echo.HandlerFunc {
 	return func(c *echo.Context) error {
 		topic := c.QueryParam("topic")
 		if topic == "" {
-			topic = "nest:user_1"
+			return echo.NewHTTPError(http.StatusBadRequest, "missing topic query param")
 		}
 
 		// Configure strict headers for Server-Sent Events
