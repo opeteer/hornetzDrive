@@ -63,6 +63,7 @@ func (s *EncryptStream) Write(p []byte) (n int, err error) {
 type DecryptStream struct {
 	r      io.Reader
 	aesgcm cipher.AEAD
+	buf    []byte // Buffer for decrypted chunks not yet consumed by caller
 }
 
 func NewDecryptStream(r io.Reader, key []byte) (*DecryptStream, error) {
@@ -78,37 +79,46 @@ func NewDecryptStream(r io.Reader, key []byte) (*DecryptStream, error) {
 }
 
 func (s *DecryptStream) Read(p []byte) (n int, err error) {
-	// For simplicity, a true io.Reader wrapper for chunked encryption is complex
-	// because boundaries don't align with 'p'.
-	// Real implementation reads exactly one chunk and buffers the plaintext.
+	if len(p) == 0 {
+		return 0, nil
+	}
 
-	// Read length
+	// 1. Drain existing plaintext buffer first
+	if len(s.buf) > 0 {
+		n = copy(p, s.buf)
+		s.buf = s.buf[n:]
+		return n, nil
+	}
+
+	// 2. Read length of next chunk (4 bytes)
 	lenBuf := make([]byte, 4)
 	if _, err := io.ReadFull(s.r, lenBuf); err != nil {
 		return 0, err
 	}
 	chunkLen := binary.BigEndian.Uint32(lenBuf)
 
+	// 3. Read nonce (12 bytes)
 	nonce := make([]byte, NonceSize)
 	if _, err := io.ReadFull(s.r, nonce); err != nil {
 		return 0, err
 	}
 
+	// 4. Read ciphertext
 	ciphertext := make([]byte, chunkLen)
 	if _, err := io.ReadFull(s.r, ciphertext); err != nil {
 		return 0, err
 	}
 
+	// 5. Decrypt and authenticate
 	plaintext, err := s.aesgcm.Open(nil, nonce, ciphertext, nil)
 	if err != nil {
 		return 0, errors.New("authentication failed")
 	}
 
-	// Copy to p
-	copied := copy(p, plaintext)
-	if copied < len(plaintext) {
-		return copied, errors.New("buffer too small for decrypted chunk")
+	// 6. Copy as much as fits into p, and buffer the rest
+	n = copy(p, plaintext)
+	if n < len(plaintext) {
+		s.buf = plaintext[n:]
 	}
-
-	return copied, nil
+	return n, nil
 }

@@ -6,7 +6,9 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strconv"
 	"ztatic-go-framework/data"
+	"ztatic-go-framework/internal/auth"
 	"ztatic-go-framework/internal/crypto"
 	"ztatic-go-framework/internal/storage"
 
@@ -186,8 +188,8 @@ func (fc *FileController) GetFolders(c *echo.Context) error {
 func (fc *FileController) DownloadFile(c *echo.Context) error {
 	id := c.Param("id")
 	var f FileRecord
-	query := fc.DB.Rebind("SELECT id, name, mime_type, cas_hash FROM files WHERE id = ?")
-	err := fc.DB.SQL.QueryRow(query, id).Scan(&f.ID, &f.Name, &f.MimeType, &f.CasHash)
+	query := fc.DB.Rebind("SELECT id, name, mime_type, size, cas_hash FROM files WHERE id = ?")
+	err := fc.DB.SQL.QueryRow(query, id).Scan(&f.ID, &f.Name, &f.MimeType, &f.Size, &f.CasHash)
 	if err == sql.ErrNoRows {
 		return echo.NewHTTPError(http.StatusNotFound, "File not found")
 	}
@@ -197,11 +199,23 @@ func (fc *FileController) DownloadFile(c *echo.Context) error {
 	if err != nil {
 		// Fallback for mock files
 		c.Response().Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", f.Name))
+		if f.Size > 0 {
+			c.Response().Header().Set("Content-Length", strconv.FormatInt(f.Size, 10))
+		}
 		return c.String(http.StatusOK, "Decrypted Content of "+f.Name)
 	}
 	defer file.Close()
 
-	vk := crypto.DummyVK()
+	var vk []byte
+	if cookie, err := c.Cookie("swarm_session"); err == nil {
+		if key, exists := auth.GlobalSessionStore.GetKey(cookie.Value); exists {
+			vk = key
+		}
+	}
+	if len(vk) == 0 {
+		vk = crypto.DummyVK()
+	}
+
 	decStream, err := crypto.NewDecryptStream(file, vk)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "Decryption error")
@@ -209,6 +223,9 @@ func (fc *FileController) DownloadFile(c *echo.Context) error {
 
 	c.Response().Header().Set("Content-Type", f.MimeType)
 	c.Response().Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", f.Name))
+	if f.Size > 0 {
+		c.Response().Header().Set("Content-Length", strconv.FormatInt(f.Size, 10))
+	}
 	_, err = io.Copy(c.Response(), decStream)
 	return err
 }
