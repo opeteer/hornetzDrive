@@ -43,6 +43,8 @@ func main() {
 	}
 
 	cfg := ztatic.DefaultConfig()
+	// Disable automatic per-request nonce injection so browsers respect 'unsafe-inline' for Alpine.js store scripts
+	cfg.Security.Headers.EnableCSPNonce = false
 	// Set Content-Security-Policy to allow Tailwind, Turbo, Alpine.js, and Google Fonts CDNs cleanly
 	cfg.Security.Headers.ContentSecurityPolicy = "default-src * 'unsafe-inline' 'unsafe-eval' blob: data:; font-src * data: https://fonts.gstatic.com; style-src * 'unsafe-inline' https://fonts.googleapis.com; script-src * 'unsafe-inline' 'unsafe-eval' blob: https://cdn.tailwindcss.com https://cdn.skypack.dev https://cdn.jsdelivr.net;"
 	// Allow client-side JavaScript (Alpine.js) to read _csrf cookie
