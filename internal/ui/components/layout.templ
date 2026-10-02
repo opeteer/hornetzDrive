@@ -227,8 +227,8 @@ templ Layout(title string) {
 		>
 			<div class="flex justify-between items-center text-xs font-bold text-white">
 				<span class="flex items-center gap-2">
-					<span class="animate-spin text-[#FACC15]">⏳</span> 
-					<span x-text="$store.drive.uploadFileName">Mengunggah...</span>
+					<span :class="$store.drive.uploadProgress === 100 ? 'text-emerald-400' : 'animate-spin text-[#FACC15]'" x-text="$store.drive.uploadProgress === 100 ? '✅' : '⏳'"></span> 
+					<span class="truncate max-w-[150px]" x-text="$store.drive.uploadFileName">Mengunggah...</span>
 				</span>
 				<span class="text-[#FACC15] font-mono" x-text="$store.drive.uploadProgress + '%'">0%</span>
 			</div>
@@ -237,7 +237,7 @@ templ Layout(title string) {
 			</div>
 			<div class="text-[10px] text-[#A19A8F] font-mono flex justify-between">
 				<span>Enkripsi: AES-256-GCM</span>
-				<span>Status: Processing</span>
+				<span x-text="$store.drive.uploadStatusText">Status: Processing</span>
 			</div>
 		</div>
 
@@ -320,6 +320,7 @@ templ Layout(title string) {
 				isUploading: false,
 				uploadFileName: '',
 				uploadProgress: 0,
+				uploadStatusText: 'Status: Processing',
 				isVaultUnlocked: false,
 				showVaultPasswordModal: false,
 				vaultPassword: '',
@@ -470,6 +471,10 @@ templ Layout(title string) {
 					event.preventDefault();
 					this.dragCounter = 0;
 					this.isDragging = false;
+					if (this.isUploading) {
+						alert("Upload berkas lain sedang berjalan. Harap tunggu hingga proses selesai.");
+						return;
+					}
 					const dt = event.dataTransfer;
 					if (dt && dt.files && dt.files.length > 0) {
 						for (let i = 0; i < dt.files.length; i++) {
@@ -479,6 +484,11 @@ templ Layout(title string) {
 				},
 
 				async uploadFile(event) {
+					if (this.isUploading) {
+						alert("Upload berkas lain sedang berjalan. Harap tunggu hingga proses selesai.");
+						if (event.target) event.target.value = "";
+						return;
+					}
 					const file = event.target?.files?.[0];
 					if (file) {
 						await this.processUpload(file);
@@ -490,10 +500,12 @@ templ Layout(title string) {
 
 				async processUpload(file) {
 					if (!file) return;
+					if (this.isUploading) return;
 
 					this.uploadFileName = file.name;
 					this.isUploading = true;
-					this.uploadProgress = 15;
+					this.uploadProgress = 5;
+					this.uploadStatusText = 'Status: Inisiasi Sesi';
 					this.isTransferring = true;
 					this.currentSpeedText = 'Menghubungkan...';
 					const uploadStartTime = performance.now();
@@ -523,24 +535,25 @@ templ Layout(title string) {
 							throw new Error(errData.message || `Gagal inisiasi upload (Status HTTP ${initRes.status})`);
 						}
 						const initData = await initRes.json();
-						this.uploadProgress = 50;
 
 						if (initData.status === "completed") {
 							await this.fetchFiles();
 							await this.fetchStorageStats();
 							this.uploadProgress = 100;
+							this.uploadStatusText = 'Status: Instan (CAS)';
 							this.currentSpeedText = 'Instan (CAS)';
 							setTimeout(() => { 
 								this.isUploading = false;
 								this.isTransferring = false;
 								this.currentSpeedText = 'Idle';
-							}, 1500);
-							alert("⚡ Berkas berhasil diunggah secara instan (0-Second CAS Deduplication)!");
+								this.uploadProgress = 0;
+								this.uploadStatusText = 'Status: Processing';
+							}, 2000);
 							return;
 						}
 
 						const sessionId = initData.session_id;
-						this.uploadProgress = 20;
+						this.uploadStatusText = 'Status: Mengunggah';
 
 						await new Promise((resolve, reject) => {
 							const xhr = new XMLHttpRequest();
@@ -561,9 +574,9 @@ templ Layout(title string) {
 										lastLoaded = event.loaded;
 										lastTime = now;
 									}
-									// Granular mapping from 20% to 98%
-									const percent = 20 + Math.round((event.loaded / event.total) * 78);
-									this.uploadProgress = Math.min(Math.max(percent, 20), 98);
+									// Strictly monotonic granular mapping from 5% to 95%
+									const streamPercent = 5 + Math.round((event.loaded / event.total) * 90);
+									this.uploadProgress = Math.max(this.uploadProgress, Math.min(streamPercent, 95));
 								}
 							};
 
@@ -587,16 +600,21 @@ templ Layout(title string) {
 						const elapsedSec = (performance.now() - uploadStartTime) / 1000;
 						const avgSpeedMBps = ((file.size / (1024 * 1024)) / Math.max(elapsedSec, 0.05)).toFixed(1);
 						this.currentSpeedText = `${avgSpeedMBps} MB/s`;
+						this.uploadProgress = Math.max(this.uploadProgress, 95);
+						this.uploadStatusText = 'Status: Verifikasi CAS & DB';
 
 						await this.fetchFiles();
 						await this.fetchStorageStats();
 						this.uploadProgress = 100;
+						this.uploadStatusText = 'Status: Selesai';
+
 						setTimeout(() => { 
 							this.isUploading = false;
 							this.isTransferring = false;
 							this.currentSpeedText = 'Idle';
+							this.uploadProgress = 0;
+							this.uploadStatusText = 'Status: Processing';
 						}, 2500);
-						alert(`✅ Berkas "${file.name}" berhasil diunggah & tersimpan di basis data!`);
 
 					} catch (err) {
 						console.error("Upload error:", err);
@@ -604,6 +622,8 @@ templ Layout(title string) {
 						this.isUploading = false;
 						this.isTransferring = false;
 						this.currentSpeedText = 'Idle';
+						this.uploadProgress = 0;
+						this.uploadStatusText = 'Status: Processing';
 					}
 				},
 
