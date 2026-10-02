@@ -3,6 +3,7 @@ package controllers
 import (
 	"bufio"
 	"context"
+	"database/sql"
 	"fmt"
 	"io"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 	"github.com/labstack/echo/v5"
 	"ztatic-go-framework/data"
 	"ztatic-go-framework/fullstack"
+	"ztatic-go-framework/internal/auth"
 	"ztatic-go-framework/internal/crypto"
 	"ztatic-go-framework/internal/storage"
 	"ztatic-go-framework/internal/upload"
@@ -35,6 +37,28 @@ type ProgressBarComponent struct {
 func (p ProgressBarComponent) Render(ctx context.Context, w io.Writer) error {
 	_, err := fmt.Fprintf(w, `<div class="progress-bar amber-hazard" style="width: %d%%;"></div>`, p.Percentage)
 	return err
+}
+
+func (uc *UploadController) isVaultFolder(folderID string) bool {
+	if folderID == "f2" {
+		return true
+	}
+	if folderID == "" || folderID == "f1" || folderID == "f3" || uc.DB == nil || uc.DB.SQL == nil {
+		return false
+	}
+	curr := folderID
+	for i := 0; i < 50; i++ {
+		var parentID sql.NullString
+		err := uc.DB.SQL.QueryRow(uc.DB.Rebind("SELECT parent_id FROM folders WHERE id = ?"), curr).Scan(&parentID)
+		if err != nil || !parentID.Valid || parentID.String == "" {
+			return false
+		}
+		if parentID.String == "f2" {
+			return true
+		}
+		curr = parentID.String
+	}
+	return false
 }
 
 func (uc *UploadController) InitSession(c *echo.Context) error {
@@ -70,6 +94,13 @@ func (uc *UploadController) InitSession(c *echo.Context) error {
 			if count == 0 {
 				return echo.NewHTTPError(http.StatusBadRequest, "folder not found")
 			}
+		}
+	}
+
+	if uc.isVaultFolder(folderID) {
+		cookie, err := c.Cookie("swarm_session")
+		if err != nil || cookie == nil || !auth.GlobalSessionStore.HasKey(cookie.Value) {
+			return echo.NewHTTPError(http.StatusUnauthorized, "Vault locked. Master password required to upload to vault.")
 		}
 	}
 
@@ -141,8 +172,22 @@ func (uc *UploadController) UploadChunk(c *echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to initialize encryption stream")
 	}
 
+	if sess.ExpectedSize > 0 && sess.UploadedSize > sess.ExpectedSize {
+		return echo.NewHTTPError(http.StatusBadRequest, "session already complete")
+	}
+
+	remaining := sess.ExpectedSize - sess.UploadedSize
+	if sess.ExpectedSize > 0 && remaining < 0 {
+		return echo.NewHTTPError(http.StatusBadRequest, "uploaded bytes exceed declared session size")
+	}
+
+	var bodyReader io.Reader = c.Request().Body
+	if sess.ExpectedSize > 0 {
+		bodyReader = io.LimitReader(c.Request().Body, remaining+1)
+	}
+
 	transferBuf := make([]byte, 1024*1024)
-	written, err := io.CopyBuffer(encStream, c.Request().Body, transferBuf)
+	written, err := io.CopyBuffer(encStream, bodyReader, transferBuf)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "chunk transfer failed")
 	}
@@ -150,6 +195,7 @@ func (uc *UploadController) UploadChunk(c *echo.Context) error {
 
 	// Prevent uploading more than declared size to eliminate stream desynchronization
 	if sess.ExpectedSize > 0 && sess.UploadedSize+written > sess.ExpectedSize {
+		_ = f.Truncate(sess.UploadedSize)
 		return echo.NewHTTPError(http.StatusBadRequest, "uploaded bytes exceed declared session size")
 	}
 

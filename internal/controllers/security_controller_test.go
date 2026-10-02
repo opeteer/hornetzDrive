@@ -37,7 +37,20 @@ func TestSecurityController_PanicPurge(t *testing.T) {
 		Broker: realtime.NewMemoryBroker(),
 	}
 
+	// Unauthenticated request should be rejected (401)
+	unauthReq := httptest.NewRequest(http.MethodPost, "/api/purge", nil)
+	unauthRec := httptest.NewRecorder()
+	unauthC := e.NewContext(unauthReq, unauthRec)
+	err = secCtrl.PanicPurge(unauthC)
+	if err == nil {
+		t.Fatalf("Expected error for unauthenticated purge, got nil")
+	}
+	if he, ok := err.(*echo.HTTPError); !ok || he.Code != http.StatusUnauthorized {
+		t.Fatalf("Expected HTTP 401 echo.HTTPError, got %v", err)
+	}
+
 	req := httptest.NewRequest(http.MethodPost, "/api/purge", nil)
+	req.AddCookie(&http.Cookie{Name: "swarm_session", Value: sessionID})
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 

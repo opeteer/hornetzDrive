@@ -191,14 +191,33 @@ func TestFileController_GetStorageStats(t *testing.T) {
 	if stats.UsedBytes <= 0 {
 		t.Fatalf("Expected used_bytes > 0, got %d", stats.UsedBytes)
 	}
-	if stats.FileCount != 4 {
-		t.Fatalf("Expected 4 files, got %d", stats.FileCount)
+	// Unauthenticated stats should exclude vault files (seed has 3 public, 1 vault)
+	if stats.FileCount != 3 {
+		t.Fatalf("Expected 3 files when unauthenticated, got %d", stats.FileCount)
 	}
 	if stats.QuotaFormatted != "2 TB" {
 		t.Fatalf("Expected quota_formatted '2 TB', got %s", stats.QuotaFormatted)
 	}
 	if stats.PercentUsed <= 0 || stats.PercentUsed > 100 {
 		t.Fatalf("Invalid percent_used: %f", stats.PercentUsed)
+	}
+
+	// Authenticated request with session key should include vault files
+	sessionID := "test-stats-session"
+	auth.GlobalSessionStore.SetKey(sessionID, crypto.DummyVK())
+	authReq := httptest.NewRequest(http.MethodGet, "/api/storage/stats", nil)
+	authReq.AddCookie(&http.Cookie{Name: "swarm_session", Value: sessionID})
+	authRec := httptest.NewRecorder()
+	authC := e.NewContext(authReq, authRec)
+	if err := fileCtrl.GetStorageStats(authC); err != nil {
+		t.Fatalf("GetStorageStats error: %v", err)
+	}
+	var authStats StorageStats
+	if err := json.Unmarshal(authRec.Body.Bytes(), &authStats); err != nil {
+		t.Fatalf("Failed to unmarshal storage stats: %v", err)
+	}
+	if authStats.FileCount != 4 {
+		t.Fatalf("Expected 4 files when authenticated, got %d", authStats.FileCount)
 	}
 }
 

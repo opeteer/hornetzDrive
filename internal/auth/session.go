@@ -132,6 +132,14 @@ var (
 	defaultVaultHash = crypto.DeriveMEK([]byte("ManusiaIdaman"), defaultVaultSalt)
 )
 
+// VerifyMasterPassword validates password using Argon2id constant-time comparison against master key
+func VerifyMasterPassword(password string) bool {
+	if password == "" {
+		return false
+	}
+	return crypto.VerifyPassword([]byte(password), defaultVaultSalt, defaultVaultHash)
+}
+
 // LoginMock simulates unlocking the vault and storing the VK in RAM using Argon2id.
 func LoginMock(c *echo.Context) error {
 	var req LoginRequest

@@ -34,10 +34,14 @@ templ DashboardContent() {
 						($store.drive.activeTab === 'starred' ? 'Berbintang' : 'Sampah')))
 					"
 				>Utama</span>
-				<template x-if="$store.drive.currentFolderId">
+				<template x-for="(crumb, idx) in $store.drive.folderHistory" :key="crumb.id">
 					<span class="flex items-center gap-2">
 						<span class="text-[#6E675E]">\</span>
-						<span class="text-white font-bold" x-text="$store.drive.currentFolderName"></span>
+						<span 
+							:class="idx === $store.drive.folderHistory.length - 1 ? 'text-white font-bold' : 'text-[#FACC15] cursor-pointer hover:underline font-semibold'" 
+							@click="if (idx < $store.drive.folderHistory.length - 1) $store.drive.navigateToBreadcrumb(idx)" 
+							x-text="crumb.name"
+						></span>
 					</span>
 				</template>
 			</div>

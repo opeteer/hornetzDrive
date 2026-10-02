@@ -76,7 +76,7 @@ templ Layout(title string) {
 					<input 
 						type="text" 
 						x-model="$store.drive.searchQuery" 
-						@input.debounce.300ms="$store.drive.fetchFiles()"
+						@input.debounce.300ms="$store.drive.fetchFiles(); $store.drive.fetchFolders()"
 						placeholder="Cari berkas, folder, atau hash SHA-256..." 
 						class="w-full bg-[#0F0E0D] border border-[#2A2723] text-sm text-white px-10 py-2 rounded-lg focus:outline-none focus:border-[#FACC15] transition-colors placeholder-[#6E675E]"
 					/>
@@ -429,6 +429,7 @@ templ Layout(title string) {
 				files: [],
 				folders: [],
 				selectedFile: null,
+				folderHistory: [],
 				currentFolderId: '',
 				currentFolderName: '',
 				isUploading: false,
@@ -495,6 +496,7 @@ templ Layout(title string) {
 						this.lockVault(); // Automatically lock vault when leaving the tab
 					}
 					this.activeTab = tab;
+					this.folderHistory = [];
 					this.currentFolderId = '';
 					this.currentFolderName = '';
 					this.fetchFolders();
@@ -503,6 +505,12 @@ templ Layout(title string) {
 
 				openFolder(folder) {
 					if (!folder) return;
+					const existingIdx = this.folderHistory.findIndex(f => f.id === folder.id);
+					if (existingIdx !== -1) {
+						this.folderHistory = this.folderHistory.slice(0, existingIdx + 1);
+					} else {
+						this.folderHistory.push({ id: folder.id, name: folder.name });
+					}
 					this.currentFolderId = folder.id;
 					this.currentFolderName = folder.name;
 					this.fetchFiles();
@@ -510,8 +518,19 @@ templ Layout(title string) {
 				},
 
 				clearFolder() {
+					this.folderHistory = [];
 					this.currentFolderId = '';
 					this.currentFolderName = '';
+					this.fetchFiles();
+					this.fetchFolders();
+				},
+
+				navigateToBreadcrumb(index) {
+					if (index < 0 || index >= this.folderHistory.length) return;
+					this.folderHistory = this.folderHistory.slice(0, index + 1);
+					const target = this.folderHistory[index];
+					this.currentFolderId = target.id;
+					this.currentFolderName = target.name;
 					this.fetchFiles();
 					this.fetchFolders();
 				},
@@ -519,6 +538,7 @@ templ Layout(title string) {
 				clearSearch() {
 					this.searchQuery = '';
 					this.fetchFiles();
+					this.fetchFolders();
 				},
 
 				async fetchFiles() {
@@ -535,7 +555,7 @@ templ Layout(title string) {
 
 				async fetchFolders() {
 					try {
-						const url = `/api/folders?tab=${this.activeTab}&parent_id=${encodeURIComponent(this.currentFolderId)}`;
+						const url = `/api/folders?tab=${this.activeTab}&parent_id=${encodeURIComponent(this.currentFolderId)}&q=${encodeURIComponent(this.searchQuery)}`;
 						const res = await fetch(url);
 						if (res.ok) {
 							this.folders = await res.json();
@@ -556,7 +576,7 @@ templ Layout(title string) {
 							},
 							body: JSON.stringify({
 								name: name.trim(),
-								parent_id: this.currentFolderId || (this.activeTab === 'vault' ? 'f2' : 'f1')
+								parent_id: this.currentFolderId || (this.activeTab === 'vault' ? 'f2' : '')
 							})
 						});
 						if (res.ok) {
@@ -565,7 +585,7 @@ templ Layout(title string) {
 							this.fetchFolders();
 						} else {
 							const data = await res.json().catch(() => ({}));
-							alert(data.message || 'Gagal membuat folder');
+							alert(data.message || data.error?.message || 'Gagal membuat folder');
 						}
 					} catch(e) {
 						alert('Gagal membuat folder: ' + e.message);
@@ -878,9 +898,12 @@ templ Layout(title string) {
 							this.fetchFiles();
 							this.fetchFolders();
 							this.fetchStorageStats();
+						} else {
+							const data = await res.json().catch(() => ({}));
+							alert(data.message || data.error?.message || "Gagal menghapus berkas");
 						}
 					} catch(e) {
-						alert("Gagal menghapus berkas");
+						alert("Gagal menghapus berkas: " + e.message);
 					}
 				},
 
@@ -898,9 +921,12 @@ templ Layout(title string) {
 							this.fetchFiles();
 							this.fetchFolders();
 							this.fetchStorageStats();
+						} else {
+							const data = await res.json().catch(() => ({}));
+							alert(data.message || data.error?.message || "Gagal memulihkan berkas");
 						}
 					} catch(e) {
-						alert("Gagal memulihkan berkas");
+						alert("Gagal memulihkan berkas: " + e.message);
 					}
 				},
 
@@ -916,9 +942,12 @@ templ Layout(title string) {
 						if (res.ok) {
 							file.is_starred = !file.is_starred;
 							this.fetchFiles();
+						} else {
+							const data = await res.json().catch(() => ({}));
+							alert(data.message || data.error?.message || "Gagal mengubah status bintang");
 						}
 					} catch(e) {
-						alert("Gagal mengubah status bintang");
+						alert("Gagal mengubah status bintang: " + e.message);
 					}
 				},
 
@@ -944,25 +973,19 @@ templ Layout(title string) {
 						return;
 					}
 					try {
-						const verifyRes = await fetch('/login', {
-							method: 'POST',
-							headers: {
-								'Content-Type': 'application/json',
-								'X-CSRF-Token': this.getCsrfToken()
-							},
-							body: JSON.stringify({ password: this.purgePassword })
-						});
-						if (!verifyRes.ok) {
-							alert("Kata sandi master salah! Panic purge dibatalkan.");
-							return;
-						}
 						const res = await fetch("/api/purge", {
 							method: "POST",
 							headers: {
 								"Content-Type": "application/json",
 								"X-CSRF-Token": this.getCsrfToken()
-							}
+							},
+							body: JSON.stringify({ password: this.purgePassword })
 						});
+						if (!res.ok) {
+							const errData = await res.json().catch(() => ({}));
+							alert("Gagal melakukan panic purge: " + (errData.message || errData.error?.message || "Kata sandi master salah!"));
+							return;
+						}
 						const data = await res.json().catch(() => ({}));
 						this.showPurgeConfirmModal = false;
 						this.purgePassword = '';
@@ -989,7 +1012,8 @@ templ Layout(title string) {
 							this.fetchFolders();
 							this.fetchStorageStats();
 						} else {
-							alert("Gagal mengosongkan sampah");
+							const data = await res.json().catch(() => ({}));
+							alert(data.message || data.error?.message || "Gagal mengosongkan sampah");
 						}
 					} catch(e) {
 						alert("Gagal mengosongkan sampah: " + e.message);
@@ -1007,11 +1031,16 @@ templ Layout(title string) {
 							}
 						});
 						if (res.ok) {
-							this.fetchFolders();
-							this.fetchFiles();
-							this.fetchStorageStats();
+							if (this.currentFolderId === folder.id) {
+								this.clearFolder();
+							} else {
+								this.fetchFolders();
+								this.fetchFiles();
+								this.fetchStorageStats();
+							}
 						} else {
-							alert("Gagal menghapus folder");
+							const data = await res.json().catch(() => ({}));
+							alert(data.message || data.error?.message || "Gagal menghapus folder");
 						}
 					} catch(e) {
 						alert("Gagal menghapus folder: " + e.message);
@@ -1032,11 +1061,16 @@ templ Layout(title string) {
 							body: JSON.stringify({ name: newName.trim() })
 						});
 						if (res.ok) {
+							if (this.currentFolderId === folder.id) {
+								this.currentFolderName = newName.trim();
+								const crumb = this.folderHistory.find(c => c.id === folder.id);
+								if (crumb) crumb.name = newName.trim();
+							}
 							this.fetchFolders();
 							this.fetchFiles();
 						} else {
 							const data = await res.json().catch(() => ({}));
-							alert(data.message || "Gagal mengubah nama folder");
+							alert(data.message || data.error?.message || "Gagal mengubah nama folder");
 						}
 					} catch(e) {
 						alert("Gagal mengubah nama folder: " + e.message);

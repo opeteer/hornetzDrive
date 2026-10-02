@@ -101,6 +101,69 @@ func (fc *FileController) SeedInitialData() {
 		('file_4', 1, 'f3', 'cadangan_basis_data_swarm.tar.gz', 'application/gzip', 1503238553, '7766554433221100998877665544332211009988776655443322110099887766', FALSE, FALSE)` + onConflict)
 }
 
+func (fc *FileController) isVaultUnlocked(c *echo.Context) bool {
+	cookie, err := c.Cookie("swarm_session")
+	if err != nil || cookie == nil || !auth.GlobalSessionStore.HasKey(cookie.Value) {
+		return false
+	}
+	return true
+}
+
+func (fc *FileController) IsVaultFolder(folderID string) bool {
+	if folderID == "f2" {
+		return true
+	}
+	if folderID == "" || folderID == "f1" || folderID == "f3" || fc.DB == nil || fc.DB.SQL == nil {
+		return false
+	}
+	curr := folderID
+	for i := 0; i < 50; i++ {
+		var parentID sql.NullString
+		err := fc.DB.SQL.QueryRow(fc.DB.Rebind("SELECT parent_id FROM folders WHERE id = ?"), curr).Scan(&parentID)
+		if err != nil || !parentID.Valid || parentID.String == "" {
+			return false
+		}
+		if parentID.String == "f2" {
+			return true
+		}
+		curr = parentID.String
+	}
+	return false
+}
+
+func (fc *FileController) GetAllVaultFolderIDs() []string {
+	vaultIDs := []string{"f2"}
+	if fc.DB == nil || fc.DB.SQL == nil {
+		return vaultIDs
+	}
+	queue := []string{"f2"}
+	for len(queue) > 0 {
+		curr := queue[0]
+		queue = queue[1:]
+		rows, err := fc.DB.SQL.Query(fc.DB.Rebind("SELECT id FROM folders WHERE parent_id = ?"), curr)
+		if err == nil {
+			for rows.Next() {
+				var id string
+				if err := rows.Scan(&id); err == nil {
+					vaultIDs = append(vaultIDs, id)
+					queue = append(queue, id)
+				}
+			}
+			rows.Close()
+		}
+	}
+	return vaultIDs
+}
+
+func (fc *FileController) vaultExcludeFilter() string {
+	ids := fc.GetAllVaultFolderIDs()
+	escapedIDs := make([]string, len(ids))
+	for i, id := range ids {
+		escapedIDs[i] = fmt.Sprintf("'%s'", strings.ReplaceAll(id, "'", "''"))
+	}
+	return fmt.Sprintf("folder_id NOT IN (%s)", strings.Join(escapedIDs, ","))
+}
+
 func (fc *FileController) GetFiles(c *echo.Context) error {
 	fc.SeedInitialData()
 
@@ -108,10 +171,11 @@ func (fc *FileController) GetFiles(c *echo.Context) error {
 	search := c.QueryParam("q")
 	folderID := c.QueryParam("folder_id")
 
-	// Verify vault authentication if accessing the vault tab or folder f2
-	if tab == "vault" || folderID == "f2" {
-		cookie, err := c.Cookie("swarm_session")
-		if err != nil || cookie == nil || !auth.GlobalSessionStore.HasKey(cookie.Value) {
+	isUnlocked := fc.isVaultUnlocked(c)
+
+	// Verify vault authentication if accessing the vault tab or a folder inside the vault
+	if tab == "vault" || fc.IsVaultFolder(folderID) {
+		if !isUnlocked {
 			return echo.NewHTTPError(http.StatusUnauthorized, "Vault locked. Master password required.")
 		}
 	}
@@ -121,29 +185,44 @@ func (fc *FileController) GetFiles(c *echo.Context) error {
 
 	if tab == "trash" {
 		query += " AND is_deleted = TRUE"
+		if !isUnlocked {
+			query += " AND " + fc.vaultExcludeFilter()
+		}
 	} else {
 		query += " AND is_deleted = FALSE"
 		if tab == "starred" {
 			query += " AND is_starred = TRUE"
+			if !isUnlocked {
+				query += " AND " + fc.vaultExcludeFilter()
+			}
 		} else if tab == "vault" {
-			query += " AND folder_id = 'f2'"
+			if folderID != "" {
+				query += " AND folder_id = ?"
+				args = append(args, folderID)
+			} else {
+				query += " AND folder_id = 'f2'"
+			}
 		} else {
 			// Standard storage tab
-			query += " AND folder_id != 'f2'"
-		}
-	}
-
-	if folderID != "" {
-		query += " AND folder_id = ?"
-		args = append(args, folderID)
-		if tab != "vault" && folderID == "f2" {
-			query += " AND 1=0" // Prevent accessing vault folder from non-vault tab
+			if folderID != "" {
+				query += " AND folder_id = ?"
+				args = append(args, folderID)
+				if !isUnlocked && fc.IsVaultFolder(folderID) {
+					query += " AND 1=0"
+				}
+			} else {
+				// Root storage: exclude vault folders
+				query += " AND " + fc.vaultExcludeFilter()
+			}
 		}
 	}
 
 	if search != "" {
-		query += " AND (name LIKE ? OR cas_hash LIKE ?)"
-		pattern := "%" + search + "%"
+		escaped := strings.ReplaceAll(search, "\\", "\\\\")
+		escaped = strings.ReplaceAll(escaped, "%", "\\%")
+		escaped = strings.ReplaceAll(escaped, "_", "\\_")
+		pattern := "%" + escaped + "%"
+		query += " AND (name LIKE ? ESCAPE '\\' OR cas_hash LIKE ? ESCAPE '\\')"
 		args = append(args, pattern, pattern)
 	}
 
@@ -206,11 +285,13 @@ func (fc *FileController) GetFolders(c *echo.Context) error {
 
 	tab := c.QueryParam("tab")
 	parentID := c.QueryParam("parent_id")
+	search := c.QueryParam("q")
 
-	// Verify vault authentication if accessing the vault tab or vault subfolder
-	if tab == "vault" || parentID == "f2" {
-		cookie, err := c.Cookie("swarm_session")
-		if err != nil || cookie == nil || !auth.GlobalSessionStore.HasKey(cookie.Value) {
+	isUnlocked := fc.isVaultUnlocked(c)
+
+	// Verify vault authentication if accessing the vault tab or a vault subfolder
+	if tab == "vault" || fc.IsVaultFolder(parentID) {
+		if !isUnlocked {
 			return echo.NewHTTPError(http.StatusUnauthorized, "Vault locked. Master password required.")
 		}
 	}
@@ -226,10 +307,29 @@ func (fc *FileController) GetFolders(c *echo.Context) error {
 	if parentID != "" {
 		query += " AND f.parent_id = ?"
 		args = append(args, parentID)
+		if !isUnlocked && fc.IsVaultFolder(parentID) {
+			query += " AND 1=0"
+		}
 	} else if tab == "vault" {
 		query += " AND f.id = 'f2'"
 	} else {
 		query += " AND f.id != 'f2' AND (f.parent_id IS NULL OR f.parent_id = '')"
+		if !isUnlocked {
+			vaultIDs := fc.GetAllVaultFolderIDs()
+			escapedIDs := make([]string, len(vaultIDs))
+			for i, vID := range vaultIDs {
+				escapedIDs[i] = fmt.Sprintf("'%s'", strings.ReplaceAll(vID, "'", "''"))
+			}
+			query += fmt.Sprintf(" AND f.id NOT IN (%s)", strings.Join(escapedIDs, ","))
+		}
+	}
+
+	if search != "" {
+		escaped := strings.ReplaceAll(search, "\\", "\\\\")
+		escaped = strings.ReplaceAll(escaped, "%", "\\%")
+		escaped = strings.ReplaceAll(escaped, "_", "\\_")
+		query += " AND f.name LIKE ? ESCAPE '\\'"
+		args = append(args, "%"+escaped+"%")
 	}
 
 	query += " GROUP BY f.id, f.owner_id, f.parent_id, f.name, f.created_at"
@@ -253,6 +353,52 @@ func (fc *FileController) GetFolders(c *echo.Context) error {
 	return c.JSON(http.StatusOK, folders)
 }
 
+func parseRangeHeader(rangeHeader string, totalSize int64) (start int64, end int64, satisfiable bool, isRange bool) {
+	if !strings.HasPrefix(rangeHeader, "bytes=") {
+		return 0, totalSize - 1, false, false
+	}
+	ranges := strings.TrimPrefix(rangeHeader, "bytes=")
+	parts := strings.Split(ranges, "-")
+	if len(parts) != 2 {
+		return 0, totalSize - 1, false, false
+	}
+
+	// Suffix range: bytes=-500 (last 500 bytes)
+	if parts[0] == "" && parts[1] != "" {
+		suffixLen, err := strconv.ParseInt(parts[1], 10, 64)
+		if err != nil || suffixLen <= 0 {
+			return 0, 0, false, true
+		}
+		if totalSize <= 0 {
+			return 0, 0, false, true
+		}
+		if suffixLen > totalSize {
+			suffixLen = totalSize
+		}
+		start = totalSize - suffixLen
+		end = totalSize - 1
+		return start, end, true, true
+	}
+
+	// Regular range: bytes=start-end or bytes=start-
+	s, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil || s < 0 || s >= totalSize {
+		return 0, 0, false, true
+	}
+	start = s
+	end = totalSize - 1
+	if parts[1] != "" {
+		e, err := strconv.ParseInt(parts[1], 10, 64)
+		if err != nil || e < start {
+			return 0, 0, false, true
+		}
+		if e < totalSize {
+			end = e
+		}
+	}
+	return start, end, true, true
+}
+
 func (fc *FileController) DownloadFile(c *echo.Context) error {
 	id := c.Param("id")
 	var f FileRecord
@@ -263,9 +409,8 @@ func (fc *FileController) DownloadFile(c *echo.Context) error {
 	}
 
 	// Protect confidential Vault files: require active unlocked vault session
-	if f.FolderID == "f2" {
-		cookie, err := c.Cookie("swarm_session")
-		if err != nil || cookie == nil || !auth.GlobalSessionStore.HasKey(cookie.Value) {
+	if fc.IsVaultFolder(f.FolderID) {
+		if !fc.isVaultUnlocked(c) {
 			return echo.NewHTTPError(http.StatusUnauthorized, "Vault locked. Master password required to download this file.")
 		}
 	}
@@ -290,19 +435,16 @@ func (fc *FileController) DownloadFile(c *echo.Context) error {
 		c.Response().Header().Set("Content-Type", "text/plain; charset=utf-8")
 		c.Response().Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", safeName))
 
-		if rangeHeader := c.Request().Header.Get("Range"); strings.HasPrefix(rangeHeader, "bytes=") {
-			ranges := strings.TrimPrefix(rangeHeader, "bytes=")
-			parts := strings.Split(ranges, "-")
-			start, _ := strconv.ParseInt(parts[0], 10, 64)
-			end := totalSize - 1
-			if len(parts) > 1 && parts[1] != "" {
-				if parsedEnd, err := strconv.ParseInt(parts[1], 10, 64); err == nil && parsedEnd < totalSize {
-					end = parsedEnd
+		if rangeHeader := c.Request().Header.Get("Range"); rangeHeader != "" {
+			start, end, satisfiable, isRange := parseRangeHeader(rangeHeader, totalSize)
+			if isRange {
+				if !satisfiable {
+					c.Response().Header().Set("Content-Range", fmt.Sprintf("bytes */%d", totalSize))
+					return c.NoContent(http.StatusRequestedRangeNotSatisfiable)
 				}
-			}
-			if start <= end && start < totalSize {
+				chunkLen := end - start + 1
 				c.Response().Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, totalSize))
-				c.Response().Header().Set("Content-Length", strconv.FormatInt(end-start+1, 10))
+				c.Response().Header().Set("Content-Length", strconv.FormatInt(chunkLen, 10))
 				c.Response().WriteHeader(http.StatusPartialContent)
 				_, err = c.Response().Write(mockBody[start : end+1])
 				return err
@@ -331,18 +473,14 @@ func (fc *FileController) DownloadFile(c *echo.Context) error {
 	c.Response().Header().Set("Content-Type", f.MimeType)
 	c.Response().Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", safeName))
 
-	// Range request handling for decrypted stream
-	if rangeHeader := c.Request().Header.Get("Range"); strings.HasPrefix(rangeHeader, "bytes=") {
-		ranges := strings.TrimPrefix(rangeHeader, "bytes=")
-		parts := strings.Split(ranges, "-")
-		start, _ := strconv.ParseInt(parts[0], 10, 64)
-		end := f.Size - 1
-		if len(parts) > 1 && parts[1] != "" {
-			if parsedEnd, err := strconv.ParseInt(parts[1], 10, 64); err == nil && parsedEnd < f.Size {
-				end = parsedEnd
+	// RFC 7233 Range request handling for decrypted stream
+	if rangeHeader := c.Request().Header.Get("Range"); rangeHeader != "" {
+		start, end, satisfiable, isRange := parseRangeHeader(rangeHeader, f.Size)
+		if isRange {
+			if !satisfiable {
+				c.Response().Header().Set("Content-Range", fmt.Sprintf("bytes */%d", f.Size))
+				return c.NoContent(http.StatusRequestedRangeNotSatisfiable)
 			}
-		}
-		if start <= end && start < f.Size {
 			if start > 0 {
 				_, _ = io.CopyN(io.Discard, decStream, start)
 			}
@@ -364,6 +502,12 @@ func (fc *FileController) DownloadFile(c *echo.Context) error {
 func (fc *FileController) DeleteFile(c *echo.Context) error {
 	id := c.Param("id")
 	permanent := c.QueryParam("permanent") == "true"
+
+	var folderID string
+	_ = fc.DB.SQL.QueryRow(fc.DB.Rebind("SELECT COALESCE(folder_id, '') FROM files WHERE id = ? AND owner_id = ?"), id, 1).Scan(&folderID)
+	if fc.IsVaultFolder(folderID) && !fc.isVaultUnlocked(c) {
+		return echo.NewHTTPError(http.StatusUnauthorized, "Vault locked. Master password required.")
+	}
 
 	if permanent {
 		var casHash string
@@ -402,6 +546,13 @@ func (fc *FileController) DeleteFile(c *echo.Context) error {
 
 func (fc *FileController) RestoreFile(c *echo.Context) error {
 	id := c.Param("id")
+
+	var folderID string
+	_ = fc.DB.SQL.QueryRow(fc.DB.Rebind("SELECT COALESCE(folder_id, '') FROM files WHERE id = ? AND owner_id = ?"), id, 1).Scan(&folderID)
+	if fc.IsVaultFolder(folderID) && !fc.isVaultUnlocked(c) {
+		return echo.NewHTTPError(http.StatusUnauthorized, "Vault locked. Master password required.")
+	}
+
 	query := fc.DB.Rebind("UPDATE files SET is_deleted = FALSE WHERE id = ? AND owner_id = ?")
 	res, err := fc.DB.SQL.Exec(query, id, 1)
 	if err != nil {
@@ -415,6 +566,13 @@ func (fc *FileController) RestoreFile(c *echo.Context) error {
 
 func (fc *FileController) StarFile(c *echo.Context) error {
 	id := c.Param("id")
+
+	var folderID string
+	_ = fc.DB.SQL.QueryRow(fc.DB.Rebind("SELECT COALESCE(folder_id, '') FROM files WHERE id = ? AND owner_id = ?"), id, 1).Scan(&folderID)
+	if fc.IsVaultFolder(folderID) && !fc.isVaultUnlocked(c) {
+		return echo.NewHTTPError(http.StatusUnauthorized, "Vault locked. Master password required.")
+	}
+
 	query := fc.DB.Rebind("UPDATE files SET is_starred = CASE WHEN is_starred = TRUE THEN FALSE ELSE TRUE END WHERE id = ? AND owner_id = ? AND is_deleted = FALSE")
 	res, err := fc.DB.SQL.Exec(query, id, 1)
 	if err != nil {
@@ -432,7 +590,13 @@ func (fc *FileController) StarFile(c *echo.Context) error {
 }
 
 func (fc *FileController) EmptyTrash(c *echo.Context) error {
-	rows, err := fc.DB.SQL.Query(fc.DB.Rebind("SELECT cas_hash FROM files WHERE owner_id = ? AND is_deleted = TRUE"), 1)
+	isUnlocked := fc.isVaultUnlocked(c)
+	filterClause := "owner_id = ? AND is_deleted = TRUE"
+	if !isUnlocked {
+		filterClause += " AND " + fc.vaultExcludeFilter()
+	}
+
+	rows, err := fc.DB.SQL.Query(fc.DB.Rebind("SELECT cas_hash FROM files WHERE "+filterClause), 1)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to query trash: "+err.Error())
 	}
@@ -446,7 +610,7 @@ func (fc *FileController) EmptyTrash(c *echo.Context) error {
 		}
 	}
 
-	res, err := fc.DB.SQL.Exec(fc.DB.Rebind("DELETE FROM files WHERE owner_id = ? AND is_deleted = TRUE"), 1)
+	res, err := fc.DB.SQL.Exec(fc.DB.Rebind("DELETE FROM files WHERE "+filterClause), 1)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to empty trash: "+err.Error())
 	}
@@ -475,7 +639,14 @@ func (fc *FileController) GetStorageStats(c *echo.Context) error {
 
 	var totalBytes sql.NullInt64
 	var fileCount int
-	query := fc.DB.Rebind("SELECT COALESCE(SUM(size), 0), COUNT(*) FROM files WHERE owner_id = ? AND is_deleted = FALSE")
+	isUnlocked := fc.isVaultUnlocked(c)
+
+	filterClause := "owner_id = ? AND is_deleted = FALSE"
+	if !isUnlocked {
+		filterClause += " AND " + fc.vaultExcludeFilter()
+	}
+
+	query := fc.DB.Rebind("SELECT COALESCE(SUM(size), 0), COUNT(*) FROM files WHERE " + filterClause)
 	err := fc.DB.SQL.QueryRow(query, 1).Scan(&totalBytes, &fileCount)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to query storage stats: "+err.Error())
@@ -570,10 +741,9 @@ func (fc *FileController) CreateFolder(c *echo.Context) error {
 	}
 
 	if req.ParentID != "" {
-		// Enforce vault authentication if creating inside vault
-		if req.ParentID == "f2" {
-			cookie, err := c.Cookie("swarm_session")
-			if err != nil || cookie == nil || !auth.GlobalSessionStore.HasKey(cookie.Value) {
+		// Enforce vault authentication if creating inside vault or any vault subfolder
+		if fc.IsVaultFolder(req.ParentID) {
+			if !fc.isVaultUnlocked(c) {
 				return echo.NewHTTPError(http.StatusUnauthorized, "Vault locked. Master password required to create folder in vault.")
 			}
 		}
@@ -616,26 +786,53 @@ func (fc *FileController) CreateFolder(c *echo.Context) error {
 
 func (fc *FileController) DeleteFolder(c *echo.Context) error {
 	id := c.Param("id")
-	if id == "f2" {
-		cookie, err := c.Cookie("swarm_session")
-		if err != nil || cookie == nil || !auth.GlobalSessionStore.HasKey(cookie.Value) {
+
+	// Block deletion of immutable system root folders
+	if id == "f1" || id == "f2" || id == "f3" {
+		return echo.NewHTTPError(http.StatusForbidden, "Folder sistem tidak dapat dihapus")
+	}
+
+	if fc.IsVaultFolder(id) {
+		if !fc.isVaultUnlocked(c) {
 			return echo.NewHTTPError(http.StatusUnauthorized, "Vault locked.")
 		}
 	}
 
-	// Move files in folder to trash
-	_, _ = fc.DB.SQL.Exec(fc.DB.Rebind("UPDATE files SET is_deleted = TRUE WHERE folder_id = ? AND owner_id = ?"), id, 1)
-
-	// Delete subfolders
-	_, _ = fc.DB.SQL.Exec(fc.DB.Rebind("DELETE FROM folders WHERE parent_id = ? AND owner_id = ?"), id, 1)
-
-	res, err := fc.DB.SQL.Exec(fc.DB.Rebind("DELETE FROM folders WHERE id = ? AND owner_id = ?"), id, 1)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to delete folder: "+err.Error())
+	// Collect all descendant folder IDs using BFS to prevent orphaned files
+	allFolderIDs := []string{id}
+	queue := []string{id}
+	for len(queue) > 0 {
+		currID := queue[0]
+		queue = queue[1:]
+		rows, err := fc.DB.SQL.Query(fc.DB.Rebind("SELECT id FROM folders WHERE parent_id = ? AND owner_id = ?"), currID, 1)
+		if err == nil {
+			for rows.Next() {
+				var childID string
+				if err := rows.Scan(&childID); err == nil {
+					allFolderIDs = append(allFolderIDs, childID)
+					queue = append(queue, childID)
+				}
+			}
+			rows.Close()
+		}
 	}
-	if rows, _ := res.RowsAffected(); rows == 0 {
-		return echo.NewHTTPError(http.StatusNotFound, "Folder not found")
+
+	// Move all files in all folders to trash.
+	// Set folder_id = NULL (or 'f2' for vault folders) so foreign key ON DELETE CASCADE does not wipe files
+	isVault := fc.IsVaultFolder(id)
+	for _, fID := range allFolderIDs {
+		if isVault {
+			_, _ = fc.DB.SQL.Exec(fc.DB.Rebind("UPDATE files SET is_deleted = TRUE, folder_id = 'f2' WHERE folder_id = ? AND owner_id = ?"), fID, 1)
+		} else {
+			_, _ = fc.DB.SQL.Exec(fc.DB.Rebind("UPDATE files SET is_deleted = TRUE, folder_id = NULL WHERE folder_id = ? AND owner_id = ?"), fID, 1)
+		}
 	}
+
+	// Delete child subfolders first (reverse order)
+	for i := len(allFolderIDs) - 1; i >= 0; i-- {
+		_, _ = fc.DB.SQL.Exec(fc.DB.Rebind("DELETE FROM folders WHERE id = ? AND owner_id = ?"), allFolderIDs[i], 1)
+	}
+
 	return c.JSON(http.StatusOK, map[string]string{"status": "folder_deleted"})
 }
 
@@ -645,12 +842,18 @@ type RenameFolderRequest struct {
 
 func (fc *FileController) RenameFolder(c *echo.Context) error {
 	id := c.Param("id")
-	if id == "f2" {
-		cookie, err := c.Cookie("swarm_session")
-		if err != nil || cookie == nil || !auth.GlobalSessionStore.HasKey(cookie.Value) {
+
+	// Block renaming of immutable system root folders
+	if id == "f1" || id == "f2" || id == "f3" {
+		return echo.NewHTTPError(http.StatusForbidden, "Folder sistem tidak dapat diubah namanya")
+	}
+
+	if fc.IsVaultFolder(id) {
+		if !fc.isVaultUnlocked(c) {
 			return echo.NewHTTPError(http.StatusUnauthorized, "Vault locked.")
 		}
 	}
+
 	var req RenameFolderRequest
 	if err := c.Bind(&req); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "Invalid request")
@@ -688,13 +891,6 @@ func (fc *FileController) RenameFolder(c *echo.Context) error {
 		return echo.NewHTTPError(http.StatusNotFound, "Folder not found")
 	}
 	return c.JSON(http.StatusOK, map[string]string{"status": "folder_renamed", "name": cleanName})
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }
 
 

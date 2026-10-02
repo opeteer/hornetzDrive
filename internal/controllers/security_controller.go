@@ -23,7 +23,30 @@ type SecurityController struct {
 	TmpDir string
 }
 
+type PanicPurgeRequest struct {
+	Password string `json:"password" form:"password"`
+}
+
 func (sc *SecurityController) PanicPurge(c *echo.Context) error {
+	var req PanicPurgeRequest
+	_ = c.Bind(&req)
+
+	authenticated := false
+	cookie, errCookie := c.Cookie("swarm_session")
+	if errCookie == nil && cookie != nil && auth.GlobalSessionStore.HasKey(cookie.Value) {
+		authenticated = true
+	}
+
+	if !authenticated && req.Password != "" {
+		if auth.VerifyMasterPassword(req.Password) {
+			authenticated = true
+		}
+	}
+
+	if !authenticated {
+		return echo.NewHTTPError(http.StatusUnauthorized, "Authentication failed. Master password or active vault session required for panic purge.")
+	}
+
 	// 1. Wipe RAM keys
 	auth.GlobalSessionStore.Purge()
 	fmt.Println("CRITICAL: Stinger Panic Purge Triggered! RAM Keys obliterated.")
