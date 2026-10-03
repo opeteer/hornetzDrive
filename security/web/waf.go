@@ -74,15 +74,17 @@ func WAFWithConfig(cfg WAFConfig) echo.MiddlewareFunc {
 				}
 				isUpload, _ := c.Get("ztatic_upload_route").(bool)
 				isMultipart := strings.HasPrefix(req.Header.Get("Content-Type"), "multipart/form-data")
+				isOctetStream := strings.HasPrefix(req.Header.Get("Content-Type"), "application/octet-stream")
+				isUploadPath := strings.HasPrefix(req.URL.Path, "/upload/") || req.URL.Path == "/upload"
+
+				// For multipart file uploads, binary octet-streams, or designated upload routes, avoid buffering binary streams into strings
+				if isUpload || isMultipart || isOctetStream || isUploadPath {
+					return next(c)
+				}
 
 				if req.ContentLength > maxBody {
 					c.Logger().Warn("WAF blocked oversized request body", "size", req.ContentLength, "limit", maxBody, "ip", c.RealIP())
 					return echo.NewHTTPError(http.StatusRequestEntityTooLarge, "Payload Too Large: Security inspection limit exceeded")
-				}
-
-				// For multipart file uploads or designated upload routes, avoid buffering binary streams into strings
-				if isUpload || isMultipart {
-					return next(c)
 				}
 
 				bodyBytes, err := io.ReadAll(io.LimitReader(req.Body, maxBody+1))
@@ -144,6 +146,13 @@ func WAFWithConfigPtr(cfg *WAFConfig) echo.MiddlewareFunc {
 				}
 				isUpload, _ := c.Get("ztatic_upload_route").(bool)
 				isMultipart := strings.HasPrefix(req.Header.Get("Content-Type"), "multipart/form-data")
+				isOctetStream := strings.HasPrefix(req.Header.Get("Content-Type"), "application/octet-stream")
+				isUploadPath := strings.HasPrefix(req.URL.Path, "/upload/") || req.URL.Path == "/upload"
+
+				// For multipart file uploads, binary octet-streams, or designated upload routes, avoid buffering binary streams into strings
+				if isUpload || isMultipart || isOctetStream || isUploadPath {
+					return next(c)
+				}
 
 				if req.ContentLength > maxBody {
 					c.Logger().Warn("WAF blocked oversized request body", "size", req.ContentLength, "limit", maxBody, "ip", c.RealIP())

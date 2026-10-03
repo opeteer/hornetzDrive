@@ -858,7 +858,13 @@ templ Layout(title string) {
 										let errMsg = `Gagal mengunggah payload berkas (Status HTTP ${xhr.status})`;
 										try {
 											const errJson = JSON.parse(xhr.responseText);
-											if (errJson.message) errMsg = errJson.message;
+											if (errJson.message) {
+												errMsg = errJson.message;
+											} else if (errJson.error && typeof errJson.error === 'object' && errJson.error.message) {
+												errMsg = errJson.error.message;
+											} else if (typeof errJson.error === 'string') {
+												errMsg = errJson.error;
+											}
 										} catch(e) {}
 										reject(new Error(errMsg));
 									}

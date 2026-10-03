@@ -178,3 +178,43 @@ func TestWAF_Weakness_SQLCommentBypass(t *testing.T) {
 		t.Errorf("expected 403 for SQL comment obfuscated payload, got %d", rec.Code)
 	}
 }
+
+func TestWAF_BinaryUpload_Allowed(t *testing.T) {
+	e := echo.New()
+	e.Use(WAF())
+	e.PUT("/upload/:session_id", func(c *echo.Context) error {
+		return c.String(http.StatusOK, "chunk uploaded")
+	})
+
+	// Binary chunk containing substrings that match WAF regexes (e.g. exec, input=, onclick=)
+	chunkData := []byte("echo 'script'; input = prompt(); onclick=run(); exec sp_help;")
+	req := httptest.NewRequest(http.MethodPut, "/upload/sess-1234", bytes.NewReader(chunkData))
+	req.Header.Set("Content-Type", "application/octet-stream")
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200 for binary chunk upload, got %d", rec.Code)
+	}
+}
+
+func TestWAF_UploadPath_LargePayload_Allowed(t *testing.T) {
+	e := echo.New()
+	cfg := DefaultWAFConfig()
+	e.Use(WAFWithConfigPtr(&cfg))
+	e.PUT("/upload/:session_id", func(c *echo.Context) error {
+		return c.String(http.StatusOK, "large chunk uploaded")
+	})
+
+	// 512KB payload (exceeds default 128KB maxWAFBodySize)
+	largeData := bytes.Repeat([]byte("A"), 512*1024)
+	req := httptest.NewRequest(http.MethodPut, "/upload/sess-5678", bytes.NewReader(largeData))
+	req.Header.Set("Content-Type", "application/octet-stream")
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200 for large chunk upload exceeding maxWAFBodySize, got %d", rec.Code)
+	}
+}
+
