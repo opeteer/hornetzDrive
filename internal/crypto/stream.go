@@ -140,11 +140,20 @@ func (s *DecryptStream) SeekTo(offset int64) error {
 		return errors.New("negative offset not supported")
 	}
 	s.buf = nil
+
+	seeker, isSeeker := s.r.(io.ReadSeeker)
+	if isSeeker {
+		if _, err := seeker.Seek(0, io.SeekStart); err != nil {
+			return err
+		}
+	} else if offset == 0 {
+		return nil
+	}
+
 	if offset == 0 {
 		return nil
 	}
 
-	seeker, isSeeker := s.r.(io.ReadSeeker)
 	if !isSeeker {
 		// Fallback to sequential discard
 		_, err := io.CopyN(io.Discard, s, offset)

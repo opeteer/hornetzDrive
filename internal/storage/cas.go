@@ -49,9 +49,7 @@ func (c *CASEngine) Path(hash string) string {
 		return filepath.Join(c.BaseDir, "invalid_hash")
 	}
 	// Path Shuffling / Obfuscation (e.g., ab/cd/abcdef...)
-	dir := filepath.Join(c.BaseDir, hash[0:2], hash[2:4])
-	os.MkdirAll(dir, 0700)
-	return filepath.Join(dir, hash)
+	return filepath.Join(c.BaseDir, hash[0:2], hash[2:4], hash)
 }
 
 // ComputeHash computes the SHA-256 hash of a file on disk
@@ -69,43 +67,54 @@ func ComputeHash(filePath string) (string, error) {
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
-// MoveToCAS moves a temporary file into the CAS storage layer, renaming it to its SHA-256 hash.
-func (c *CASEngine) MoveToCAS(tempPath string) (string, error) {
-	hash, err := ComputeHash(tempPath)
+// MoveToCASWithStatus moves a temporary file into the CAS storage layer, renaming it to its SHA-256 hash.
+// It returns the computed hash, whether the file existed before (deduped), and any error encountered.
+func (c *CASEngine) MoveToCASWithStatus(tempPath string) (hash string, existedBefore bool, err error) {
+	hash, err = ComputeHash(tempPath)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 
 	destPath := c.Path(hash)
 	if c.Exists(hash) {
 		// Dedup: file already exists, we can safely delete the temp file
 		os.Remove(tempPath)
-		return hash, nil
+		return hash, true, nil
+	}
+
+	if err := os.MkdirAll(filepath.Dir(destPath), 0700); err != nil {
+		return "", false, err
 	}
 
 	if err := os.Rename(tempPath, destPath); err != nil {
 		// Fallback for cross-device links (EXDEV) when TMP_DIR and CAS_DIR are on different filesystems
 		srcFile, errOpen := os.Open(tempPath)
 		if errOpen != nil {
-			return "", err
+			return "", false, err
 		}
 		defer srcFile.Close()
 
 		dstFile, errCreate := os.Create(destPath)
 		if errCreate != nil {
-			return "", err
+			return "", false, err
 		}
 		defer dstFile.Close()
 
 		if _, errCopy := io.Copy(dstFile, srcFile); errCopy != nil {
 			os.Remove(destPath)
-			return "", errCopy
+			return "", false, errCopy
 		}
 		_ = dstFile.Sync()
 		_ = srcFile.Close()
 		_ = dstFile.Close()
 		_ = os.Remove(tempPath)
 	}
-	return hash, nil
+	return hash, false, nil
+}
+
+// MoveToCAS moves a temporary file into the CAS storage layer, renaming it to its SHA-256 hash.
+func (c *CASEngine) MoveToCAS(tempPath string) (string, error) {
+	hash, _, err := c.MoveToCASWithStatus(tempPath)
+	return hash, err
 }
 

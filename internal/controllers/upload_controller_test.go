@@ -6,12 +6,14 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/labstack/echo/v5"
 
 	"ztatic-go-framework/data"
+	"ztatic-go-framework/internal/auth"
 	"ztatic-go-framework/internal/crypto"
 	"ztatic-go-framework/internal/storage"
 	"ztatic-go-framework/internal/upload"
@@ -241,6 +243,7 @@ func TestUploadController_ZeroSecondDedup_InsertsFileRecord(t *testing.T) {
 	// Create an existing file in CAS
 	existingHash := "d41d8cd98f00b204e9800998ecf8427e0123456789abcdef0123456789abcdef"
 	casFilePath := ctrl.CAS.Path(existingHash)
+	_ = os.MkdirAll(filepath.Dir(casFilePath), 0700)
 	_ = os.WriteFile(casFilePath, []byte("dedup target payload"), 0644)
 
 	// User attempts to upload with matching cas_hash and valid proof of ownership
@@ -304,6 +307,7 @@ func TestUploadController_ZeroSecondDedup_WithoutProof_RequiresUpload(t *testing
 	// Create an existing file in CAS
 	existingHash := "d41d8cd98f00b204e9800998ecf8427e0123456789abcdef0123456789abcdef"
 	casFilePath := ctrl.CAS.Path(existingHash)
+	_ = os.MkdirAll(filepath.Dir(casFilePath), 0700)
 	_ = os.WriteFile(casFilePath, []byte("dedup target payload"), 0644)
 
 	// User attempts to upload with matching cas_hash but WITHOUT proof of ownership
@@ -517,6 +521,29 @@ func TestUploadController_GetStatus_CompletedSession(t *testing.T) {
 		t.Fatalf("Expected status 'completed', got %v", res["status"])
 	}
 }
+
+func TestUploadController_VaultUploadChunk_UnauthenticatedRejection(t *testing.T) {
+	e, ctrl := setupUploadTest(t)
+	// Apply VaultKeyMiddleware to test the fallback handling
+	uploadGroup := e.Group("/upload", auth.VaultKeyMiddleware())
+	uploadGroup.PUT("/:session_id", ctrl.UploadChunk)
+
+	// Create a session for folder 'f2' (vault folder)
+	sess, err := ctrl.SessionMgr.CreateSession(1, "f2", "secret_plan.kdbx", "application/octet-stream", 100)
+	if err != nil {
+		t.Fatalf("Failed to create session: %v", err)
+	}
+
+	// Attempt chunk upload WITHOUT vault authentication cookie
+	req := httptest.NewRequest(http.MethodPut, "/upload/"+sess.ID, bytes.NewReader(make([]byte, 100)))
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("BUG-SEC-42: Expected HTTP 401 Unauthorized for unauthenticated vault chunk upload, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 
 
 

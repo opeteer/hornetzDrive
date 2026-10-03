@@ -491,12 +491,16 @@ func (fc *FileController) DownloadFile(c *echo.Context) error {
 	defer file.Close()
 
 	var vk []byte
-	if cookie, err := c.Cookie("swarm_session"); err == nil && cookie != nil {
-		if key, exists := auth.GlobalSessionStore.GetKey(cookie.Value); exists {
-			vk = key
+	if fc.IsVaultFolder(f.FolderID) {
+		if cookie, err := c.Cookie("swarm_session"); err == nil && cookie != nil {
+			if key, exists := auth.GlobalSessionStore.GetKey(cookie.Value); exists {
+				vk = key
+			}
 		}
-	}
-	if len(vk) == 0 {
+		if len(vk) == 0 {
+			return echo.NewHTTPError(http.StatusUnauthorized, "Vault locked. Master password required to download this file.")
+		}
+	} else {
 		vk = crypto.DummyVK()
 	}
 
@@ -764,6 +768,12 @@ func getFileIcon(name, mime string) string {
 }
 
 func getFileExt(name string) string {
+	lower := strings.ToLower(name)
+	for _, comp := range []string{".tar.gz", ".tar.bz2", ".tar.xz"} {
+		if strings.HasSuffix(lower, comp) {
+			return comp[1:]
+		}
+	}
 	for i := len(name) - 1; i >= 0; i-- {
 		if name[i] == '.' {
 			return name[i+1:]

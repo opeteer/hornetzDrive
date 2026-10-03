@@ -301,6 +301,21 @@ func TestFileController_DownloadFile_ContentLengthAndDecryption(t *testing.T) {
 	if !bytes.Equal(rec2.Body.Bytes(), secretData) {
 		t.Errorf("Downloaded decrypted content %q does not match original %q", rec2.Body.String(), string(secretData))
 	}
+
+	// 3. Test BUG-SEC-41: Download standard file while user is logged in to vault with custom MEK
+	vaultKey := []byte("vaultsecretkey1234567890abcdef12")
+	auth.GlobalSessionStore.SetKey("sess_contam_test", vaultKey)
+	reqLoggedIn := httptest.NewRequest(http.MethodGet, "/api/files/real_cas_1/download", nil)
+	reqLoggedIn.AddCookie(&http.Cookie{Name: "swarm_session", Value: "sess_contam_test"})
+	recLoggedIn := httptest.NewRecorder()
+	e.ServeHTTP(recLoggedIn, reqLoggedIn)
+
+	if recLoggedIn.Code != http.StatusOK {
+		t.Fatalf("BUG-SEC-41 Regression: Logged-in vault user failed to download standard file! Status: %d, body: %s", recLoggedIn.Code, recLoggedIn.Body.String())
+	}
+	if !bytes.Equal(recLoggedIn.Body.Bytes(), secretData) {
+		t.Fatalf("BUG-SEC-41: Decrypted data mismatch when downloading standard file while logged in to vault")
+	}
 }
 
 func TestFileController_DeleteRestoreAndStar(t *testing.T) {

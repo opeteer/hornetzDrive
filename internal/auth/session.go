@@ -112,12 +112,14 @@ func VaultKeyMiddleware() echo.MiddlewareFunc {
 				vk, exists := GlobalSessionStore.GetKey(cookie.Value)
 				if exists {
 					c.Set("vault_key", vk)
+					c.Set("vault_authenticated", true)
 					return next(c)
 				}
 			}
 
 			// Fallback to dummy key for testing during development if no cookie exists or session not in RAM
 			c.Set("vault_key", crypto.DummyVK())
+			c.Set("vault_authenticated", false)
 			return next(c)
 		}
 	}

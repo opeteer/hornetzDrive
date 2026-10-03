@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"database/sql"
@@ -218,13 +219,23 @@ func (uc *UploadController) UploadChunk(c *echo.Context) error {
 	bufWriter := bufio.NewWriterSize(f, 2*1024*1024)
 	defer bufWriter.Flush()
 
-	// BUG-SEC-36: Retrieve RAM-only Vault Key from middleware context if vault folder;
+	// BUG-SEC-36 & BUG-SEC-42: Retrieve RAM-only Vault Key from middleware context if vault folder;
 	// for standard storage folders, ALWAYS use standard key (DummyVK) to prevent key contamination
 	var vk []byte
 	isVault := uc.isVaultFolder(sess.FolderID)
 	if isVault {
-		if vKey, ok := c.Get("vault_key").([]byte); ok && len(vKey) > 0 {
-			vk = vKey
+		isAuth, _ := c.Get("vault_authenticated").(bool)
+		if isAuth {
+			if vKey, ok := c.Get("vault_key").([]byte); ok && len(vKey) > 0 && !bytes.Equal(vKey, crypto.DummyVK()) {
+				vk = vKey
+			}
+		}
+		if len(vk) == 0 {
+			if cookie, err := c.Cookie("swarm_session"); err == nil && cookie != nil {
+				if key, exists := auth.GlobalSessionStore.GetKey(cookie.Value); exists && len(key) > 0 {
+					vk = key
+				}
+			}
 		}
 		if len(vk) == 0 {
 			return echo.NewHTTPError(http.StatusUnauthorized, "Vault locked. Master password required.")
@@ -280,6 +291,10 @@ func (uc *UploadController) UploadChunk(c *echo.Context) error {
 	sess.UploadedSize += written
 	sess.LastActiveAt = time.Now()
 
+	// BUG-SYS-50: Explicitly flush and close temp file descriptor before completion and CAS move
+	_ = bufWriter.Flush()
+	_ = f.Close()
+
 	// SSE Realtime broadcast for Venom Speed (anonymized target to prevent session hijacking)
 	var percentage int64 = 100
 	if sess.ExpectedSize > 0 {
@@ -292,10 +307,8 @@ func (uc *UploadController) UploadChunk(c *echo.Context) error {
 	})
 
 	if sess.UploadedSize >= sess.ExpectedSize {
-		tempHash, _ := storage.ComputeHash(sess.TempFilePath)
-		existedBefore := uc.CAS.Exists(tempHash)
-
-		casHash, err := uc.CAS.MoveToCAS(sess.TempFilePath)
+		// BUG-SYS-50: MoveToCASWithStatus computes hash in single pass and returns whether blob already existed
+		casHash, existedBefore, err := uc.CAS.MoveToCASWithStatus(sess.TempFilePath)
 		if err != nil {
 			return echo.NewHTTPError(http.StatusInternalServerError, "cas storage failed")
 		}

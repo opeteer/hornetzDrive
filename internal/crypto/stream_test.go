@@ -200,3 +200,67 @@ func TestDecryptStream_SeekTo(t *testing.T) {
 	}
 }
 
+func TestDecryptStream_SeekRewindAndMultiSeek(t *testing.T) {
+	vk := DummyVK()
+	var encBuf bytes.Buffer
+	encStream, err := NewEncryptStream(&encBuf, vk)
+	if err != nil {
+		t.Fatalf("NewEncryptStream failed: %v", err)
+	}
+
+	_, _ = encStream.Write([]byte("CHUNK1_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"))
+	_, _ = encStream.Write([]byte("CHUNK2_BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"))
+	_, _ = encStream.Write([]byte("CHUNK3_CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC"))
+
+	reader := bytes.NewReader(encBuf.Bytes())
+	decStream, err := NewDecryptStream(reader, vk)
+	if err != nil {
+		t.Fatalf("NewDecryptStream failed: %v", err)
+	}
+
+	// 1. Seek to offset 10 and read 5 bytes
+	if err := decStream.SeekTo(10); err != nil {
+		t.Fatalf("SeekTo(10) failed: %v", err)
+	}
+	buf := make([]byte, 5)
+	if _, err := io.ReadFull(decStream, buf); err != nil {
+		t.Fatalf("ReadFull failed: %v", err)
+	}
+
+	// 2. Rewind to offset 0 and read first 5 bytes
+	if err := decStream.SeekTo(0); err != nil {
+		t.Fatalf("SeekTo(0) failed: %v", err)
+	}
+	buf0 := make([]byte, 5)
+	if _, err := io.ReadFull(decStream, buf0); err != nil {
+		t.Fatalf("ReadFull after SeekTo(0) failed: %v", err)
+	}
+	if string(buf0) != "CHUNK" {
+		t.Fatalf("SeekTo(0) failed to rewind: expected 'CHUNK', got %q", string(buf0))
+	}
+
+	// 3. Seek forward across chunks (offset 60)
+	if err := decStream.SeekTo(60); err != nil {
+		t.Fatalf("SeekTo(60) failed: %v", err)
+	}
+	buf60 := make([]byte, 5)
+	if _, err := io.ReadFull(decStream, buf60); err != nil {
+		t.Fatalf("ReadFull after SeekTo(60) failed: %v", err)
+	}
+	if string(buf60) != "BBBBB" {
+		t.Fatalf("SeekTo(60) failed: expected 'BBBBB', got %q", string(buf60))
+	}
+
+	// 4. Seek backward to offset 20
+	if err := decStream.SeekTo(20); err != nil {
+		t.Fatalf("SeekTo(20) backward failed: %v", err)
+	}
+	buf20 := make([]byte, 5)
+	if _, err := io.ReadFull(decStream, buf20); err != nil {
+		t.Fatalf("ReadFull after SeekTo(20) failed: %v", err)
+	}
+	if string(buf20) != "AAAAA" {
+		t.Fatalf("SeekTo(20) backward failed: expected 'AAAAA', got %q", string(buf20))
+	}
+}
+

@@ -76,3 +76,21 @@ func TestCASEngine_HashValidationAndTraversal(t *testing.T) {
 		}
 	}
 }
+
+func TestCASEngine_ExistsDoesNotCreateDirectories(t *testing.T) {
+	tempDir := t.TempDir()
+	cas, err := NewCASEngine(tempDir)
+	if err != nil {
+		t.Fatalf("Failed to init CAS: %v", err)
+	}
+
+	fakeHash := "deadbeef00000000000000000000000000000000000000000000000000000000"
+	if cas.Exists(fakeHash) {
+		t.Fatalf("Non-existent hash should return false")
+	}
+
+	expectedSubdir := filepath.Join(tempDir, "de", "ad")
+	if _, err := os.Stat(expectedSubdir); !os.IsNotExist(err) {
+		t.Fatalf("c.Exists() created directory %s on disk!", expectedSubdir)
+	}
+}
