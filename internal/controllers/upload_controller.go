@@ -122,6 +122,12 @@ func (uc *UploadController) InitSession(c *echo.Context) error {
 		cleanFilename = "untitled"
 	}
 
+	// Guard against accidental 0-byte directory uploads (e.g. folder dropped into file upload)
+	if req.Size == 0 && (req.MimeType == "" || req.MimeType == "application/octet-stream") && filepath.Ext(cleanFilename) == "" {
+		return echo.NewHTTPError(http.StatusBadRequest,
+			fmt.Sprintf("Cannot upload '%s': item appears to be a directory without content. Please use folder upload instead.", cleanFilename))
+	}
+
 	folderID := req.FolderID
 	if folderID == "root" {
 		folderID = ""

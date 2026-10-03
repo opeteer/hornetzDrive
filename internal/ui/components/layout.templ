@@ -123,19 +123,39 @@ templ Layout(title string) {
 				class="fixed md:static inset-y-0 left-0 z-40 w-64 bg-[#171614] border-r border-[#2A2723] p-4 flex flex-col justify-between shrink-0 transition-transform duration-200"
 			>
 				<div class="space-y-6">
-					<!-- Upload Button -->
-					<div>
-						<button 
-							@click="$refs.fileInput.click()" 
-							class="w-full hornetz-btn py-3 px-4 rounded-lg flex items-center justify-center gap-2 text-sm shadow-md"
-						>
-							<span class="text-lg">+</span> Unggah Berkas
-						</button>
-						<!-- Hidden Real File Input -->
+					<!-- Upload Buttons -->
+					<div class="space-y-2">
+						<div class="grid grid-cols-2 gap-2">
+							<button 
+								@click="$refs.fileInput.click()" 
+								class="hornetz-btn py-3 px-3 rounded-lg flex items-center justify-center gap-1.5 text-xs shadow-md font-bold"
+								title="Unggah satu atau banyak berkas"
+							>
+								<span class="text-base">+</span> Berkas
+							</button>
+							<button 
+								@click="$refs.folderInput.click()" 
+								class="bg-[#171614] border border-[#2A2723] hover:border-[#FACC15] text-white hover:text-[#FACC15] py-3 px-3 rounded-lg flex items-center justify-center gap-1.5 text-xs font-bold transition-colors shadow-md"
+								title="Unggah satu folder beserta seluruh isinya"
+							>
+								<span class="text-base">📁</span> Folder
+							</button>
+						</div>
+						<!-- Hidden Real File Inputs -->
 						<input 
 							type="file" 
 							x-ref="fileInput" 
+							multiple
 							@change="$store.drive.uploadFile($event)" 
+							class="hidden"
+						/>
+						<input 
+							type="file" 
+							x-ref="folderInput" 
+							webkitdirectory 
+							directory 
+							multiple
+							@change="$store.drive.uploadFolder($event)" 
 							class="hidden"
 						/>
 					</div>
@@ -705,14 +725,119 @@ templ Layout(title string) {
 					}
 				},
 
+				async ensureRemoteFolder(folderName, parentFolderId) {
+					if (!folderName || !folderName.trim()) return null;
+					const cleanName = folderName.trim();
+					const targetParent = parentFolderId || (this.activeTab === 'vault' ? 'f2' : '');
+					try {
+						const res = await fetch('/api/folders', {
+							method: 'POST',
+							headers: {
+								'Content-Type': 'application/json',
+								'X-CSRF-Token': this.getCsrfToken()
+							},
+							body: JSON.stringify({
+								name: cleanName,
+								parent_id: targetParent
+							})
+						});
+						if (res.ok) {
+							const data = await res.json();
+							await this.fetchFolders();
+							return data;
+						} else if (res.status === 409) {
+							const listRes = await fetch(`/api/folders?tab=${this.activeTab}&parent_id=${encodeURIComponent(targetParent)}`);
+							if (listRes.ok) {
+								const existingFolders = await listRes.json();
+								const found = existingFolders.find(f => f.name === cleanName);
+								if (found) return found;
+							}
+						}
+					} catch(e) {
+						console.error("Failed to ensure remote folder:", e);
+					}
+					return null;
+				},
+
+				async readAllDirectoryEntries(dirReader) {
+					const entries = [];
+					const readBatch = async () => {
+						const batch = await new Promise((resolve, reject) => dirReader.readEntries(resolve, reject));
+						if (batch && batch.length > 0) {
+							entries.push(...batch);
+							await readBatch();
+						}
+					};
+					await readBatch();
+					return entries;
+				},
+
+				async traverseFileSystemEntry(entry, parentFolderId, filesCollector) {
+					if (!entry) return;
+					if (entry.isFile) {
+						try {
+							const file = await new Promise((resolve, reject) => entry.file(resolve, reject));
+							file.targetFolderId = parentFolderId;
+							filesCollector.push(file);
+						} catch(e) {
+							console.error("Error reading file entry:", e);
+						}
+					} else if (entry.isDirectory) {
+						const folderObj = await this.ensureRemoteFolder(entry.name, parentFolderId);
+						const folderId = folderObj ? folderObj.id : parentFolderId;
+						const dirReader = entry.createReader();
+						const childEntries = await this.readAllDirectoryEntries(dirReader);
+						for (const child of childEntries) {
+							await this.traverseFileSystemEntry(child, folderId, filesCollector);
+						}
+					}
+				},
+
 				async handleDrop(event) {
 					event.preventDefault();
 					this.dragCounter = 0;
 					this.isDragging = false;
 					const dt = event.dataTransfer;
-					if (dt && dt.files && dt.files.length > 0) {
+					if (!dt) return;
+
+					let targetFolderId = this.currentFolderId;
+					if (!targetFolderId) {
+						targetFolderId = (this.activeTab === 'vault') ? 'f2' : '';
+					}
+
+					// 1. Process items using FileSystem Entry API if supported
+					if (dt.items && dt.items.length > 0 && typeof dt.items[0].webkitGetAsEntry === 'function') {
+						const entries = [];
+						for (let i = 0; i < dt.items.length; i++) {
+							const entry = dt.items[i].webkitGetAsEntry();
+							if (entry) entries.push(entry);
+						}
+
+						const filesToUpload = [];
+						for (const entry of entries) {
+							await this.traverseFileSystemEntry(entry, targetFolderId, filesToUpload);
+						}
+
+						if (filesToUpload.length > 0) {
+							for (const file of filesToUpload) {
+								this.uploadQueue.push(file);
+							}
+							this.processUploadQueue();
+							return;
+						}
+					}
+
+					// 2. Fallback for dt.files: filter out 0-byte folder placeholders
+					if (dt.files && dt.files.length > 0) {
 						for (let i = 0; i < dt.files.length; i++) {
-							this.uploadQueue.push(dt.files[i]);
+							const file = dt.files[i];
+							// Reject folder placeholders (0-byte file without extension and empty MIME)
+							if (file.size === 0 && !file.type && !file.name.includes('.')) {
+								alert(`⚠️ "${file.name}" terdeteksi sebagai folder. Silakan gunakan tombol "📁 Folder" untuk mengunggah folder beserta isinya.`);
+								continue;
+							}
+							file.targetFolderId = targetFolderId;
+							this.uploadQueue.push(file);
 						}
 						this.processUploadQueue();
 					}
@@ -720,15 +845,63 @@ templ Layout(title string) {
 
 				async uploadFile(event) {
 					const files = event.target?.files;
+					let targetFolderId = this.currentFolderId;
+					if (!targetFolderId) {
+						targetFolderId = (this.activeTab === 'vault') ? 'f2' : '';
+					}
 					if (files && files.length > 0) {
 						for (let i = 0; i < files.length; i++) {
-							this.uploadQueue.push(files[i]);
+							const file = files[i];
+							file.targetFolderId = targetFolderId;
+							this.uploadQueue.push(file);
 						}
 						this.processUploadQueue();
 					}
 					if (event.target) {
 						event.target.value = "";
 					}
+				},
+
+				async uploadFolder(event) {
+					const files = event.target?.files;
+					if (!files || files.length === 0) return;
+
+					let baseTargetFolderId = this.currentFolderId;
+					if (!baseTargetFolderId) {
+						baseTargetFolderId = (this.activeTab === 'vault') ? 'f2' : '';
+					}
+
+					const folderCache = new Map();
+					folderCache.set("", baseTargetFolderId);
+
+					for (let i = 0; i < files.length; i++) {
+						const file = files[i];
+						const relativePath = file.webkitRelativePath || file.name;
+						const segments = relativePath.split('/');
+
+						let currentParentId = baseTargetFolderId;
+						let accumulatedPath = "";
+
+						for (let s = 0; s < segments.length - 1; s++) {
+							const folderSegment = segments[s];
+							accumulatedPath = accumulatedPath ? `${accumulatedPath}/${folderSegment}` : folderSegment;
+
+							if (folderCache.has(accumulatedPath)) {
+								currentParentId = folderCache.get(accumulatedPath);
+							} else {
+								const folderObj = await this.ensureRemoteFolder(folderSegment, currentParentId);
+								const newId = folderObj ? folderObj.id : currentParentId;
+								folderCache.set(accumulatedPath, newId);
+								currentParentId = newId;
+							}
+						}
+
+						file.targetFolderId = currentParentId;
+						this.uploadQueue.push(file);
+					}
+
+					this.processUploadQueue();
+					if (event.target) event.target.value = "";
 				},
 
 				async processUploadQueue() {
@@ -767,7 +940,7 @@ templ Layout(title string) {
 						clientCasHash = await this.computeSha256(file) || "";
 					}
 
-					let targetFolderId = this.currentFolderId;
+					let targetFolderId = (file.targetFolderId !== undefined) ? file.targetFolderId : this.currentFolderId;
 					if (!targetFolderId) {
 						targetFolderId = (this.activeTab === 'vault') ? 'f2' : '';
 					}

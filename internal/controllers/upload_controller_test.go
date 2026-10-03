@@ -641,6 +641,42 @@ func TestUploadController_GetStatus_VaultAuthentication(t *testing.T) {
 	}
 }
 
+func TestUploadController_ZeroByteDirectory_Rejected(t *testing.T) {
+	e, ctrl := setupUploadTest(t)
+
+	// Attempt to upload a 0-byte directory dummy object (name="ensiklopedia", size=0, generic binary mime)
+	bodyDir := []byte(`{"filename":"ensiklopedia","mime_type":"application/octet-stream","size":0,"folder_id":"root"}`)
+	reqDir := httptest.NewRequest(http.MethodPost, "/upload/init", bytes.NewReader(bodyDir))
+	reqDir.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	recDir := httptest.NewRecorder()
+	cDir := e.NewContext(reqDir, recDir)
+
+	errDir := ctrl.InitSession(cDir)
+	if errDir == nil {
+		t.Fatalf("Expected 400 Bad Request for 0-byte directory upload, but got nil")
+	}
+	heDir, ok := errDir.(*echo.HTTPError)
+	if !ok || heDir.Code != http.StatusBadRequest {
+		t.Fatalf("Expected HTTP 400 Bad Request, got: %v", errDir)
+	}
+
+	// Legitimate 0-byte file with file extension (e.g. empty.txt) should be allowed
+	bodyFile := []byte(`{"filename":"empty.txt","mime_type":"text/plain","size":0,"folder_id":"root"}`)
+	reqFile := httptest.NewRequest(http.MethodPost, "/upload/init", bytes.NewReader(bodyFile))
+	reqFile.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	recFile := httptest.NewRecorder()
+	cFile := e.NewContext(reqFile, recFile)
+
+	errFile := ctrl.InitSession(cFile)
+	if errFile != nil {
+		t.Fatalf("Expected success for legitimate empty file with extension, got error: %v", errFile)
+	}
+	if recFile.Code != http.StatusCreated {
+		t.Fatalf("Expected HTTP 201 Created for empty.txt, got %d: %s", recFile.Code, recFile.Body.String())
+	}
+}
+
+
 
 
 
