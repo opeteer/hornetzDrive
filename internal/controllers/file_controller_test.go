@@ -792,5 +792,124 @@ func TestFileController_SortAndPagination(t *testing.T) {
 	}
 }
 
+func TestFileController_DownloadFile_IDOR_Blocked(t *testing.T) {
+	e := echo.New()
+	dbEngine, err := data.NewDBEngine("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to create memory DB: %v", err)
+	}
+	defer dbEngine.Close()
+
+	_, err = dbEngine.SQL.Exec(`
+		CREATE TABLE folders (id TEXT PRIMARY KEY, owner_id INTEGER NOT NULL, parent_id TEXT, name TEXT NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+		CREATE TABLE files (id TEXT PRIMARY KEY, owner_id INTEGER NOT NULL, folder_id TEXT, name TEXT NOT NULL, mime_type TEXT NOT NULL, size BIGINT NOT NULL, cas_hash TEXT NOT NULL, encrypted_metadata BLOB, is_starred BOOLEAN DEFAULT FALSE, is_deleted BOOLEAN DEFAULT FALSE, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+	`)
+	if err != nil {
+		t.Fatalf("Migration failed: %v", err)
+	}
+
+	// Insert file belonging to owner_id = 2 (another tenant)
+	_, _ = dbEngine.SQL.Exec("INSERT INTO files (id, owner_id, folder_id, name, mime_type, size, cas_hash) VALUES ('other_user_file', 2, 'f1', 'private.txt', 'text/plain', 50, 'hash2')")
+
+	casEngine, _ := storage.NewCASEngine(t.TempDir())
+	fileCtrl := &FileController{
+		DB:  dbEngine,
+		CAS: casEngine,
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/files/other_user_file/download", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetPathValues(echo.PathValues{{Name: "id", Value: "other_user_file"}})
+
+	errDl := fileCtrl.DownloadFile(c)
+	if errDl == nil {
+		t.Fatalf("BUG-SEC-46: Expected 404 Not Found when downloading another user's file, got success")
+	}
+	he, ok := errDl.(*echo.HTTPError)
+	if !ok || he.Code != http.StatusNotFound {
+		t.Fatalf("BUG-SEC-46: Expected HTTP 404 Not Found, got: %v", errDl)
+	}
+}
+
+func TestFileController_RenameFile_Conflict(t *testing.T) {
+	e := echo.New()
+	dbEngine, err := data.NewDBEngine("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to create memory DB: %v", err)
+	}
+	defer dbEngine.Close()
+
+	_, err = dbEngine.SQL.Exec(`
+		CREATE TABLE folders (id TEXT PRIMARY KEY, owner_id INTEGER NOT NULL, parent_id TEXT, name TEXT NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+		CREATE TABLE files (id TEXT PRIMARY KEY, owner_id INTEGER NOT NULL, folder_id TEXT, name TEXT NOT NULL, mime_type TEXT NOT NULL, size BIGINT NOT NULL, cas_hash TEXT NOT NULL, is_starred BOOLEAN DEFAULT FALSE, is_deleted BOOLEAN DEFAULT FALSE, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+	`)
+	if err != nil {
+		t.Fatalf("Migration failed: %v", err)
+	}
+
+	// Insert two files in folder 'f1'
+	_, _ = dbEngine.SQL.Exec("INSERT INTO files (id, owner_id, folder_id, name, mime_type, size, cas_hash) VALUES ('f_alpha', 1, 'f1', 'doc_a.txt', 'text/plain', 10, 'h1')")
+	_, _ = dbEngine.SQL.Exec("INSERT INTO files (id, owner_id, folder_id, name, mime_type, size, cas_hash) VALUES ('f_beta', 1, 'f1', 'doc_b.txt', 'text/plain', 10, 'h2')")
+
+	fileCtrl := &FileController{DB: dbEngine}
+
+	// Try renaming doc_b.txt to doc_a.txt in same folder
+	body := []byte(`{"name":"doc_a.txt"}`)
+	req := httptest.NewRequest(http.MethodPatch, "/api/files/f_beta", bytes.NewReader(body))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetPathValues(echo.PathValues{{Name: "id", Value: "f_beta"}})
+
+	errRename := fileCtrl.RenameFile(c)
+	if errRename == nil {
+		t.Fatalf("BUG-SYS-52: Expected 409 Conflict when renaming to existing filename, got success")
+	}
+	he, ok := errRename.(*echo.HTTPError)
+	if !ok || he.Code != http.StatusConflict {
+		t.Fatalf("BUG-SYS-52: Expected HTTP 409 Conflict, got: %v", errRename)
+	}
+}
+
+func TestFileController_CreateFolder_RootParent(t *testing.T) {
+	e := echo.New()
+	dbEngine, err := data.NewDBEngine("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to create memory DB: %v", err)
+	}
+	defer dbEngine.Close()
+
+	_, err = dbEngine.SQL.Exec(`
+		CREATE TABLE folders (id TEXT PRIMARY KEY, owner_id INTEGER NOT NULL, parent_id TEXT, name TEXT NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+	`)
+	if err != nil {
+		t.Fatalf("Migration failed: %v", err)
+	}
+
+	fileCtrl := &FileController{DB: dbEngine}
+
+	// Create folder with parent_id: "root"
+	body := []byte(`{"name":"ProjectFolder","parent_id":"root"}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/folders", bytes.NewReader(body))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := fileCtrl.CreateFolder(c); err != nil {
+		t.Fatalf("BUG-SYS-54: CreateFolder failed for parent_id='root': %v", err)
+	}
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("BUG-SYS-54: Expected HTTP 201 Created for parent_id='root', got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var count int
+	_ = dbEngine.SQL.QueryRow("SELECT COUNT(*) FROM folders WHERE name = 'ProjectFolder' AND parent_id IS NULL").Scan(&count)
+	if count != 1 {
+		t.Fatalf("BUG-SYS-54: Expected folder to be created at root with parent_id IS NULL, count=%d", count)
+	}
+}
+
 
 

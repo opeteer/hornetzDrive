@@ -71,8 +71,16 @@ func (sc *SecurityController) PanicPurge(c *echo.Context) error {
 			chunk := make([]byte, 1024*1024) // 1MB buffer
 			var written int64 = 0
 			for written < size {
-				rand.Read(chunk)
-				n, _ := f.Write(chunk)
+				toWrite := int64(len(chunk))
+				if size-written < toWrite {
+					toWrite = size - written
+				}
+				rand.Read(chunk[:toWrite])
+				n, errWrite := f.Write(chunk[:toWrite])
+				if errWrite != nil || n <= 0 {
+					// BUG-SYS-55: Abort overwrite loop on write failure to prevent infinite loop
+					break
+				}
 				written += int64(n)
 			}
 			f.Sync()

@@ -436,8 +436,9 @@ func parseRangeHeader(rangeHeader string, totalSize int64) (start int64, end int
 func (fc *FileController) DownloadFile(c *echo.Context) error {
 	id := c.Param("id")
 	var f FileRecord
-	query := fc.DB.Rebind("SELECT id, COALESCE(folder_id, ''), name, mime_type, size, cas_hash FROM files WHERE id = ? AND is_deleted = FALSE")
-	err := fc.DB.SQL.QueryRow(query, id).Scan(&f.ID, &f.FolderID, &f.Name, &f.MimeType, &f.Size, &f.CasHash)
+	// BUG-SEC-46: Strictly verify owner_id to prevent IDOR access across accounts
+	query := fc.DB.Rebind("SELECT id, COALESCE(folder_id, ''), name, mime_type, size, cas_hash FROM files WHERE id = ? AND owner_id = ? AND is_deleted = FALSE")
+	err := fc.DB.SQL.QueryRow(query, id, 1).Scan(&f.ID, &f.FolderID, &f.Name, &f.MimeType, &f.Size, &f.CasHash)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusNotFound, "File not found")
 	}
@@ -801,6 +802,11 @@ func (fc *FileController) CreateFolder(c *echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "Invalid folder name")
 	}
 
+	// BUG-SYS-54: Normalize 'root' parent_id to empty string to match upload/init behavior
+	if req.ParentID == "root" {
+		req.ParentID = ""
+	}
+
 	if req.ParentID != "" {
 		// Enforce vault authentication if creating inside vault or any vault subfolder
 		if fc.IsVaultFolder(req.ParentID) {
@@ -997,6 +1003,17 @@ func (fc *FileController) RenameFile(c *echo.Context) error {
 	}
 	if fc.IsVaultFolder(folderID) && !fc.isVaultUnlocked(c) {
 		return echo.NewHTTPError(http.StatusUnauthorized, "Vault locked. Master password required.")
+	}
+
+	// BUG-SYS-52: Prevent duplicate file names under the same folder
+	var exists bool
+	if folderID != "" {
+		_ = fc.DB.SQL.QueryRow(fc.DB.Rebind("SELECT EXISTS(SELECT 1 FROM files WHERE folder_id = ? AND name = ? AND id != ? AND owner_id = ? AND is_deleted = FALSE)"), folderID, cleanName, id, 1).Scan(&exists)
+	} else {
+		_ = fc.DB.SQL.QueryRow(fc.DB.Rebind("SELECT EXISTS(SELECT 1 FROM files WHERE (folder_id IS NULL OR folder_id = '') AND name = ? AND id != ? AND owner_id = ? AND is_deleted = FALSE)"), cleanName, id, 1).Scan(&exists)
+	}
+	if exists {
+		return echo.NewHTTPError(http.StatusConflict, "File with this name already exists in this folder")
 	}
 
 	res, err := fc.DB.SQL.Exec(fc.DB.Rebind("UPDATE files SET name = ? WHERE id = ? AND owner_id = ? AND is_deleted = FALSE"), cleanName, id, 1)

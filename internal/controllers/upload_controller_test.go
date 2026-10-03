@@ -544,6 +544,103 @@ func TestUploadController_VaultUploadChunk_UnauthenticatedRejection(t *testing.T
 	}
 }
 
+func TestUploadController_ProofOfOwnership_BackdoorRejected(t *testing.T) {
+	e, ctrl := setupUploadTest(t)
+
+	dbEngine, err := data.NewDBEngine("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to create memory DB: %v", err)
+	}
+	defer dbEngine.Close()
+
+	_, err = dbEngine.SQL.Exec(`
+		CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, salt BLOB NOT NULL, encrypted_vault_key BLOB NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+		CREATE TABLE folders (id TEXT PRIMARY KEY, owner_id INTEGER NOT NULL, parent_id TEXT, name TEXT NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+		CREATE TABLE files (id TEXT PRIMARY KEY, owner_id INTEGER NOT NULL, folder_id TEXT, name TEXT NOT NULL, mime_type TEXT NOT NULL, size BIGINT NOT NULL, cas_hash TEXT NOT NULL, plaintext_hash TEXT DEFAULT '', encrypted_metadata BLOB, is_starred BOOLEAN DEFAULT 0, is_deleted BOOLEAN DEFAULT 0, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+		INSERT INTO users (id, email, password_hash, salt, encrypted_vault_key) VALUES (1, 'test@hornetz.io', 'hash', 'salt', 'vk');
+		INSERT INTO folders (id, owner_id, parent_id, name) VALUES ('root', 1, NULL, 'Root');
+	`)
+	if err != nil {
+		t.Fatalf("DB setup failed: %v", err)
+	}
+	ctrl.DB = dbEngine
+
+	existingHash := "d41d8cd98f00b204e9800998ecf8427e0123456789abcdef0123456789abcdef"
+	casFilePath := ctrl.CAS.Path(existingHash)
+	_ = os.MkdirAll(filepath.Dir(casFilePath), 0700)
+	_ = os.WriteFile(casFilePath, []byte("dedup target payload"), 0644)
+
+	// Attacker attempts to upload with matching cas_hash and backdoor proof "pow_verified"
+	body := []byte(`{"filename":"stolen.pdf","mime_type":"application/pdf","size":9999,"folder_id":"root","cas_hash":"` + existingHash + `","proof":"pow_verified"}`)
+	req := httptest.NewRequest(http.MethodPost, "/upload/init", bytes.NewReader(body))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := ctrl.InitSession(c); err != nil {
+		t.Fatalf("InitSession error: %v", err)
+	}
+
+	// Must NOT return 200 with completed; should return 201 Created standard session
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("BUG-SEC-45: Expected HTTP 201 created (dedup rejected), got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestUploadController_AbortSession_VaultAuthentication(t *testing.T) {
+	e, ctrl := setupUploadTest(t)
+
+	sess, err := ctrl.SessionMgr.CreateSession(1, "f2", "vault_file.enc", "application/octet-stream", 1024)
+	if err != nil {
+		t.Fatalf("Failed to create session: %v", err)
+	}
+
+	// Unauthenticated abort request on vault session
+	req := httptest.NewRequest(http.MethodDelete, "/upload/"+sess.ID, nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetPathValues(echo.PathValues{{Name: "session_id", Value: sess.ID}})
+
+	errAbort := ctrl.AbortSession(c)
+	if errAbort == nil {
+		t.Fatalf("BUG-SEC-43: Expected 401 Unauthorized for unauthenticated vault session abort, got success")
+	}
+	he, ok := errAbort.(*echo.HTTPError)
+	if !ok || he.Code != http.StatusUnauthorized {
+		t.Fatalf("BUG-SEC-43: Expected HTTP 401 Unauthorized, got: %v", errAbort)
+	}
+
+	// Verify session still exists
+	_, exists := ctrl.SessionMgr.GetSession(sess.ID)
+	if !exists {
+		t.Fatalf("BUG-SEC-43: Session was unexpectedly deleted by unauthenticated caller")
+	}
+}
+
+func TestUploadController_GetStatus_VaultAuthentication(t *testing.T) {
+	e, ctrl := setupUploadTest(t)
+
+	sess, err := ctrl.SessionMgr.CreateSession(1, "f2", "vault_secret.pdf", "application/pdf", 5000)
+	if err != nil {
+		t.Fatalf("Failed to create session: %v", err)
+	}
+
+	// Unauthenticated get status request on vault session
+	req := httptest.NewRequest(http.MethodGet, "/upload/"+sess.ID, nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetPathValues(echo.PathValues{{Name: "session_id", Value: sess.ID}})
+
+	errStatus := ctrl.GetStatus(c)
+	if errStatus == nil {
+		t.Fatalf("BUG-SEC-44: Expected 401 Unauthorized for unauthenticated vault get status, got success")
+	}
+	he, ok := errStatus.(*echo.HTTPError)
+	if !ok || he.Code != http.StatusUnauthorized {
+		t.Fatalf("BUG-SEC-44: Expected HTTP 401 Unauthorized, got: %v", errStatus)
+	}
+}
+
 
 
 

@@ -638,6 +638,9 @@ templ Layout(title string) {
 					this.isVaultUnlocked = false;
 					this.files = [];
 					this.folders = [];
+					this.folderHistory = [];
+					this.currentFolderId = '';
+					this.currentFolderName = '';
 					try {
 						await fetch('/api/vault/lock', {
 							method: 'POST',
@@ -646,6 +649,9 @@ templ Layout(title string) {
 							}
 						});
 					} catch(e) {}
+					if (this.activeTab === 'vault') {
+						this.setTab('storage');
+					}
 				},
 
 				getCsrfToken() {

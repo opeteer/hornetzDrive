@@ -65,7 +65,7 @@ func (uc *UploadController) VerifyProofOfOwnership(casHash, proof, filename stri
 		return false
 	}
 	expected := uc.GenerateProof(casHash, filename, size)
-	return proof == expected || proof == "pow_verified"
+	return proof == expected
 }
 
 type ProgressBarComponent struct {
@@ -295,18 +295,14 @@ func (uc *UploadController) UploadChunk(c *echo.Context) error {
 	_ = bufWriter.Flush()
 	_ = f.Close()
 
-	// SSE Realtime broadcast for Venom Speed (anonymized target to prevent session hijacking)
-	var percentage int64 = 100
-	if sess.ExpectedSize > 0 {
-		percentage = (sess.UploadedSize * 100) / sess.ExpectedSize
-	}
-	uc.Broker.Publish(c.Request().Context(), "nest:user_1", fullstack.TurboStreamItem{
-		Action:    fullstack.StreamUpdate,
-		Target:    "venom-speed-progress",
-		Component: ProgressBarComponent{Percentage: percentage},
-	})
-
 	if sess.UploadedSize >= sess.ExpectedSize {
+		// BUG-SYS-53: Broadcast completion event once to notify client and refresh storage stats
+		uc.Broker.Publish(c.Request().Context(), "nest:user_1", fullstack.TurboStreamItem{
+			Action:    fullstack.StreamUpdate,
+			Target:    "storage-refresh",
+			Component: ProgressBarComponent{Percentage: 100},
+		})
+
 		// BUG-SYS-50: MoveToCASWithStatus computes hash in single pass and returns whether blob already existed
 		casHash, existedBefore, err := uc.CAS.MoveToCASWithStatus(sess.TempFilePath)
 		if err != nil {
@@ -360,6 +356,14 @@ func (uc *UploadController) GetStatus(c *echo.Context) error {
 		return echo.NewHTTPError(http.StatusNotFound, "session not found")
 	}
 
+	// BUG-SEC-44: Protect confidential Vault upload sessions from unauthorized status disclosure
+	if uc.isVaultFolder(sess.FolderID) {
+		cookie, err := c.Cookie("swarm_session")
+		if err != nil || cookie == nil || !auth.GlobalSessionStore.HasKey(cookie.Value) {
+			return echo.NewHTTPError(http.StatusUnauthorized, "Vault locked. Master password required.")
+		}
+	}
+
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"status":   "incomplete",
 		"uploaded": sess.UploadedSize,
@@ -372,6 +376,14 @@ func (uc *UploadController) AbortSession(c *echo.Context) error {
 	sess, exists := uc.SessionMgr.GetSession(sessionID)
 	if !exists {
 		return echo.NewHTTPError(http.StatusNotFound, "session not found")
+	}
+
+	// BUG-SEC-43: Protect confidential Vault upload sessions from unauthorized abortion / file deletion
+	if uc.isVaultFolder(sess.FolderID) {
+		cookie, err := c.Cookie("swarm_session")
+		if err != nil || cookie == nil || !auth.GlobalSessionStore.HasKey(cookie.Value) {
+			return echo.NewHTTPError(http.StatusUnauthorized, "Vault locked. Master password required.")
+		}
 	}
 
 	sess.Mu.Lock()
