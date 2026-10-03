@@ -103,6 +103,7 @@ func main() {
 	fileCtrl.SeedInitialData()
 
 	app.GET("/api/files", fileCtrl.GetFiles)
+	app.PATCH("/api/files/:id", fileCtrl.RenameFile)
 	app.GET("/api/folders", fileCtrl.GetFolders)
 	app.POST("/api/folders", fileCtrl.CreateFolder)
 	app.DELETE("/api/folders/:id", fileCtrl.DeleteFolder)
@@ -124,10 +125,12 @@ func main() {
 
 	// Phase 3: Security & Shuffler
 	secCtrl := &controllers.SecurityController{
-		CAS:    casEngine,
-		Broker: broker,
-		DB:     dbEngine,
-		TmpDir: appCfg.TmpDir,
+		CAS:        casEngine,
+		Broker:     broker,
+		DB:         dbEngine,
+		TmpDir:     appCfg.TmpDir,
+		SessionMgr: sessionMgr,
+		UploadCtrl: uploadCtrl,
 	}
 	app.POST("/api/purge", secCtrl.PanicPurge, web.AdaptiveRateLimiterWithConfig(web.AuthRateLimiterConfig()))
 

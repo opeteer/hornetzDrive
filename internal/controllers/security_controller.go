@@ -13,14 +13,17 @@ import (
 
 	"ztatic-go-framework/data"
 	"ztatic-go-framework/internal/storage"
+	"ztatic-go-framework/internal/upload"
 	"ztatic-go-framework/realtime"
 )
 
 type SecurityController struct {
-	CAS    *storage.CASEngine
-	Broker *realtime.MemoryBroker
-	DB     *data.DBEngine
-	TmpDir string
+	CAS        *storage.CASEngine
+	Broker     *realtime.MemoryBroker
+	DB         *data.DBEngine
+	TmpDir     string
+	SessionMgr *upload.SessionManager
+	UploadCtrl *UploadController
 }
 
 type PanicPurgeRequest struct {
@@ -93,6 +96,14 @@ func (sc *SecurityController) PanicPurge(c *echo.Context) error {
 			}
 			return nil
 		})
+	}
+
+	// 5. Purge all in-memory upload sessions and completed sessions
+	if sc.SessionMgr != nil {
+		sc.SessionMgr.PurgeAll()
+	}
+	if sc.UploadCtrl != nil {
+		sc.UploadCtrl.PurgeAllSessions()
 	}
 
 	if err != nil {

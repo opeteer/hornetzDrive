@@ -155,7 +155,7 @@ func LoginMock(c *echo.Context) error {
 	sessBytes := make([]byte, 16)
 	_, _ = rand.Read(sessBytes)
 	sessionID := "sess_" + hex.EncodeToString(sessBytes)
-	vk := crypto.DummyVK() // Derived using Argon2id in a full implementation
+	vk := crypto.DeriveMEK([]byte(req.Password), defaultVaultSalt)
 
 	GlobalSessionStore.SetKey(sessionID, vk)
 

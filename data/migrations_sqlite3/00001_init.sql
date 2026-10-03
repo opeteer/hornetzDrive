@@ -29,6 +29,7 @@ CREATE TABLE files (
     mime_type TEXT NOT NULL,
     size BIGINT NOT NULL,
     cas_hash TEXT NOT NULL, -- The SHA-256 content addressable hash
+    plaintext_hash TEXT DEFAULT '',
     encrypted_metadata BLOB,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,

@@ -716,19 +716,27 @@ templ Layout(title string) {
 				async processUploadQueue() {
 					if (this.isProcessingQueue) return;
 					this.isProcessingQueue = true;
-					while (this.uploadQueue.length > 0) {
-						const file = this.uploadQueue.shift();
-						const isLast = (this.uploadQueue.length === 0);
-						await this.executeUpload(file, isLast);
+					this.isUploading = true;
+					try {
+						while (this.uploadQueue.length > 0) {
+							const file = this.uploadQueue.shift();
+							await this.executeUpload(file);
+						}
+						await new Promise(r => setTimeout(r, 1000));
+					} finally {
+						this.isUploading = false;
+						this.isTransferring = false;
+						this.currentSpeedText = 'Idle';
+						this.uploadProgress = 0;
+						this.uploadStatusText = 'Status: Processing';
+						this.isProcessingQueue = false;
 					}
-					this.isProcessingQueue = false;
 				},
 
-				async executeUpload(file, isLast = true) {
+				async executeUpload(file) {
 					if (!file) return;
 
 					this.uploadFileName = file.name;
-					this.isUploading = true;
 					this.uploadProgress = 5;
 					this.uploadStatusText = 'Status: Inisiasi Sesi';
 					this.isTransferring = true;
@@ -779,14 +787,7 @@ templ Layout(title string) {
 							this.uploadProgress = 100;
 							this.uploadStatusText = 'Status: Instan (CAS)';
 							this.currentSpeedText = 'Instan (CAS)';
-							if (isLast) {
-								await new Promise(r => setTimeout(r, 1200));
-								this.isUploading = false;
-								this.isTransferring = false;
-								this.currentSpeedText = 'Idle';
-								this.uploadProgress = 0;
-								this.uploadStatusText = 'Status: Processing';
-							}
+							await new Promise(r => setTimeout(r, 600));
 							return;
 						}
 
@@ -861,23 +862,11 @@ templ Layout(title string) {
 						await this.fetchFolders();
 						await this.fetchStorageStats();
 
-						if (isLast) {
-							await new Promise(r => setTimeout(r, 1200));
-							this.isUploading = false;
-							this.isTransferring = false;
-							this.currentSpeedText = 'Idle';
-							this.uploadProgress = 0;
-							this.uploadStatusText = 'Status: Processing';
-						}
+						await new Promise(r => setTimeout(r, 600));
 
 					} catch (err) {
 						console.error("Upload error:", err);
 						alert("❌ Gagal mengunggah berkas: " + err.message);
-						this.isUploading = false;
-						this.isTransferring = false;
-						this.currentSpeedText = 'Idle';
-						this.uploadProgress = 0;
-						this.uploadStatusText = 'Status: Processing';
 					}
 				},
 
@@ -1076,6 +1065,33 @@ templ Layout(title string) {
 						}
 					} catch(e) {
 						alert("Gagal mengubah nama folder: " + e.message);
+					}
+				},
+
+				async renameFile(file) {
+					if (!file) return;
+					const newName = prompt("Nama baru untuk berkas:", file.name);
+					if (!newName || !newName.trim() || newName.trim() === file.name) return;
+					try {
+						const res = await fetch(`/api/files/${file.id}`, {
+							method: "PATCH",
+							headers: {
+								"Content-Type": "application/json",
+								"X-CSRF-Token": this.getCsrfToken()
+							},
+							body: JSON.stringify({ name: newName.trim() })
+						});
+						if (res.ok) {
+							if (this.selectedFile && this.selectedFile.id === file.id) {
+								this.selectedFile.name = newName.trim();
+							}
+							this.fetchFiles();
+						} else {
+							const data = await res.json().catch(() => ({}));
+							alert(data.message || data.error?.message || "Gagal mengubah nama berkas");
+						}
+					} catch(e) {
+						alert("Gagal mengubah nama berkas: " + e.message);
 					}
 				}
 			});

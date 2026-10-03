@@ -59,6 +59,8 @@ type StorageStats struct {
 	QuotaFormatted string  `json:"quota_formatted"`
 	PercentUsed    float64 `json:"percent_used"`
 	FileCount      int     `json:"file_count"`
+	TrashBytes     int64   `json:"trash_bytes"`
+	TrashFormatted string  `json:"trash_formatted"`
 }
 
 // SeedInitialData populates database with initial real data if empty
@@ -79,6 +81,7 @@ func (fc *FileController) seedInitialDataInternal() {
 	// Ensure schema columns exist
 	_, _ = fc.DB.SQL.Exec("ALTER TABLE files ADD COLUMN is_starred BOOLEAN DEFAULT FALSE")
 	_, _ = fc.DB.SQL.Exec("ALTER TABLE files ADD COLUMN is_deleted BOOLEAN DEFAULT FALSE")
+	_, _ = fc.DB.SQL.Exec("ALTER TABLE files ADD COLUMN plaintext_hash TEXT DEFAULT ''")
 
 	var count int
 	_ = fc.DB.SQL.QueryRow("SELECT COUNT(*) FROM users").Scan(&count)
@@ -327,7 +330,7 @@ func (fc *FileController) GetFolders(c *echo.Context) error {
 			query += " AND 1=0"
 		}
 	} else if tab == "vault" {
-		query += " AND f.id = 'f2'"
+		query += " AND f.parent_id = 'f2'"
 	} else {
 		query += " AND f.id != 'f2' AND (f.parent_id IS NULL OR f.parent_id = '')"
 		if !isUnlocked {
@@ -630,7 +633,13 @@ func (fc *FileController) EmptyTrash(c *echo.Context) error {
 		filterClause += " AND " + fc.vaultExcludeFilter()
 	}
 
-	rows, err := fc.DB.SQL.Query(fc.DB.Rebind("SELECT cas_hash FROM files WHERE "+filterClause), 1)
+	tx, err := fc.DB.SQL.Begin()
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to start transaction: "+err.Error())
+	}
+	defer tx.Rollback()
+
+	rows, err := tx.Query(fc.DB.Rebind("SELECT DISTINCT cas_hash FROM files WHERE "+filterClause), 1)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to query trash: "+err.Error())
 	}
@@ -643,12 +652,17 @@ func (fc *FileController) EmptyTrash(c *echo.Context) error {
 			hashes = append(hashes, h)
 		}
 	}
+	rows.Close()
 
-	res, err := fc.DB.SQL.Exec(fc.DB.Rebind("DELETE FROM files WHERE "+filterClause), 1)
+	res, err := tx.Exec(fc.DB.Rebind("DELETE FROM files WHERE "+filterClause), 1)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to empty trash: "+err.Error())
 	}
 	count, _ := res.RowsAffected()
+
+	if err := tx.Commit(); err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to commit empty trash: "+err.Error())
+	}
 
 	if fc.CAS != nil {
 		for _, h := range hashes {
@@ -671,32 +685,35 @@ func (fc *FileController) EmptyTrash(c *echo.Context) error {
 func (fc *FileController) GetStorageStats(c *echo.Context) error {
 	fc.SeedInitialData()
 
-	var totalBytes sql.NullInt64
-	var fileCount int
+	var activeBytes, trashBytes sql.NullInt64
+	var activeCount, trashCount int
 	isUnlocked := fc.isVaultUnlocked(c)
 
-	filterClause := "owner_id = ? AND is_deleted = FALSE"
+	filterActive := "owner_id = ? AND is_deleted = FALSE"
+	filterTrash := "owner_id = ? AND is_deleted = TRUE"
 	if !isUnlocked {
-		filterClause += " AND " + fc.vaultExcludeFilter()
+		filterActive += " AND " + fc.vaultExcludeFilter()
+		filterTrash += " AND " + fc.vaultExcludeFilter()
 	}
 
-	query := fc.DB.Rebind("SELECT COALESCE(SUM(size), 0), COUNT(*) FROM files WHERE " + filterClause)
-	err := fc.DB.SQL.QueryRow(query, 1).Scan(&totalBytes, &fileCount)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to query storage stats: "+err.Error())
-	}
+	_ = fc.DB.SQL.QueryRow(fc.DB.Rebind("SELECT COALESCE(SUM(size), 0), COUNT(*) FROM files WHERE "+filterActive), 1).Scan(&activeBytes, &activeCount)
+	_ = fc.DB.SQL.QueryRow(fc.DB.Rebind("SELECT COALESCE(SUM(size), 0), COUNT(*) FROM files WHERE "+filterTrash), 1).Scan(&trashBytes, &trashCount)
 
+	activeUsed := activeBytes.Int64
+	trashedUsed := trashBytes.Int64
+	totalPhysicalUsed := activeUsed + trashedUsed
 	const quotaBytes int64 = 2 * 1024 * 1024 * 1024 * 1024 // 2 TB
-	used := totalBytes.Int64
-	percent := (float64(used) / float64(quotaBytes)) * 100
+	percent := (float64(totalPhysicalUsed) / float64(quotaBytes)) * 100
 
 	return c.JSON(http.StatusOK, StorageStats{
-		UsedBytes:      used,
+		UsedBytes:      totalPhysicalUsed,
 		QuotaBytes:     quotaBytes,
-		UsedFormatted:  formatBytes(used),
+		UsedFormatted:  formatBytes(totalPhysicalUsed),
 		QuotaFormatted: "2 TB",
 		PercentUsed:    percent,
-		FileCount:      fileCount,
+		FileCount:      activeCount,
+		TrashBytes:     trashedUsed,
+		TrashFormatted: formatBytes(trashedUsed),
 	})
 }
 
@@ -770,8 +787,8 @@ func (fc *FileController) CreateFolder(c *echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "Folder name cannot be empty")
 	}
 	cleanName := filepath.Base(filepath.Clean(name))
-	if cleanName == "." || cleanName == "/" || cleanName == "" {
-		cleanName = "Folder Baru"
+	if cleanName == "." || cleanName == ".." || cleanName == "/" || cleanName == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid folder name")
 	}
 
 	if req.ParentID != "" {
@@ -826,6 +843,13 @@ func (fc *FileController) DeleteFolder(c *echo.Context) error {
 		return echo.NewHTTPError(http.StatusForbidden, "Folder sistem tidak dapat dihapus")
 	}
 
+	// BUG-SYS-44: Verify folder exists
+	var exists bool
+	errCheck := fc.DB.SQL.QueryRow(fc.DB.Rebind("SELECT EXISTS(SELECT 1 FROM folders WHERE id = ? AND owner_id = ?)"), id, 1).Scan(&exists)
+	if errCheck != nil || !exists {
+		return echo.NewHTTPError(http.StatusNotFound, "Folder not found")
+	}
+
 	if fc.IsVaultFolder(id) {
 		if !fc.isVaultUnlocked(c) {
 			return echo.NewHTTPError(http.StatusUnauthorized, "Vault locked.")
@@ -851,20 +875,30 @@ func (fc *FileController) DeleteFolder(c *echo.Context) error {
 		}
 	}
 
+	tx, err := fc.DB.SQL.Begin()
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to start transaction: "+err.Error())
+	}
+	defer tx.Rollback()
+
 	// Move all files in all folders to trash.
 	// Set folder_id = NULL (or 'f2' for vault folders) so foreign key ON DELETE CASCADE does not wipe files
 	isVault := fc.IsVaultFolder(id)
 	for _, fID := range allFolderIDs {
 		if isVault {
-			_, _ = fc.DB.SQL.Exec(fc.DB.Rebind("UPDATE files SET is_deleted = TRUE, folder_id = 'f2' WHERE folder_id = ? AND owner_id = ?"), fID, 1)
+			_, _ = tx.Exec(fc.DB.Rebind("UPDATE files SET is_deleted = TRUE, folder_id = 'f2' WHERE folder_id = ? AND owner_id = ?"), fID, 1)
 		} else {
-			_, _ = fc.DB.SQL.Exec(fc.DB.Rebind("UPDATE files SET is_deleted = TRUE, folder_id = NULL WHERE folder_id = ? AND owner_id = ?"), fID, 1)
+			_, _ = tx.Exec(fc.DB.Rebind("UPDATE files SET is_deleted = TRUE, folder_id = NULL WHERE folder_id = ? AND owner_id = ?"), fID, 1)
 		}
 	}
 
 	// Delete child subfolders first (reverse order)
 	for i := len(allFolderIDs) - 1; i >= 0; i-- {
-		_, _ = fc.DB.SQL.Exec(fc.DB.Rebind("DELETE FROM folders WHERE id = ? AND owner_id = ?"), allFolderIDs[i], 1)
+		_, _ = tx.Exec(fc.DB.Rebind("DELETE FROM folders WHERE id = ? AND owner_id = ?"), allFolderIDs[i], 1)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to commit folder deletion: "+err.Error())
 	}
 
 	return c.JSON(http.StatusOK, map[string]string{"status": "folder_deleted"})
@@ -897,7 +931,7 @@ func (fc *FileController) RenameFolder(c *echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "Folder name cannot be empty")
 	}
 	cleanName := filepath.Base(filepath.Clean(name))
-	if cleanName == "." || cleanName == "/" || cleanName == "" {
+	if cleanName == "." || cleanName == ".." || cleanName == "/" || cleanName == "" {
 		return echo.NewHTTPError(http.StatusBadRequest, "Invalid folder name")
 	}
 
@@ -925,6 +959,48 @@ func (fc *FileController) RenameFolder(c *echo.Context) error {
 		return echo.NewHTTPError(http.StatusNotFound, "Folder not found")
 	}
 	return c.JSON(http.StatusOK, map[string]string{"status": "folder_renamed", "name": cleanName})
+}
+
+type RenameFileRequest struct {
+	Name string `json:"name"`
+}
+
+func (fc *FileController) RenameFile(c *echo.Context) error {
+	id := c.Param("id")
+	var req RenameFileRequest
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid request")
+	}
+	name := strings.TrimSpace(req.Name)
+	if name == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, "File name cannot be empty")
+	}
+	cleanName := filepath.Base(filepath.Clean(name))
+	if cleanName == "." || cleanName == ".." || cleanName == "/" || cleanName == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid file name")
+	}
+
+	var folderID string
+	err := fc.DB.SQL.QueryRow(fc.DB.Rebind("SELECT COALESCE(folder_id, '') FROM files WHERE id = ? AND owner_id = ? AND is_deleted = FALSE"), id, 1).Scan(&folderID)
+	if err == sql.ErrNoRows {
+		return echo.NewHTTPError(http.StatusNotFound, "File not found")
+	}
+	if fc.IsVaultFolder(folderID) && !fc.isVaultUnlocked(c) {
+		return echo.NewHTTPError(http.StatusUnauthorized, "Vault locked. Master password required.")
+	}
+
+	res, err := fc.DB.SQL.Exec(fc.DB.Rebind("UPDATE files SET name = ? WHERE id = ? AND owner_id = ? AND is_deleted = FALSE"), cleanName, id, 1)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to rename file: "+err.Error())
+	}
+	if rows, _ := res.RowsAffected(); rows == 0 {
+		return echo.NewHTTPError(http.StatusNotFound, "File not found")
+	}
+	return c.JSON(http.StatusOK, map[string]string{
+		"status": "file_renamed",
+		"id":     id,
+		"name":   cleanName,
+	})
 }
 
 

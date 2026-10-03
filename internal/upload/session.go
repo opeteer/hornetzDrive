@@ -19,8 +19,9 @@ type Session struct {
 	MimeType     string
 	ExpectedSize int64
 	UploadedSize int64
-	TempFilePath string
-	StartedAt    time.Time
+	TempFilePath  string
+	PlaintextHash string
+	StartedAt     time.Time
 	LastActiveAt time.Time
 }
 
@@ -106,6 +107,20 @@ func (sm *SessionManager) CleanupStaleSessions(maxAge time.Duration) int {
 			delete(sm.sessions, id)
 			cleaned++
 		}
+	}
+	return cleaned
+}
+
+// PurgeAll removes all active upload sessions and unlinks all temporary files immediately.
+func (sm *SessionManager) PurgeAll() int {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	cleaned := 0
+	for id, sess := range sm.sessions {
+		_ = os.Remove(sess.TempFilePath)
+		delete(sm.sessions, id)
+		cleaned++
 	}
 	return cleaned
 }

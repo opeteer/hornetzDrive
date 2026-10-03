@@ -44,6 +44,16 @@ func (uc *UploadController) PruneCompletedSessions(ttl time.Duration) {
 	})
 }
 
+func (uc *UploadController) PurgeAllSessions() {
+	if uc.SessionMgr != nil {
+		uc.SessionMgr.PurgeAll()
+	}
+	uc.completedSessions.Range(func(key, value interface{}) bool {
+		uc.completedSessions.Delete(key)
+		return true
+	})
+}
+
 func (uc *UploadController) GenerateProof(casHash, filename string, size int64) string {
 	h := sha256.Sum256([]byte(fmt.Sprintf("%s:%s:%d:hornetz_pow", casHash, filename, size)))
 	return hex.EncodeToString(h[:])
@@ -138,25 +148,40 @@ func (uc *UploadController) InitSession(c *echo.Context) error {
 		}
 		// 0-second deduplication requires proof of ownership to prevent unauthorized file exfiltration
 		if req.Proof != "" && uc.VerifyProofOfOwnership(req.CasHash, req.Proof, cleanFilename, req.Size) {
-			if uc.CAS.Exists(req.CasHash) {
-				fileID := fmt.Sprintf("file_%d_%s", time.Now().Unix(), upload.GenerateID()[:8])
-				if uc.DB != nil && uc.DB.SQL != nil {
-					query := uc.DB.Rebind("INSERT INTO files (id, owner_id, folder_id, name, mime_type, size, cas_hash) VALUES (?, 1, ?, ?, ?, ?, ?)")
-					var dbFolder interface{} = nil
-					if folderID != "" && folderID != "root" {
-						dbFolder = folderID
+			var existingCasHash, existingFolderID string
+			if uc.DB != nil && uc.DB.SQL != nil {
+				queryCheck := uc.DB.Rebind("SELECT cas_hash, COALESCE(folder_id, '') FROM files WHERE (plaintext_hash = ? OR cas_hash = ?) AND (is_deleted = FALSE OR is_deleted = 0) LIMIT 1")
+				_ = uc.DB.SQL.QueryRow(queryCheck, req.CasHash, req.CasHash).Scan(&existingCasHash, &existingFolderID)
+			}
+			if existingCasHash == "" && uc.CAS.Exists(req.CasHash) {
+				existingCasHash = req.CasHash
+			}
+
+			if existingCasHash != "" && uc.CAS.Exists(existingCasHash) {
+				// BUG-SEC-38: Cross-Domain Protection: ensure encryption domains match (Vault vs Standard)
+				targetIsVault := uc.isVaultFolder(folderID)
+				sourceIsVault := uc.isVaultFolder(existingFolderID)
+				if targetIsVault == sourceIsVault {
+					fileID := fmt.Sprintf("file_%d_%s", time.Now().Unix(), upload.GenerateID()[:8])
+					if uc.DB != nil && uc.DB.SQL != nil {
+						query := uc.DB.Rebind("INSERT INTO files (id, owner_id, folder_id, name, mime_type, size, cas_hash, plaintext_hash) VALUES (?, 1, ?, ?, ?, ?, ?, ?)")
+						var dbFolder interface{} = nil
+						if folderID != "" && folderID != "root" {
+							dbFolder = folderID
+						}
+						_, err := uc.DB.SQL.Exec(query, fileID, dbFolder, cleanFilename, req.MimeType, req.Size, existingCasHash, req.CasHash)
+						if err != nil {
+							return echo.NewHTTPError(http.StatusInternalServerError, "failed to record deduplicated file: "+err.Error())
+						}
 					}
-					_, err := uc.DB.SQL.Exec(query, fileID, dbFolder, cleanFilename, req.MimeType, req.Size, req.CasHash)
-					if err != nil {
-						return echo.NewHTTPError(http.StatusInternalServerError, "failed to record deduplicated file: "+err.Error())
-					}
+					return c.JSON(http.StatusOK, map[string]interface{}{
+						"status":   "completed",
+						"message":  "0-second deduplication successful",
+						"cas_hash": existingCasHash,
+						"file_id":  fileID,
+					})
 				}
-				return c.JSON(http.StatusOK, map[string]interface{}{
-					"status":   "completed",
-					"message":  "0-second deduplication successful",
-					"cas_hash": req.CasHash,
-					"file_id":  fileID,
-				})
+				// If domains differ, do not dedup; fall through to standard chunk upload so file is re-encrypted with target key!
 			}
 		}
 	}
@@ -165,6 +190,7 @@ func (uc *UploadController) InitSession(c *echo.Context) error {
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to initiate upload")
 	}
+	sess.PlaintextHash = req.CasHash
 
 	c.Response().Header().Set("Location", "/upload/"+sess.ID)
 	return c.JSON(http.StatusCreated, map[string]interface{}{
@@ -192,12 +218,18 @@ func (uc *UploadController) UploadChunk(c *echo.Context) error {
 	bufWriter := bufio.NewWriterSize(f, 2*1024*1024)
 	defer bufWriter.Flush()
 
-	// Retrieve RAM-only Vault Key from middleware context
+	// BUG-SEC-36: Retrieve RAM-only Vault Key from middleware context if vault folder;
+	// for standard storage folders, ALWAYS use standard key (DummyVK) to prevent key contamination
 	var vk []byte
-	if vKey, ok := c.Get("vault_key").([]byte); ok {
-		vk = vKey
-	}
-	if len(vk) == 0 {
+	isVault := uc.isVaultFolder(sess.FolderID)
+	if isVault {
+		if vKey, ok := c.Get("vault_key").([]byte); ok && len(vKey) > 0 {
+			vk = vKey
+		}
+		if len(vk) == 0 {
+			return echo.NewHTTPError(http.StatusUnauthorized, "Vault locked. Master password required.")
+		}
+	} else {
 		vk = crypto.DummyVK()
 	}
 
@@ -222,18 +254,26 @@ func (uc *UploadController) UploadChunk(c *echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "uploaded bytes exceed declared session size")
 	}
 
+	// BUG-SYS-41 & BUG-SYS-42: Record initial disk offset before writing chunk
+	initialDiskSize, errSeek := f.Seek(0, io.SeekEnd)
+	if errSeek != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to seek temp file")
+	}
+
 	bodyReader := io.LimitReader(c.Request().Body, remaining+1)
 
 	transferBuf := make([]byte, 1024*1024)
 	written, err := io.CopyBuffer(encStream, bodyReader, transferBuf)
 	if err != nil {
+		_ = bufWriter.Flush()
+		_ = f.Truncate(initialDiskSize)
 		return echo.NewHTTPError(http.StatusInternalServerError, "chunk transfer failed")
 	}
 	_ = bufWriter.Flush()
 
 	// Prevent uploading more than declared size to eliminate stream desynchronization
 	if sess.UploadedSize+written > sess.ExpectedSize {
-		_ = f.Truncate(sess.UploadedSize)
+		_ = f.Truncate(initialDiskSize)
 		return echo.NewHTTPError(http.StatusBadRequest, "uploaded bytes exceed declared session size")
 	}
 
@@ -252,6 +292,9 @@ func (uc *UploadController) UploadChunk(c *echo.Context) error {
 	})
 
 	if sess.UploadedSize >= sess.ExpectedSize {
+		tempHash, _ := storage.ComputeHash(sess.TempFilePath)
+		existedBefore := uc.CAS.Exists(tempHash)
+
 		casHash, err := uc.CAS.MoveToCAS(sess.TempFilePath)
 		if err != nil {
 			return echo.NewHTTPError(http.StatusInternalServerError, "cas storage failed")
@@ -265,9 +308,13 @@ func (uc *UploadController) UploadChunk(c *echo.Context) error {
 			if sess.FolderID != "" && sess.FolderID != "root" {
 				dbFolder = sess.FolderID
 			}
-			query := uc.DB.Rebind("INSERT INTO files (id, owner_id, folder_id, name, mime_type, size, cas_hash) VALUES (?, 1, ?, ?, ?, ?, ?)")
-			_, err := uc.DB.SQL.Exec(query, fileID, dbFolder, sess.Filename, sess.MimeType, sess.UploadedSize, casHash)
+			query := uc.DB.Rebind("INSERT INTO files (id, owner_id, folder_id, name, mime_type, size, cas_hash, plaintext_hash) VALUES (?, 1, ?, ?, ?, ?, ?, ?)")
+			_, err := uc.DB.SQL.Exec(query, fileID, dbFolder, sess.Filename, sess.MimeType, sess.UploadedSize, casHash, sess.PlaintextHash)
 			if err != nil {
+				// BUG-SYS-43: Clean up orphaned CAS blob if database insertion fails
+				if !existedBefore {
+					_ = os.Remove(uc.CAS.Path(casHash))
+				}
 				return echo.NewHTTPError(http.StatusInternalServerError, "failed to record file metadata in database: "+err.Error())
 			}
 		}

@@ -194,7 +194,7 @@ templ DashboardContent() {
 								<div class="font-semibold text-xs text-white truncate group-hover:text-[#FACC15] transition-colors" x-text="file.name"></div>
 								<div class="flex justify-between items-center text-[10px] text-[#A19A8F] font-mono mt-1">
 									<span x-text="(file.size >= 1073741824) ? (file.size / 1073741824).toFixed(2) + ' GB' : (file.size >= 1048576) ? (file.size / 1048576).toFixed(1) + ' MB' : (file.size >= 1024) ? (file.size / 1024).toFixed(1) + ' KB' : file.size + ' B'"></span>
-									<span class="text-emerald-400 font-semibold text-[9px]">TERSINKRON</span>
+									<span :class="file.is_deleted ? 'text-red-400 font-semibold text-[9px]' : 'text-emerald-400 font-semibold text-[9px]'" x-text="file.is_deleted ? 'DI SAMPAH' : 'TERSINKRON'"></span>
 								</div>
 								<div class="text-[9px] text-[#6E675E] font-mono truncate mt-0.5" x-text="file.created_at ? new Date(file.created_at).toLocaleDateString('id-ID') : ''"></div>
 							</div>
@@ -222,7 +222,7 @@ templ DashboardContent() {
 							<div class="flex items-center gap-6 text-xs font-mono">
 								<span class="text-[#6E675E] text-[11px] hidden sm:inline" x-text="file.created_at ? new Date(file.created_at).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' }) : ''"></span>
 								<span class="text-[#A19A8F]" x-text="(file.size >= 1073741824) ? (file.size / 1073741824).toFixed(2) + ' GB' : (file.size >= 1048576) ? (file.size / 1048576).toFixed(1) + ' MB' : (file.size >= 1024) ? (file.size / 1024).toFixed(1) + ' KB' : file.size + ' B'"></span>
-								<span class="px-2 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded font-semibold text-[10px]">TERSINKRON</span>
+								<span :class="file.is_deleted ? 'bg-red-500/10 text-red-400 border-red-500/20' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'" class="px-2 py-0.5 border rounded font-semibold text-[10px]" x-text="file.is_deleted ? 'DI SAMPAH' : 'TERSINKRON'"></span>
 								<button class="text-[#FACC15] hover:underline font-bold">Detail →</button>
 							</div>
 						</div>
@@ -312,6 +312,12 @@ templ DashboardContent() {
 								class="flex-1 hornetz-btn py-2.5 px-4 rounded-xl flex items-center justify-center gap-2 text-xs font-bold"
 							>
 								<span>📥</span> <span x-text="$store.drive.activeTab === 'vault' ? 'Dekripsi & Unduh' : 'Unduh Berkas'"></span>
+							</button>
+							<button 
+								@click="$store.drive.renameFile($store.drive.selectedFile)" 
+								class="bg-[#201E1B] hover:bg-[#2E2B26] text-amber-200 border border-white/10 py-2.5 px-3 rounded-xl text-xs font-semibold transition-colors"
+							>
+								<span>✏️</span> Ubah Nama
 							</button>
 							<button 
 								@click="$store.drive.deleteFile($store.drive.selectedFile, false)" 
