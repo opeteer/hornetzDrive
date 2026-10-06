@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"net/http"
 	"time"
 
 	"github.com/labstack/echo/v5"
@@ -157,8 +158,20 @@ func main() {
 	uploadGroup.GET("/:session_id", uploadCtrl.GetStatus)
 	uploadGroup.DELETE("/:session_id", uploadCtrl.AbortSession)
 
+	// Landing Page route
 	app.GET("/", func(c *echo.Context) error {
+		return components.LandingPage(c).Render(c.Request().Context(), c.Response())
+	})
+
+	// Storage Web Application Dashboard routes
+	app.GET("/app", func(c *echo.Context) error {
 		return components.Dashboard(c).Render(c.Request().Context(), c.Response())
+	})
+	app.GET("/drive", func(c *echo.Context) error {
+		return c.Redirect(http.StatusMovedPermanently, "/app")
+	})
+	app.GET("/dashboard", func(c *echo.Context) error {
+		return c.Redirect(http.StatusMovedPermanently, "/app")
 	})
 
 	log.Info("Starting Hornetz Drive", "port", appCfg.Port, "driver", appCfg.DBDriver)
