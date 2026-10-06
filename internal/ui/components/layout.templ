@@ -87,6 +87,17 @@ templ Layout(title string) {
 
 			<!-- Status & User Profile -->
 			<div class="flex items-center gap-4">
+				<!-- Return to Landing Page Button -->
+				<a 
+					href="/" 
+					data-turbo="false"
+					class="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#0F0E0D] hover:bg-[#201E1B] text-[#A19A8F] hover:text-[#FACC15] border border-[#2A2723] text-xs font-mono transition-colors"
+					title="Kembali ke Beranda"
+				>
+					<span>🏠</span>
+					<span>Beranda</span>
+				</a>
+
 				<div class="flex items-center gap-3 bg-[#0F0E0D] border border-[#2A2723] px-3 py-1.5 rounded-lg text-xs font-mono">
 					<span 
 						:class="$store.drive.isTransferring ? 'bg-emerald-400 animate-pulse' : 'bg-[#6E675E]'" 
