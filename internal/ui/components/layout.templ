@@ -30,8 +30,8 @@ templ Layout(title string) {
 			[x-cloak] { display: none !important; }
 			html, body {
 				font-family: 'Plus Jakarta Sans', sans-serif;
-				background-color: #0F0E0D;
-				color: #E6E1DA;
+				background-color: #0D1D25;
+				color: #EDEBE8;
 			}
 			.font-sans {
 				font-family: 'Plus Jakarta Sans', sans-serif;
@@ -39,25 +39,84 @@ templ Layout(title string) {
 			.font-mono {
 				font-family: 'JetBrains Mono', monospace;
 			}
+			/* Ambient glassmorphic backdrop glow orbs */
+			.glass-ambient-bg {
+				position: fixed;
+				inset: 0;
+				pointer-events: none;
+				z-index: 0;
+				overflow: hidden;
+			}
+			.glass-orb-1 {
+				position: absolute;
+				top: -10%;
+				right: -5%;
+				width: 650px;
+				height: 650px;
+				border-radius: 50%;
+				background: radial-gradient(circle, rgba(16, 76, 100, 0.4) 0%, rgba(13, 29, 37, 0) 70%);
+				filter: blur(80px);
+			}
+			.glass-orb-2 {
+				position: absolute;
+				bottom: -15%;
+				left: -5%;
+				width: 750px;
+				height: 750px;
+				border-radius: 50%;
+				background: radial-gradient(circle, rgba(192, 117, 77, 0.22) 0%, rgba(182, 65, 15, 0.12) 40%, rgba(13, 29, 37, 0) 70%);
+				filter: blur(100px);
+			}
+			.glass-orb-3 {
+				position: absolute;
+				top: 40%;
+				left: 45%;
+				width: 500px;
+				height: 500px;
+				border-radius: 50%;
+				background: radial-gradient(circle, rgba(67, 100, 89, 0.2) 0%, rgba(13, 29, 37, 0) 70%);
+				filter: blur(90px);
+			}
+			.hornetz-glass {
+				background: rgba(13, 29, 37, 0.65);
+				backdrop-filter: blur(20px);
+				-webkit-backdrop-filter: blur(20px);
+				border: 1px solid rgba(255, 255, 255, 0.08);
+			}
+			.hornetz-glass-card {
+				background: rgba(255, 255, 255, 0.03);
+				backdrop-filter: blur(16px);
+				-webkit-backdrop-filter: blur(16px);
+				border: 1px solid rgba(255, 255, 255, 0.08);
+				box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.06), 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+			}
+			.hornetz-glass-pill {
+				background: rgba(255, 255, 255, 0.04);
+				backdrop-filter: blur(12px);
+				-webkit-backdrop-filter: blur(12px);
+				border: 1px solid rgba(255, 255, 255, 0.08);
+			}
 			.hornetz-btn {
-				background: linear-gradient(135deg, #FACC15 0%, #EAB308 100%);
-				color: #0F0E0D;
+				background: linear-gradient(135deg, #B6410F 0%, #D59D80 100%);
+				color: #FFFFFF;
 				font-weight: 700;
-				transition: all 0.2s ease;
+				transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+				border: 1px solid rgba(255, 255, 255, 0.15);
+				box-shadow: 0 4px 15px rgba(182, 65, 15, 0.3);
 			}
 			.hornetz-btn:hover {
-				background: linear-gradient(135deg, #FDE047 0%, #CA8A04 100%);
+				background: linear-gradient(135deg, #C56417 0%, #E2A78F 100%);
 				transform: translateY(-1px);
-				box-shadow: 0 4px 15px rgba(250, 204, 21, 0.25);
+				box-shadow: 0 6px 22px rgba(182, 65, 15, 0.45);
 			}
 			::-webkit-scrollbar { width: 6px; height: 6px; }
-			::-webkit-scrollbar-track { background: #171614; }
-			::-webkit-scrollbar-thumb { background: #2E2B26; border-radius: 3px; }
-			::-webkit-scrollbar-thumb:hover { background: #FACC15; }
+			::-webkit-scrollbar-track { background: rgba(13, 29, 37, 0.5); }
+			::-webkit-scrollbar-thumb { background: rgba(16, 76, 100, 0.5); border-radius: 4px; }
+			::-webkit-scrollbar-thumb:hover { background: #D59D80; }
 		</style>
 	</head>
 	<body 
-		class="h-screen flex flex-col overflow-hidden select-none relative" 
+		class="h-screen flex flex-col overflow-hidden select-none relative bg-[#0D1D25] text-[#EDEBE8]" 
 		x-data
 		@dragenter="$store.drive.handleDragEnter($event)"
 		@dragleave="$store.drive.handleDragLeave($event)"
@@ -65,23 +124,30 @@ templ Layout(title string) {
 		@drop.prevent="$store.drive.handleDrop($event)"
 		@keydown.escape.window="$store.drive.dismissModals()"
 	>
+		<!-- Atmospheric Glass Background Lighting -->
+		<div class="glass-ambient-bg">
+			<div class="glass-orb-1"></div>
+			<div class="glass-orb-2"></div>
+			<div class="glass-orb-3"></div>
+		</div>
+
 		<!-- TOP HEADER / NAVBAR -->
-		<header class="h-16 bg-[#171614] border-b border-[#2A2723] px-6 flex items-center justify-between z-20 shrink-0">
+		<header class="h-16 hornetz-glass border-b border-white/[0.08] px-6 flex items-center justify-between z-20 shrink-0 relative">
 			<!-- Logo & Title -->
 			<div class="flex items-center gap-3">
-				<button @click="$store.drive.isMobileMenuOpen = !$store.drive.isMobileMenuOpen" class="md:hidden text-[#FACC15] mr-1 focus:outline-none">
+				<button @click="$store.drive.isMobileMenuOpen = !$store.drive.isMobileMenuOpen" class="md:hidden text-[#D59D80] mr-1 focus:outline-none" aria-label="Menu">
 					@IconMenu("w-6 h-6")
 				</button>
 				<div class="flex items-center gap-3 cursor-pointer" @click="$store.drive.setTab('storage')">
-					<div class="w-9 h-9 rounded-lg bg-[#FACC15] text-[#0F0E0D] flex items-center justify-center shadow-[0_0_12px_rgba(250,204,21,0.3)]">
+					<div class="w-9 h-9 rounded-xl bg-gradient-to-br from-[#B6410F] to-[#D59D80] text-white flex items-center justify-center shadow-[0_0_15px_rgba(182,65,15,0.35)] border border-white/20">
 						@IconZap("w-5 h-5 fill-current")
 					</div>
 					<div>
 						<div class="flex items-center gap-2">
-							<span class="font-extrabold text-base tracking-tight text-white">Hornetz <span class="text-[#FACC15]">Drive</span></span>
-							<span class="text-[10px] px-2 py-0.5 bg-[#2E2B26] text-[#FACC15] rounded font-mono font-semibold">v2.0 Cloud</span>
+							<span class="font-extrabold text-base tracking-tight text-white">Hornetz <span class="text-[#D59D80]">Drive</span></span>
+							<span class="text-[10px] px-2 py-0.5 bg-white/[0.06] text-[#D59D80] border border-white/[0.08] rounded font-mono font-semibold">v2.0 Cloud</span>
 						</div>
-						<p class="text-[11px] text-[#A19A8F]">Penyimpanan Awan Terenkripsi Real-Time</p>
+						<p class="text-[11px] text-[#8F9CA3]">Penyimpanan Awan Terenkripsi Real-Time</p>
 					</div>
 				</div>
 			</div>
@@ -92,14 +158,14 @@ templ Layout(title string) {
 					<input 
 						type="text" 
 						x-model="$store.drive.searchQuery" 
-						@input.debounce.300ms="$store.drive.fetchFiles(); $store.drive.fetchFolders()"
+						@input.debounce.300ms="$store.drive.fetchFiles(); $store.drive.fetchFolders()" 
 						placeholder="Cari berkas, folder, atau hash SHA-256..." 
-						class="w-full bg-[#0F0E0D] border border-[#2A2723] text-sm text-white px-10 py-2 rounded-lg focus:outline-none focus:border-[#FACC15] transition-colors placeholder-[#6E675E]"
+						class="w-full bg-white/[0.04] border border-white/[0.08] text-sm text-white px-10 py-2 rounded-xl focus:outline-none focus:border-[#D59D80]/60 focus:bg-white/[0.07] backdrop-blur-md transition-all placeholder-[#C6C6D0]/50"
 					/>
-					<div class="absolute left-3 top-2.5 text-[#A19A8F]">
+					<div class="absolute left-3.5 top-2.5 text-[#8F9CA3]">
 						@IconSearch("w-4 h-4")
 					</div>
-					<button x-show="$store.drive.searchQuery" @click="$store.drive.clearSearch()" class="absolute right-3 top-2.5 text-[#A19A8F] hover:text-white">
+					<button x-show="$store.drive.searchQuery" @click="$store.drive.clearSearch()" class="absolute right-3 top-2.5 text-[#8F9CA3] hover:text-white">
 						@IconX("w-4 h-4")
 					</button>
 				</div>
@@ -111,28 +177,28 @@ templ Layout(title string) {
 				<a 
 					href="/" 
 					data-turbo="false"
-					class="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#0F0E0D] hover:bg-[#201E1B] text-[#A19A8F] hover:text-[#FACC15] border border-[#2A2723] text-xs font-mono transition-colors"
+					class="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] text-[#C6C6D0] hover:text-[#D59D80] border border-white/[0.08] text-xs font-mono transition-all backdrop-blur-md"
 					title="Kembali ke Beranda"
 				>
 					@IconHome("w-4 h-4")
 					<span>Beranda</span>
 				</a>
 
-				<div class="flex items-center gap-3 bg-[#0F0E0D] border border-[#2A2723] px-3 py-1.5 rounded-lg text-xs font-mono">
+				<div class="flex items-center gap-3 bg-white/[0.04] border border-white/[0.08] px-3 py-1.5 rounded-xl text-xs font-mono backdrop-blur-md">
 					<span 
-						:class="$store.drive.isTransferring ? 'bg-emerald-400 animate-pulse' : 'bg-[#6E675E]'" 
+						:class="$store.drive.isTransferring ? 'bg-emerald-400 animate-pulse' : 'bg-[#8F9CA3]/60'" 
 						class="w-2 h-2 rounded-full transition-colors"
 					></span>
-					<span class="text-[#A19A8F]">Kecepatan:</span>
-					<span class="text-[#FACC15] font-bold" x-text="$store.drive.currentSpeedText">Idle</span>
+					<span class="text-[#8F9CA3]">Kecepatan:</span>
+					<span class="text-[#D59D80] font-bold" x-text="$store.drive.currentSpeedText">Idle</span>
 				</div>
 
-				<div class="flex items-center gap-3 border-l border-[#2A2723] pl-4">
+				<div class="flex items-center gap-3 border-l border-white/[0.08] pl-4">
 					<div class="text-right hidden md:block">
 						<div class="text-xs font-bold text-white">Pengguna Utama</div>
-						<div class="text-[10px] text-[#FACC15]">Vault Master</div>
+						<div class="text-[10px] text-[#D59D80]">Vault Master</div>
 					</div>
-					<div class="w-9 h-9 rounded-full bg-[#2E2B26] border border-[#FACC15]/40 text-[#FACC15] flex items-center justify-center font-bold font-mono text-sm">
+					<div class="w-9 h-9 rounded-full bg-white/[0.06] border border-[#D59D80]/40 text-[#D59D80] flex items-center justify-center font-bold font-mono text-sm shadow-sm backdrop-blur-sm">
 						U
 					</div>
 				</div>
@@ -140,18 +206,18 @@ templ Layout(title string) {
 		</header>
 
 		<!-- MAIN BODY (SIDEBAR + CONTENT) -->
-		<div class="flex-1 flex overflow-hidden relative">
+		<div class="flex-1 flex overflow-hidden relative z-10">
 			<!-- Mobile Overlay Backdrop -->
 			<div 
 				x-show="$store.drive && $store.drive.isMobileMenuOpen" 
 				@click="$store.drive.isMobileMenuOpen = false" 
-				class="fixed inset-0 bg-black/70 z-30 md:hidden"
+				class="fixed inset-0 bg-black/70 backdrop-blur-sm z-30 md:hidden"
 				x-cloak
 			></div>
 			<!-- SIDEBAR -->
 			<aside 
 				:class="$store.drive.isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'"
-				class="fixed md:static inset-y-0 left-0 z-40 w-64 bg-[#171614] border-r border-[#2A2723] p-4 flex flex-col justify-between shrink-0 transition-transform duration-200"
+				class="fixed md:static inset-y-0 left-0 z-40 w-64 bg-[#0D1D25]/55 backdrop-blur-2xl border-r border-white/[0.08] p-4 flex flex-col justify-between shrink-0 transition-transform duration-200"
 			>
 				<div class="space-y-6">
 					<!-- Upload Buttons -->
@@ -159,7 +225,7 @@ templ Layout(title string) {
 						<div class="grid grid-cols-2 gap-2">
 							<button 
 								@click="$refs.fileInput.click()" 
-								class="hornetz-btn py-3 px-3 rounded-lg flex items-center justify-center gap-1.5 text-xs shadow-md font-bold"
+								class="hornetz-btn py-3 px-3 rounded-xl flex items-center justify-center gap-1.5 text-xs shadow-md font-bold"
 								title="Unggah satu atau banyak berkas"
 							>
 								@IconUploadCloud("w-4 h-4")
@@ -167,7 +233,7 @@ templ Layout(title string) {
 							</button>
 							<button 
 								@click="$refs.folderInput.click()" 
-								class="bg-[#171614] border border-[#2A2723] hover:border-[#FACC15] text-white hover:text-[#FACC15] py-3 px-3 rounded-lg flex items-center justify-center gap-1.5 text-xs font-bold transition-colors shadow-md"
+								class="bg-white/[0.04] border border-white/[0.08] hover:border-[#D59D80]/50 text-white hover:text-[#D59D80] py-3 px-3 rounded-xl flex items-center justify-center gap-1.5 text-xs font-bold transition-all shadow-sm backdrop-blur-md"
 								title="Unggah satu folder beserta seluruh isinya"
 							>
 								@IconFolderPlus("w-4 h-4")
@@ -195,12 +261,12 @@ templ Layout(title string) {
 
 					<!-- Navigation Menu -->
 					<nav class="space-y-1 text-sm font-medium">
-						<div class="text-[11px] font-semibold text-[#6E675E] uppercase tracking-wider px-3 mb-2 font-mono">NAVIGASI</div>
+						<div class="text-[11px] font-semibold text-[#8F9CA3] uppercase tracking-wider px-3 mb-2 font-mono">NAVIGASI</div>
 						
 						<button 
 							@click="$store.drive.setTab('storage')" 
-							:class="$store.drive.activeTab === 'storage' ? 'bg-[#FACC15]/10 text-[#FACC15] border-l-4 border-[#FACC15] font-bold' : 'text-[#A19A8F] hover:text-white hover:bg-[#201E1B]'" 
-							class="w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-r-lg transition-colors"
+							:class="$store.drive.activeTab === 'storage' ? 'bg-[#B6410F]/15 text-[#D59D80] border-l-4 border-[#B6410F] font-bold shadow-sm backdrop-blur-sm' : 'text-[#C6C6D0]/80 hover:text-white hover:bg-white/[0.05]'" 
+							class="w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-r-xl transition-all"
 						>
 							@IconHardDrive("w-4 h-4")
 							<span>Penyimpanan Saya</span>
@@ -208,20 +274,20 @@ templ Layout(title string) {
 
 						<button 
 							@click="$store.drive.setTab('vault')" 
-							:class="$store.drive.activeTab === 'vault' ? 'bg-[#FACC15]/10 text-[#FACC15] border-l-4 border-[#FACC15] font-bold' : 'text-[#A19A8F] hover:text-white hover:bg-[#201E1B]'" 
-							class="w-full text-left flex items-center justify-between px-3 py-2.5 rounded-r-lg transition-colors"
+							:class="$store.drive.activeTab === 'vault' ? 'bg-[#B6410F]/15 text-[#D59D80] border-l-4 border-[#B6410F] font-bold shadow-sm backdrop-blur-sm' : 'text-[#C6C6D0]/80 hover:text-white hover:bg-white/[0.05]'" 
+							class="w-full text-left flex items-center justify-between px-3 py-2.5 rounded-r-xl transition-all"
 						>
 							<span class="flex items-center gap-3">
 								@IconShieldCheck("w-4 h-4")
 								<span>Vault Terenkripsi</span>
 							</span>
-							<span class="text-[10px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded font-mono font-semibold">AKTIF</span>
+							<span class="text-[10px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded font-mono font-semibold border border-emerald-500/30">AKTIF</span>
 						</button>
 
 						<button 
 							@click="$store.drive.setTab('recent')" 
-							:class="$store.drive.activeTab === 'recent' ? 'bg-[#FACC15]/10 text-[#FACC15] border-l-4 border-[#FACC15] font-bold' : 'text-[#A19A8F] hover:text-white hover:bg-[#201E1B]'" 
-							class="w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-r-lg transition-colors"
+							:class="$store.drive.activeTab === 'recent' ? 'bg-[#B6410F]/15 text-[#D59D80] border-l-4 border-[#B6410F] font-bold shadow-sm backdrop-blur-sm' : 'text-[#C6C6D0]/80 hover:text-white hover:bg-white/[0.05]'" 
+							class="w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-r-xl transition-all"
 						>
 							@IconClock("w-4 h-4")
 							<span>Berkas Terbaru</span>
@@ -229,8 +295,8 @@ templ Layout(title string) {
 
 						<button 
 							@click="$store.drive.setTab('starred')" 
-							:class="$store.drive.activeTab === 'starred' ? 'bg-[#FACC15]/10 text-[#FACC15] border-l-4 border-[#FACC15] font-bold' : 'text-[#A19A8F] hover:text-white hover:bg-[#201E1B]'" 
-							class="w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-r-lg transition-colors"
+							:class="$store.drive.activeTab === 'starred' ? 'bg-[#B6410F]/15 text-[#D59D80] border-l-4 border-[#B6410F] font-bold shadow-sm backdrop-blur-sm' : 'text-[#C6C6D0]/80 hover:text-white hover:bg-white/[0.05]'" 
+							class="w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-r-xl transition-all"
 						>
 							@IconStar("w-4 h-4", false)
 							<span>Berbintang</span>
@@ -238,8 +304,8 @@ templ Layout(title string) {
 
 						<button 
 							@click="$store.drive.setTab('trash')" 
-							:class="$store.drive.activeTab === 'trash' ? 'bg-[#FACC15]/10 text-[#FACC15] border-l-4 border-[#FACC15] font-bold' : 'text-[#A19A8F] hover:text-white hover:bg-[#201E1B]'" 
-							class="w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-r-lg transition-colors"
+							:class="$store.drive.activeTab === 'trash' ? 'bg-[#B6410F]/15 text-[#D59D80] border-l-4 border-[#B6410F] font-bold shadow-sm backdrop-blur-sm' : 'text-[#C6C6D0]/80 hover:text-white hover:bg-white/[0.05]'" 
+							class="w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-r-xl transition-all"
 						>
 							@IconTrash("w-4 h-4")
 							<span>Sampah</span>
@@ -250,15 +316,15 @@ templ Layout(title string) {
 				<!-- Bottom Widgets -->
 				<div class="space-y-4">
 					<!-- Vault Key Status Card -->
-					<div class="bg-[#0F0E0D] border border-[#2A2723] p-3 rounded-lg text-xs font-mono space-y-2">
+					<div class="bg-white/[0.03] border border-white/[0.08] p-3 rounded-xl text-xs font-mono space-y-2 backdrop-blur-md shadow-sm">
 						<div class="flex justify-between items-center text-[11px]">
-							<span class="text-[#FACC15] font-bold flex items-center gap-1.5">
+							<span class="text-[#D59D80] font-bold flex items-center gap-1.5">
 								@IconShield("w-3.5 h-3.5")
 								<span>Swarm Vault</span>
 							</span>
 							<span class="text-emerald-400 font-semibold">Argon2id + AES</span>
 						</div>
-						<div class="text-[10px] text-[#A19A8F] space-y-1">
+						<div class="text-[10px] text-[#8F9CA3] space-y-1">
 							<div class="flex justify-between"><span>Kunci RAM:</span> <strong class="text-white">Aktif di Memori</strong></div>
 							<div class="flex justify-between"><span>Deduplikasi:</span> <strong class="text-white">SHA-256 CAS</strong></div>
 						</div>
@@ -267,21 +333,21 @@ templ Layout(title string) {
 					<!-- Panic Purge Button -->
 					<button 
 						@click="$store.drive.triggerPanicPurge()" 
-						class="w-full bg-red-500/10 hover:bg-red-600 text-red-400 hover:text-white border border-red-500/30 text-xs font-semibold py-2 px-3 rounded-lg transition-colors flex items-center justify-center gap-2"
+						class="w-full bg-red-500/10 hover:bg-red-600/80 text-red-400 hover:text-white border border-red-500/20 text-xs font-semibold py-2 px-3 rounded-xl transition-all flex items-center justify-center gap-2 backdrop-blur-md"
 					>
 						@IconFlame("w-4 h-4")
 						<span>Emergency Panic Purge</span>
 					</button>
 
 					<!-- Storage Progress Bar -->
-					<div class="bg-[#0F0E0D] border border-[#2A2723] p-3 rounded-lg text-xs space-y-2">
+					<div class="bg-white/[0.03] border border-white/[0.08] p-3 rounded-xl text-xs space-y-2 backdrop-blur-md shadow-sm">
 						<div class="flex justify-between items-center text-[11px]">
-							<span class="text-[#A19A8F]">Penyimpanan</span>
-							<span class="text-[#FACC15] font-bold font-mono" x-text="`${$store.drive.storageUsedText} / ${$store.drive.storageQuotaText}`">0 B / 2 TB</span>
+							<span class="text-[#8F9CA3]">Penyimpanan</span>
+							<span class="text-[#D59D80] font-bold font-mono" x-text="`${$store.drive.storageUsedText} / ${$store.drive.storageQuotaText}`">0 B / 2 TB</span>
 						</div>
-						<div class="w-full h-1.5 bg-[#201E1B] rounded-full overflow-hidden">
+						<div class="w-full h-1.5 bg-black/40 rounded-full overflow-hidden border border-white/[0.04]">
 							<div 
-								class="h-full bg-[#FACC15] transition-all duration-300" 
+								class="h-full bg-gradient-to-r from-[#B6410F] to-[#D59D80] transition-all duration-300" 
 								:style="`width: ${Math.max($store.drive.storagePercent, $store.drive.storageUsedBytes > 0 ? 0.8 : 0)}%`"
 							></div>
 						</div>
@@ -290,7 +356,7 @@ templ Layout(title string) {
 			</aside>
 
 			<!-- MAIN CONTENT VIEW -->
-			<main class="flex-1 flex flex-col overflow-hidden bg-[#0F0E0D]">
+			<main class="flex-1 flex flex-col overflow-hidden bg-transparent relative z-10">
 				{ children... }
 			</main>
 		</div>
@@ -301,24 +367,24 @@ templ Layout(title string) {
 			x-cloak
 			style="display: none;"
 			x-transition 
-			class="fixed bottom-6 right-6 bg-[#171614] border border-[#FACC15] p-4 rounded-xl shadow-2xl z-50 w-80 space-y-2"
+			class="fixed bottom-6 right-6 bg-[#0D1D25]/85 backdrop-blur-2xl border border-white/10 p-4 rounded-2xl shadow-2xl z-50 w-80 space-y-2"
 		>
 			<div class="flex justify-between items-center text-xs font-bold text-white">
 				<span class="flex items-center gap-2">
 					<span x-show="$store.drive.uploadProgress === 100" class="text-emerald-400">
 						@IconCheck("w-4 h-4")
 					</span>
-					<span x-show="$store.drive.uploadProgress !== 100" class="animate-spin text-[#FACC15]">
+					<span x-show="$store.drive.uploadProgress !== 100" class="animate-spin text-[#D59D80]">
 						@IconLoader("w-4 h-4")
 					</span>
 					<span class="truncate max-w-[150px]" x-text="$store.drive.uploadFileName">Mengunggah...</span>
 				</span>
-				<span class="text-[#FACC15] font-mono" x-text="$store.drive.uploadProgress + '%'">0%</span>
+				<span class="text-[#D59D80] font-mono" x-text="$store.drive.uploadProgress + '%'">0%</span>
 			</div>
-			<div class="w-full h-2 bg-[#0F0E0D] rounded-full overflow-hidden border border-[#2A2723]">
-				<div class="h-full bg-[#FACC15] transition-all duration-150" :style="`width: ${$store.drive.uploadProgress}%`"></div>
+			<div class="w-full h-2 bg-black/40 rounded-full overflow-hidden border border-white/[0.08]">
+				<div class="h-full bg-gradient-to-r from-[#B6410F] to-[#D59D80] transition-all duration-150" :style="`width: ${$store.drive.uploadProgress}%`"></div>
 			</div>
-			<div class="text-[10px] text-[#A19A8F] font-mono flex justify-between">
+			<div class="text-[10px] text-[#8F9CA3] font-mono flex justify-between">
 				<span>Enkripsi: AES-256-GCM</span>
 				<span x-text="$store.drive.uploadStatusText">Status: Processing</span>
 			</div>
@@ -330,39 +396,39 @@ templ Layout(title string) {
 			x-cloak
 			style="display: none;"
 			x-transition 
-			class="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[100] p-4"
+			class="fixed inset-0 bg-black/80 backdrop-blur-xl flex items-center justify-center z-[100] p-4"
 		>
 			<div 
 				@click.away="$store.drive.showVaultPasswordModal = false" 
-				class="bg-[#171614] border-2 border-[#FACC15] w-full max-w-sm rounded-2xl p-6 shadow-2xl space-y-6"
+				class="bg-[#0D1D25]/85 backdrop-blur-2xl border border-white/10 w-full max-w-sm rounded-2xl p-6 shadow-2xl space-y-6"
 			>
 				<div class="text-center space-y-2">
-					<div class="w-16 h-16 mx-auto bg-[#FACC15]/10 border border-[#FACC15]/40 rounded-full flex items-center justify-center text-[#FACC15]">
+					<div class="w-16 h-16 mx-auto bg-[#B6410F]/15 border border-[#B6410F]/40 rounded-full flex items-center justify-center text-[#D59D80]">
 						@IconLock("w-8 h-8")
 					</div>
 					<h3 class="font-bold text-lg text-white">Buka Vault Terenkripsi</h3>
-					<p class="text-xs text-[#A19A8F]">Masukkan kata sandi master untuk mengakses berkas rahasia.</p>
+					<p class="text-xs text-[#8F9CA3]">Masukkan kata sandi master untuk mengakses berkas rahasia.</p>
 				</div>
 				
 				<div class="space-y-4">
 					<input 
 						type="password" 
 						x-model="$store.drive.vaultPassword" 
-						@keydown.enter="$store.drive.unlockVault()"
+						@keydown.enter="$store.drive.unlockVault()" 
 						placeholder="Kata Sandi Master Vault" 
-						class="w-full bg-[#0F0E0D] border border-[#2A2723] text-sm text-white px-4 py-3 rounded-lg focus:outline-none focus:border-[#FACC15] transition-colors placeholder-[#6E675E]"
+						class="w-full bg-white/[0.04] border border-white/[0.08] text-sm text-white px-4 py-3 rounded-xl focus:outline-none focus:border-[#D59D80]/60 focus:bg-white/[0.07] transition-all placeholder-[#C6C6D0]/50"
 					/>
 					
 					<div class="flex gap-3">
 						<button 
 							@click="$store.drive.showVaultPasswordModal = false" 
-							class="flex-1 py-3 bg-[#0F0E0D] border border-[#2A2723] text-[#A19A8F] hover:text-white hover:border-[#6E675E] rounded-lg text-sm font-bold transition-colors"
+							class="flex-1 py-3 bg-white/[0.04] border border-white/[0.08] text-[#C6C6D0] hover:text-white rounded-xl text-sm font-bold transition-all"
 						>
 							Batal
 						</button>
 						<button 
 							@click="$store.drive.unlockVault()" 
-							class="flex-1 py-3 hornetz-btn font-bold text-sm rounded-lg"
+							class="flex-1 py-3 hornetz-btn font-bold text-sm rounded-xl"
 						>
 							Buka Vault
 						</button>
@@ -377,39 +443,39 @@ templ Layout(title string) {
 			x-cloak
 			style="display: none;"
 			x-transition 
-			class="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[100] p-4"
+			class="fixed inset-0 bg-black/80 backdrop-blur-xl flex items-center justify-center z-[100] p-4"
 		>
 			<div 
 				@click.away="$store.drive.showCreateFolderModal = false" 
-				class="bg-[#171614] border-2 border-[#FACC15] w-full max-w-sm rounded-2xl p-6 shadow-2xl space-y-6"
+				class="bg-[#0D1D25]/85 backdrop-blur-2xl border border-white/10 w-full max-w-sm rounded-2xl p-6 shadow-2xl space-y-6"
 			>
 				<div class="text-center space-y-2">
-					<div class="w-16 h-16 mx-auto bg-[#FACC15]/10 border border-[#FACC15]/40 rounded-full flex items-center justify-center text-[#FACC15]">
+					<div class="w-16 h-16 mx-auto bg-[#104C64]/25 border border-[#104C64]/50 rounded-full flex items-center justify-center text-[#D59D80]">
 						@IconFolderPlus("w-8 h-8")
 					</div>
 					<h3 class="font-bold text-lg text-white">Buat Folder Baru</h3>
-					<p class="text-xs text-[#A19A8F]">Masukkan nama folder untuk mengelompokkan berkas Anda.</p>
+					<p class="text-xs text-[#8F9CA3]">Masukkan nama folder untuk mengelompokkan berkas Anda.</p>
 				</div>
 				
 				<div class="space-y-4">
 					<input 
 						type="text" 
 						x-model="$store.drive.newFolderName" 
-						@keydown.enter="$store.drive.createFolder($store.drive.newFolderName)"
+						@keydown.enter="$store.drive.createFolder($store.drive.newFolderName)" 
 						placeholder="Nama Folder (misal: Laporan 2026)" 
-						class="w-full bg-[#0F0E0D] border border-[#2A2723] text-sm text-white px-4 py-3 rounded-lg focus:outline-none focus:border-[#FACC15] transition-colors placeholder-[#6E675E]"
+						class="w-full bg-white/[0.04] border border-white/[0.08] text-sm text-white px-4 py-3 rounded-xl focus:outline-none focus:border-[#D59D80]/60 focus:bg-white/[0.07] transition-all placeholder-[#C6C6D0]/50"
 					/>
 					
 					<div class="flex gap-3">
 						<button 
 							@click="$store.drive.showCreateFolderModal = false; $store.drive.newFolderName = ''" 
-							class="flex-1 py-3 bg-[#0F0E0D] border border-[#2A2723] text-[#A19A8F] hover:text-white rounded-lg text-sm font-bold transition-colors"
+							class="flex-1 py-3 bg-white/[0.04] border border-white/[0.08] text-[#C6C6D0] hover:text-white rounded-xl text-sm font-bold transition-all"
 						>
 							Batal
 						</button>
 						<button 
 							@click="$store.drive.createFolder($store.drive.newFolderName)" 
-							class="flex-1 py-3 hornetz-btn font-bold text-sm rounded-lg"
+							class="flex-1 py-3 hornetz-btn font-bold text-sm rounded-xl"
 						>
 							Buat Folder
 						</button>
@@ -424,14 +490,14 @@ templ Layout(title string) {
 			x-cloak
 			style="display: none;"
 			x-transition 
-			class="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center z-[110] p-4"
+			class="fixed inset-0 bg-black/85 backdrop-blur-xl flex items-center justify-center z-[110] p-4"
 		>
 			<div 
 				@click.away="$store.drive.showPurgeConfirmModal = false" 
-				class="bg-[#171614] border-2 border-red-500 w-full max-w-sm rounded-2xl p-6 shadow-2xl space-y-6"
+				class="bg-[#0D1D25]/90 backdrop-blur-2xl border border-red-500/40 w-full max-w-sm rounded-2xl p-6 shadow-2xl space-y-6"
 			>
 				<div class="text-center space-y-2">
-					<div class="w-16 h-16 mx-auto bg-red-500/10 border border-red-500/40 rounded-full flex items-center justify-center text-red-500 animate-pulse">
+					<div class="w-16 h-16 mx-auto bg-red-500/10 border border-red-500/30 rounded-full flex items-center justify-center text-red-500 animate-pulse">
 						@IconAlertTriangle("w-8 h-8")
 					</div>
 					<h3 class="font-bold text-lg text-white">Konfirmasi Panic Purge</h3>
@@ -442,21 +508,21 @@ templ Layout(title string) {
 					<input 
 						type="password" 
 						x-model="$store.drive.purgePassword" 
-						@keydown.enter="$store.drive.executePanicPurge()"
+						@keydown.enter="$store.drive.executePanicPurge()" 
 						placeholder="Kata Sandi Master Vault" 
-						class="w-full bg-[#0F0E0D] border border-[#2A2723] text-sm text-white px-4 py-3 rounded-lg focus:outline-none focus:border-red-500 transition-colors placeholder-[#6E675E]"
+						class="w-full bg-white/[0.04] border border-red-500/30 text-sm text-white px-4 py-3 rounded-xl focus:outline-none focus:border-red-500 transition-all placeholder-[#C6C6D0]/50"
 					/>
 					
 					<div class="flex gap-3">
 						<button 
 							@click="$store.drive.showPurgeConfirmModal = false; $store.drive.purgePassword = ''" 
-							class="flex-1 py-3 bg-[#0F0E0D] border border-[#2A2723] text-[#A19A8F] hover:text-white rounded-lg text-sm font-bold transition-colors"
+							class="flex-1 py-3 bg-white/[0.04] border border-white/[0.08] text-[#C6C6D0] hover:text-white rounded-xl text-sm font-bold transition-all"
 						>
 							Batal
 						</button>
 						<button 
 							@click="$store.drive.executePanicPurge()" 
-							class="flex-1 py-3 bg-red-600 hover:bg-red-700 text-white font-bold text-sm rounded-lg transition-colors shadow-lg shadow-red-600/30"
+							class="flex-1 py-3 bg-red-600 hover:bg-red-700 text-white font-bold text-sm rounded-xl transition-all shadow-lg shadow-red-600/30"
 						>
 							Musnahkan Data
 						</button>
@@ -471,14 +537,14 @@ templ Layout(title string) {
 			x-cloak 
 			style="display: none;"
 			x-transition 
-			class="fixed inset-0 bg-black/85 backdrop-blur-sm border-4 border-dashed border-[#FACC15] flex flex-col items-center justify-center z-50 pointer-events-none space-y-4"
+			class="fixed inset-0 bg-[#0D1D25]/85 backdrop-blur-md border-4 border-dashed border-[#D59D80]/60 flex flex-col items-center justify-center z-50 pointer-events-none space-y-4"
 		>
-			<div class="w-20 h-20 rounded-2xl bg-[#FACC15]/20 border border-[#FACC15] flex items-center justify-center text-[#FACC15] animate-bounce">
+			<div class="w-20 h-20 rounded-2xl bg-[#B6410F]/20 border border-[#D59D80]/40 flex items-center justify-center text-[#D59D80] animate-bounce">
 				@IconUploadCloud("w-10 h-10")
 			</div>
 			<div class="text-center space-y-1">
 				<h2 class="text-xl font-extrabold text-white">Lepaskan Berkas untuk Mengunggah</h2>
-				<p class="text-xs font-mono text-[#A19A8F]">Otomatis dienkripsi dengan AES-256-GCM & deduplikasi CAS</p>
+				<p class="text-xs font-mono text-[#8F9CA3]">Otomatis dienkripsi dengan AES-256-GCM & deduplikasi CAS</p>
 			</div>
 		</div>
 

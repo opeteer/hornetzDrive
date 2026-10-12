@@ -43,8 +43,8 @@ templ LandingPage(c *echo.Context) {
 			[x-cloak] { display: none !important; }
 			html, body {
 				font-family: 'Plus Jakarta Sans', sans-serif;
-				background-color: #0F0E0D;
-				color: #E6E1DA;
+				background-color: #0D1D25;
+				color: #EDEBE8;
 			}
 			.font-sans {
 				font-family: 'Plus Jakarta Sans', sans-serif;
@@ -53,89 +53,94 @@ templ LandingPage(c *echo.Context) {
 				font-family: 'JetBrains Mono', monospace;
 			}
 			.hornetz-btn {
-				background: linear-gradient(135deg, #FACC15 0%, #EAB308 100%);
-				color: #0F0E0D;
+				background: linear-gradient(135deg, #B6410F 0%, #D59D80 100%);
+				color: #FFFFFF;
 				font-weight: 700;
 				transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+				border: 1px solid rgba(255, 255, 255, 0.15);
+				box-shadow: 0 4px 15px rgba(182, 65, 15, 0.3);
 			}
 			.hornetz-btn:hover {
-				background: linear-gradient(135deg, #FDE047 0%, #CA8A04 100%);
+				background: linear-gradient(135deg, #C56417 0%, #E2A78F 100%);
 				transform: translateY(-2px);
-				box-shadow: 0 6px 20px rgba(250, 204, 21, 0.3);
+				box-shadow: 0 8px 25px rgba(182, 65, 15, 0.45);
 			}
 			.hornetz-card {
-				background: #171614;
-				border: 1px solid #2A2723;
+				background: rgba(255, 255, 255, 0.03);
+				backdrop-filter: blur(16px);
+				-webkit-backdrop-filter: blur(16px);
+				border: 1px solid rgba(255, 255, 255, 0.08);
+				box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.06), 0 8px 32px 0 rgba(0, 0, 0, 0.37);
 				transition: all 0.25s ease;
 			}
 			.hornetz-card:hover {
-				border-color: #3D3831;
-				box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+				border-color: rgba(213, 157, 128, 0.4);
+				box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
 			}
 			.hornetz-card-glow:hover {
-				border-color: rgba(250, 204, 21, 0.4);
-				box-shadow: 0 0 25px rgba(250, 204, 21, 0.12);
+				border-color: rgba(213, 157, 128, 0.5);
+				box-shadow: 0 0 30px rgba(182, 65, 15, 0.25);
 			}
 			.glow-mesh {
-				background: radial-gradient(circle at 50% -20%, rgba(250, 204, 21, 0.12), transparent 70%);
+				background: radial-gradient(circle at 50% -20%, rgba(182, 65, 15, 0.15), rgba(16, 76, 100, 0.1) 40%, transparent 70%);
 			}
 			.grid-pattern {
 				background-size: 32px 32px;
-				background-image: linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
-				                  linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+				background-image: linear-gradient(to right, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+				                  linear-gradient(to bottom, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
 			}
 			::-webkit-scrollbar { width: 8px; }
-			::-webkit-scrollbar-track { background: #0F0E0D; }
-			::-webkit-scrollbar-thumb { background: #2A2723; border-radius: 4px; }
-			::-webkit-scrollbar-thumb:hover { background: #FACC15; }
+			::-webkit-scrollbar-track { background: rgba(13, 29, 37, 0.5); }
+			::-webkit-scrollbar-thumb { background: rgba(16, 76, 100, 0.5); border-radius: 4px; }
+			::-webkit-scrollbar-thumb:hover { background: #D59D80; }
 		</style>
 	</head>
-	<body class="min-h-screen flex flex-col bg-[#0F0E0D] text-[#E6E1DA] relative selection:bg-[#FACC15] selection:text-[#0F0E0D]" x-data="landingApp()">
+	<body class="min-h-screen flex flex-col bg-[#0D1D25] text-[#EDEBE8] relative selection:bg-[#D59D80] selection:text-[#0D1D25]" x-data="landingApp()">
 
 		<!-- AMBIENT BACKGROUND GLOW -->
 		<div class="fixed inset-0 pointer-events-none z-0 overflow-hidden">
-			<div class="absolute -top-40 left-1/2 -translate-x-1/2 w-[900px] h-[550px] bg-[#FACC15]/10 rounded-full blur-[140px]"></div>
-			<div class="absolute top-[800px] -left-40 w-[600px] h-[600px] bg-emerald-500/5 rounded-full blur-[160px]"></div>
-			<div class="absolute top-[1800px] -right-40 w-[600px] h-[600px] bg-amber-500/5 rounded-full blur-[160px]"></div>
+			<div class="absolute -top-40 left-1/2 -translate-x-1/2 w-[900px] h-[550px] bg-[#104C64]/30 rounded-full blur-[140px]"></div>
+			<div class="absolute top-[800px] -left-40 w-[600px] h-[600px] bg-[#C0754D]/15 rounded-full blur-[160px]"></div>
+			<div class="absolute top-[1800px] -right-40 w-[600px] h-[600px] bg-[#436459]/20 rounded-full blur-[160px]"></div>
 			<div class="absolute inset-0 grid-pattern opacity-60"></div>
 		</div>
 
 		<!-- STICKY NAVBAR -->
-		<header class="sticky top-0 z-50 backdrop-blur-md bg-[#0F0E0D]/85 border-b border-[#2A2723] transition-all">
+		<header class="sticky top-0 z-50 backdrop-blur-xl bg-[#0D1D25]/75 border-b border-white/[0.08] transition-all">
 			<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
 				<!-- Brand Logo -->
 				<a href="/" class="flex items-center gap-3 group">
-					<div class="w-10 h-10 rounded-xl bg-[#FACC15] text-[#0F0E0D] flex items-center justify-center font-black text-2xl shadow-[0_0_15px_rgba(250,204,21,0.35)] group-hover:scale-105 transition-transform">
+					<div class="w-10 h-10 rounded-xl bg-gradient-to-br from-[#B6410F] to-[#D59D80] text-white flex items-center justify-center font-black text-2xl shadow-[0_0_15px_rgba(182,65,15,0.35)] border border-white/20 group-hover:scale-105 transition-transform">
 						@IconZap("w-6 h-6 fill-current")
 					</div>
 					<div>
 						<div class="flex items-center gap-2">
-							<span class="font-extrabold text-lg tracking-tight text-white">Hornetz <span class="text-[#FACC15]">Drive</span></span>
-							<span class="text-[10px] px-2 py-0.5 bg-[#201E1B] text-[#FACC15] border border-[#3A3630] rounded-full font-mono font-semibold">v2.0 HOTW</span>
+							<span class="font-extrabold text-lg tracking-tight text-white">Hornetz <span class="text-[#D59D80]">Drive</span></span>
+							<span class="text-[10px] px-2 py-0.5 bg-white/[0.06] text-[#D59D80] border border-white/[0.08] rounded-full font-mono font-semibold">v2.0 HOTW</span>
 						</div>
-						<p class="text-[11px] text-[#A19A8F] hidden sm:block">Zero-Trust Encrypted Cloud Engine</p>
+						<p class="text-[11px] text-[#8F9CA3] hidden sm:block">Zero-Trust Encrypted Cloud Engine</p>
 					</div>
 				</a>
 
 				<!-- Desktop Nav Links -->
-				<nav class="hidden md:flex items-center gap-8 text-sm font-medium text-[#A19A8F]">
-					<a href="#fitur" class="hover:text-[#FACC15] transition-colors">Fitur Utama</a>
-					<a href="#arsitektur" class="hover:text-[#FACC15] transition-colors">Arsitektur</a>
-					<a href="#demo" class="hover:text-[#FACC15] transition-colors flex items-center gap-1.5">
+				<nav class="hidden md:flex items-center gap-8 text-sm font-medium text-[#C6C6D0]">
+					<a href="#fitur" class="hover:text-[#D59D80] transition-colors">Fitur Utama</a>
+					<a href="#arsitektur" class="hover:text-[#D59D80] transition-colors">Arsitektur</a>
+					<a href="#demo" class="hover:text-[#D59D80] transition-colors flex items-center gap-1.5">
 						<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
 						Demo Interaktif
 					</a>
-					<a href="#kalkulator" class="hover:text-[#FACC15] transition-colors">Kalkulator CAS</a>
-					<a href="#spesifikasi" class="hover:text-[#FACC15] transition-colors">Spesifikasi</a>
-					<a href="#faq" class="hover:text-[#FACC15] transition-colors">FAQ</a>
+					<a href="#kalkulator" class="hover:text-[#D59D80] transition-colors">Kalkulator CAS</a>
+					<a href="#spesifikasi" class="hover:text-[#D59D80] transition-colors">Spesifikasi</a>
+					<a href="#faq" class="hover:text-[#D59D80] transition-colors">FAQ</a>
 				</nav>
 
 				<!-- Header Action Buttons -->
 				<div class="flex items-center gap-3">
 					<!-- Telemetry Status Pill -->
-					<div class="hidden lg:flex items-center gap-2 bg-[#171614] border border-[#2A2723] px-3 py-1.5 rounded-full text-xs font-mono">
+					<div class="hidden lg:flex items-center gap-2 bg-white/[0.03] backdrop-blur-md border border-white/[0.08] px-3 py-1.5 rounded-full text-xs font-mono">
 						<span class="w-2 h-2 rounded-full bg-emerald-400"></span>
-						<span class="text-[#A19A8F]">CAS Engine:</span>
+						<span class="text-[#C6C6D0]">CAS Engine:</span>
 						<span class="text-white font-bold" x-text="serverStatusText">Online</span>
 					</div>
 
@@ -152,7 +157,7 @@ templ LandingPage(c *echo.Context) {
 					<!-- Mobile Menu Toggle Button -->
 					<button 
 						@click="mobileNavOpen = !mobileNavOpen" 
-						class="md:hidden p-2 text-[#A19A8F] hover:text-white focus:outline-none"
+						class="md:hidden p-2 text-[#C6C6D0] hover:text-white focus:outline-none"
 						aria-label="Toggle navigation menu"
 					>
 						<div x-show="!mobileNavOpen">
@@ -175,15 +180,15 @@ templ LandingPage(c *echo.Context) {
 				x-transition:leave="transition ease-in duration-150"
 				x-transition:leave-start="opacity-100 translate-y-0"
 				x-transition:leave-end="opacity-0 -translate-y-4"
-				class="md:hidden bg-[#171614] border-b border-[#2A2723] px-6 py-5 space-y-4 font-medium text-sm"
+				class="md:hidden bg-white/[0.03] backdrop-blur-md border-b border-white/[0.08] px-6 py-5 space-y-4 font-medium text-sm"
 			>
-				<a @click="mobileNavOpen = false" href="#fitur" class="block text-[#E6E1DA] hover:text-[#FACC15]">Fitur Utama</a>
-				<a @click="mobileNavOpen = false" href="#arsitektur" class="block text-[#E6E1DA] hover:text-[#FACC15]">Arsitektur HOTW</a>
-				<a @click="mobileNavOpen = false" href="#demo" class="block text-[#E6E1DA] hover:text-[#FACC15]">Demo Interaktif</a>
-				<a @click="mobileNavOpen = false" href="#kalkulator" class="block text-[#E6E1DA] hover:text-[#FACC15]">Kalkulator CAS</a>
-				<a @click="mobileNavOpen = false" href="#spesifikasi" class="block text-[#E6E1DA] hover:text-[#FACC15]">Spesifikasi</a>
-				<a @click="mobileNavOpen = false" href="#faq" class="block text-[#E6E1DA] hover:text-[#FACC15]">FAQ</a>
-				<div class="pt-2 border-t border-[#2A2723]">
+				<a @click="mobileNavOpen = false" href="#fitur" class="block text-[#EDEBE8] hover:text-[#D59D80]">Fitur Utama</a>
+				<a @click="mobileNavOpen = false" href="#arsitektur" class="block text-[#EDEBE8] hover:text-[#D59D80]">Arsitektur HOTW</a>
+				<a @click="mobileNavOpen = false" href="#demo" class="block text-[#EDEBE8] hover:text-[#D59D80]">Demo Interaktif</a>
+				<a @click="mobileNavOpen = false" href="#kalkulator" class="block text-[#EDEBE8] hover:text-[#D59D80]">Kalkulator CAS</a>
+				<a @click="mobileNavOpen = false" href="#spesifikasi" class="block text-[#EDEBE8] hover:text-[#D59D80]">Spesifikasi</a>
+				<a @click="mobileNavOpen = false" href="#faq" class="block text-[#EDEBE8] hover:text-[#D59D80]">FAQ</a>
+				<div class="pt-2 border-t border-white/[0.08]">
 					<a href="/app" class="hornetz-btn w-full py-2.5 rounded-lg text-center block font-bold">Buka Web Drive →</a>
 				</div>
 			</div>
@@ -202,22 +207,22 @@ templ LandingPage(c *echo.Context) {
 						<!-- Hero Copy -->
 						<div class="lg:col-span-7 space-y-6 text-center lg:text-left">
 							<!-- Security Pill Badge -->
-							<div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#1A1916] border border-[#3A3630] text-xs font-mono text-[#FACC15] shadow-inner">
-								<span class="w-2 h-2 rounded-full bg-[#FACC15] animate-ping"></span>
+							<div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/[0.04] backdrop-blur-md border border-white/[0.08] text-xs font-mono text-[#D59D80] shadow-inner">
+								<span class="w-2 h-2 rounded-full bg-[#D59D80] animate-ping"></span>
 								<span>Zero-Trust Enterprise Cloud • Go 1.26 + HOTW</span>
 							</div>
 
 							<!-- Main Title -->
 							<h1 class="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-white tracking-tight leading-[1.12]">
 								Benteng Awan Terenkripsi.<br/>
-								<span class="text-transparent bg-clip-text bg-gradient-to-r from-[#FACC15] via-[#FDE047] to-[#EAB308]">
+								<span class="text-transparent bg-clip-text bg-gradient-to-r from-[#B6410F] via-[#D59D80] to-[#E8B49B]">
 									Nol Pengetahuan.
 								</span><br/>
 								Nol Latensi.
 							</h1>
 
 							<!-- Description -->
-							<p class="text-base sm:text-lg text-[#A19A8F] max-w-2xl mx-auto lg:mx-0 font-normal leading-relaxed">
+							<p class="text-base sm:text-lg text-[#C6C6D0] max-w-2xl mx-auto lg:mx-0 font-normal leading-relaxed">
 								Simpan, sinkronkan, dan streaming berkas enterprise dengan enkripsi streaming <strong class="text-white">AES-256-GCM</strong>, deduplikasi instan <strong class="text-white">Content-Addressable Storage (CAS)</strong>, dan pertahanan anti-forensik <strong class="text-white">Chitin Shuffler</strong>—semua dikemas dalam satu biner Go mandiri tanpa dependensi runtime.
 							</p>
 
@@ -226,7 +231,7 @@ templ LandingPage(c *echo.Context) {
 								<a 
 									href="/app" 
 									data-turbo="false"
-									class="hornetz-btn w-full sm:w-auto px-8 py-4 rounded-xl text-base font-bold flex items-center justify-center gap-2 shadow-xl shadow-yellow-500/20"
+									class="hornetz-btn w-full sm:w-auto px-8 py-4 rounded-xl text-base font-bold flex items-center justify-center gap-2 shadow-xl shadow-[#B6410F]/30"
 								>
 									<span>Buka Web Drive Sekarang</span>
 									@IconRocket("w-4 h-4")
@@ -234,7 +239,7 @@ templ LandingPage(c *echo.Context) {
 
 								<a 
 									href="#demo" 
-									class="w-full sm:w-auto px-7 py-4 rounded-xl text-base font-bold bg-[#171614] hover:bg-[#201E1B] text-white border border-[#2A2723] hover:border-[#FACC15]/50 flex items-center justify-center gap-2 transition-all"
+									class="w-full sm:w-auto px-7 py-4 rounded-xl text-base font-bold bg-white/[0.03] backdrop-blur-md hover:bg-white/[0.06] backdrop-blur-md text-white border border-white/[0.08] hover:border-[#D59D80]/50 flex items-center justify-center gap-2 transition-all"
 								>
 									@IconZap("w-4 h-4 text-[#FACC15]")
 									<span>Coba Simulasi Enkripsi</span>
@@ -243,14 +248,14 @@ templ LandingPage(c *echo.Context) {
 
 							<!-- Quickstart CLI One-Liner -->
 							<div class="pt-4 max-w-lg mx-auto lg:mx-0">
-								<div class="flex items-center justify-between bg-[#141311] border border-[#2A2723] rounded-xl px-4 py-3 font-mono text-xs text-[#A19A8F]">
+								<div class="flex items-center justify-between bg-white/[0.03] backdrop-blur-md border border-white/[0.08] rounded-xl px-4 py-3 font-mono text-xs text-[#C6C6D0]">
 									<div class="flex items-center gap-2 overflow-hidden truncate">
-										<span class="text-[#FACC15] select-none font-bold">$</span>
-										<span class="text-[#E6E1DA] truncate">docker run -d -p 8071:8071 opeteer/hornetzdrive:latest</span>
+										<span class="text-[#D59D80] select-none font-bold">$</span>
+										<span class="text-[#EDEBE8] truncate">docker run -d -p 8071:8071 opeteer/hornetzdrive:latest</span>
 									</div>
 									<button 
 										@click="copyQuickstart()" 
-										class="ml-3 shrink-0 px-2.5 py-1 bg-[#201E1B] hover:bg-[#2E2B26] text-white rounded text-[11px] font-semibold transition-colors flex items-center gap-1.5"
+										class="ml-3 shrink-0 px-2.5 py-1 bg-white/[0.06] backdrop-blur-md hover:bg-white/[0.12] text-white rounded text-[11px] font-semibold transition-colors flex items-center gap-1.5"
 									>
 										<template x-if="copiedQuickstart">
 											<span class="flex items-center gap-1 text-emerald-400">
@@ -259,7 +264,7 @@ templ LandingPage(c *echo.Context) {
 											</span>
 										</template>
 										<template x-if="!copiedQuickstart">
-											<span class="flex items-center gap-1 text-[#A19A8F]">
+											<span class="flex items-center gap-1 text-[#8F9CA3]">
 												@IconCopy("w-3.5 h-3.5")
 												<span>Salin</span>
 											</span>
@@ -269,7 +274,7 @@ templ LandingPage(c *echo.Context) {
 							</div>
 
 							<!-- Feature Badges -->
-							<div class="pt-4 flex flex-wrap items-center justify-center lg:justify-start gap-6 text-xs text-[#A19A8F] font-medium">
+							<div class="pt-4 flex flex-wrap items-center justify-center lg:justify-start gap-6 text-xs text-[#C6C6D0] font-medium">
 								<div class="flex items-center gap-2">
 									@IconCheck("w-4 h-4 text-emerald-400 shrink-0")
 									<span>0-Second CAS Deduplikasi</span>
@@ -287,81 +292,81 @@ templ LandingPage(c *echo.Context) {
 
 						<!-- Hero Interactive Live Preview Card -->
 						<div class="lg:col-span-5">
-							<div class="hornetz-card rounded-2xl p-6 shadow-2xl relative border border-[#3A3630]/70 bg-gradient-to-b from-[#1C1A17] to-[#121110]">
+							<div class="hornetz-card rounded-2xl p-6 shadow-2xl relative border border-white/[0.08]/70 bg-gradient-to-b from-[#1C1A17] to-[#121110]">
 								
 								<!-- Window Top Bar -->
-								<div class="flex items-center justify-between pb-4 border-b border-[#2A2723]">
+								<div class="flex items-center justify-between pb-4 border-b border-white/[0.08]">
 									<div class="flex items-center gap-2">
 										<span class="w-3 h-3 rounded-full bg-red-500/80 inline-block"></span>
 										<span class="w-3 h-3 rounded-full bg-yellow-500/80 inline-block"></span>
 										<span class="w-3 h-3 rounded-full bg-green-500/80 inline-block"></span>
-										<span class="ml-2 font-mono text-xs text-[#A19A8F]">hornetz-console: active</span>
+										<span class="ml-2 font-mono text-xs text-[#C6C6D0]">hornetz-console: active</span>
 									</div>
 									<span class="text-[10px] font-mono px-2 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 rounded">AES-256 STREAM</span>
 								</div>
 
 								<!-- Live Simulated Telemetry Widget -->
 								<div class="mt-4 grid grid-cols-2 gap-3 font-mono text-xs">
-									<div class="bg-[#0F0E0D] border border-[#2A2723] p-3 rounded-xl">
-										<div class="text-[#6E675E] text-[10px]">THROUGHPUT REAL-TIME</div>
-										<div class="text-[#FACC15] font-bold text-base mt-0.5 flex items-center justify-between">
+									<div class="bg-[#0D1D25] border border-white/[0.08] p-3 rounded-xl">
+										<div class="text-[#8F9CA3] text-[10px]">THROUGHPUT REAL-TIME</div>
+										<div class="text-[#D59D80] font-bold text-base mt-0.5 flex items-center justify-between">
 											<span x-text="simulatedSpeed">84.2 MB/s</span>
 											<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
 										</div>
 									</div>
-									<div class="bg-[#0F0E0D] border border-[#2A2723] p-3 rounded-xl">
-										<div class="text-[#6E675E] text-[10px]">DEDUPLIKASI EFISIENSI</div>
+									<div class="bg-[#0D1D25] border border-white/[0.08] p-3 rounded-xl">
+										<div class="text-[#8F9CA3] text-[10px]">DEDUPLIKASI EFISIENSI</div>
 										<div class="text-emerald-400 font-bold text-base mt-0.5 flex items-center justify-between">
 											<span x-text="simulatedRatio">68.4%</span>
-											<span class="text-[10px] text-[#A19A8F]">0s Hit</span>
+											<span class="text-[10px] text-[#C6C6D0]">0s Hit</span>
 										</div>
 									</div>
 								</div>
 
 								<!-- Interactive Mock File Stream -->
 								<div class="mt-4 space-y-2.5">
-									<div class="text-[11px] font-mono text-[#A19A8F] flex justify-between items-center px-1">
+									<div class="text-[11px] font-mono text-[#C6C6D0] flex justify-between items-center px-1">
 										<span>STREAM BUFFER INGESTION</span>
-										<span class="text-[#FACC15]">3 Berkas Terenkripsi</span>
+										<span class="text-[#D59D80]">3 Berkas Terenkripsi</span>
 									</div>
 
 									<!-- Mock File Item 1 -->
-									<div class="bg-[#0F0E0D] border border-[#2A2723] p-3 rounded-xl flex items-center justify-between text-xs">
+									<div class="bg-[#0D1D25] border border-white/[0.08] p-3 rounded-xl flex items-center justify-between text-xs">
 										<div class="flex items-center gap-2.5 min-w-0">
-											<div class="w-8 h-8 rounded-lg bg-[#201E1B] border border-[#3A3630] flex items-center justify-center shrink-0">
-												@IconLock("w-4 h-4 text-[#FACC15]")
+											<div class="w-8 h-8 rounded-lg bg-white/[0.06] backdrop-blur-md border border-white/[0.08] flex items-center justify-center shrink-0">
+												@IconLock("w-4 h-4 text-[#D59D80]")
 											</div>
 											<div class="min-w-0">
 												<div class="text-white font-semibold truncate font-mono text-xs">financial_q4_audit.tar.enc</div>
-												<div class="text-[10px] text-[#A19A8F] font-mono">CAS: 3a9f8c...4b1e • 42.8 MB</div>
+												<div class="text-[10px] text-[#C6C6D0] font-mono">CAS: 3a9f8c...4b1e • 42.8 MB</div>
 											</div>
 										</div>
 										<span class="text-[10px] px-2 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded font-mono shrink-0">Lengkap</span>
 									</div>
 
 									<!-- Mock File Item 2 (Live Dedup Hit) -->
-									<div class="bg-[#0F0E0D] border border-[#2A2723] p-3 rounded-xl flex items-center justify-between text-xs">
+									<div class="bg-[#0D1D25] border border-white/[0.08] p-3 rounded-xl flex items-center justify-between text-xs">
 										<div class="flex items-center gap-2.5 min-w-0">
-											<div class="w-8 h-8 rounded-lg bg-[#201E1B] border border-[#3A3630] flex items-center justify-center shrink-0">
-												@IconFileText("w-4 h-4 text-[#FACC15]")
+											<div class="w-8 h-8 rounded-lg bg-white/[0.06] backdrop-blur-md border border-white/[0.08] flex items-center justify-center shrink-0">
+												@IconFileText("w-4 h-4 text-[#D59D80]")
 											</div>
 											<div class="min-w-0">
 												<div class="text-white font-semibold truncate font-mono text-xs">core_architecture_spec.pdf</div>
-												<div class="text-[10px] text-[#A19A8F] font-mono">CAS: d7e291...0a33 • 5.1 MB</div>
+												<div class="text-[10px] text-[#C6C6D0] font-mono">CAS: d7e291...0a33 • 5.1 MB</div>
 											</div>
 										</div>
-										<span class="text-[10px] px-2 py-0.5 bg-[#FACC15]/10 text-[#FACC15] border border-[#FACC15]/30 rounded font-mono shrink-0">0s Dedup</span>
+										<span class="text-[10px] px-2 py-0.5 bg-[#D59D80]/10 text-[#D59D80] border border-[#D59D80]/30 rounded font-mono shrink-0">0s Dedup</span>
 									</div>
 
 									<!-- Mock File Item 3 -->
-									<div class="bg-[#0F0E0D] border border-[#2A2723] p-3 rounded-xl flex items-center justify-between text-xs">
+									<div class="bg-[#0D1D25] border border-white/[0.08] p-3 rounded-xl flex items-center justify-between text-xs">
 										<div class="flex items-center gap-2.5 min-w-0">
-											<div class="w-8 h-8 rounded-lg bg-[#201E1B] border border-[#3A3630] flex items-center justify-center shrink-0">
-												@IconDatabase("w-4 h-4 text-[#FACC15]")
+											<div class="w-8 h-8 rounded-lg bg-white/[0.06] backdrop-blur-md border border-white/[0.08] flex items-center justify-center shrink-0">
+												@IconDatabase("w-4 h-4 text-[#D59D80]")
 											</div>
 											<div class="min-w-0">
 												<div class="text-white font-semibold truncate font-mono text-xs">production_db_dump.sql.enc</div>
-												<div class="text-[10px] text-[#A19A8F] font-mono">CAS: 8f441c...9972 • 280 MB</div>
+												<div class="text-[10px] text-[#C6C6D0] font-mono">CAS: 8f441c...9972 • 280 MB</div>
 											</div>
 										</div>
 										<span class="text-[10px] px-2 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded font-mono shrink-0">Terenkripsi</span>
@@ -369,13 +374,13 @@ templ LandingPage(c *echo.Context) {
 								</div>
 
 								<!-- Live CAS Shuffler Banner -->
-								<div class="mt-4 p-2.5 rounded-lg bg-[#141311] border border-[#2A2723] flex items-center justify-between text-[11px] font-mono">
+								<div class="mt-4 p-2.5 rounded-lg bg-white/[0.03] backdrop-blur-md border border-white/[0.08] flex items-center justify-between text-[11px] font-mono">
 									<div class="flex items-center gap-2">
 										@IconShield("w-3.5 h-3.5 text-amber-400")
-										<span class="text-[#A19A8F]">Chitin Shuffler:</span>
+										<span class="text-[#C6C6D0]">Chitin Shuffler:</span>
 										<span class="text-white">Rotasi Shard Aktif</span>
 									</div>
-									<span class="text-[#FACC15]">interval: 6h</span>
+									<span class="text-[#D59D80]">interval: 6h</span>
 								</div>
 
 							</div>
@@ -388,32 +393,32 @@ templ LandingPage(c *echo.Context) {
 			<!-- ========================================== -->
 			<!-- SECTION 2: LIVE REACTIVE CRYPTO & CAS DEMO -->
 			<!-- ========================================== -->
-			<section id="demo" class="py-20 border-t border-[#2A2723] bg-[#121110] relative">
+			<section id="demo" class="py-20 border-t border-white/[0.08] bg-[#0D1D25] relative">
 				<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 					
 					<!-- Section Header -->
 					<div class="text-center max-w-3xl mx-auto space-y-4">
-						<div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#1F1D19] border border-[#3A3630] text-xs font-mono text-[#FACC15]">
-							@IconZap("w-3.5 h-3.5 text-[#FACC15]")
+						<div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/[0.04] backdrop-blur-md border border-white/[0.08] text-xs font-mono text-[#D59D80]">
+							@IconZap("w-3.5 h-3.5 text-[#D59D80]")
 							<span>Interaktif Browser Playground</span>
 						</div>
 						<h2 class="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">
 							Coba Enkripsi & Deduplikasi CAS Secara Langsung
 						</h2>
-						<p class="text-base text-[#A19A8F]">
+						<p class="text-base text-[#C6C6D0]">
 							Ketikkan teks atau pilih contoh payload di bawah. Engine Web Crypto di peramban Anda akan menghitung hash SHA-256, jalur sharding CAS, dan mendeteksi deduplikasi 0-detik secara real-time.
 						</p>
 					</div>
 
 					<!-- Interactive Demo Box -->
-					<div class="mt-12 hornetz-card rounded-2xl p-6 sm:p-8 border border-[#3A3630] shadow-2xl space-y-8">
+					<div class="mt-12 hornetz-card rounded-2xl p-6 sm:p-8 border border-white/[0.08] shadow-2xl space-y-8">
 						
 						<!-- Payload Preset Buttons -->
 						<div class="flex flex-wrap items-center gap-2 sm:gap-3">
-							<span class="text-xs font-mono text-[#A19A8F] mr-2">Pilih Sampel Data:</span>
+							<span class="text-xs font-mono text-[#C6C6D0] mr-2">Pilih Sampel Data:</span>
 							<button 
 								@click="loadPreset('secret')" 
-								:class="currentPreset === 'secret' ? 'bg-[#FACC15] text-[#0F0E0D] font-bold' : 'bg-[#0F0E0D] text-[#A19A8F] hover:text-white border border-[#2A2723]'"
+								:class="currentPreset === 'secret' ? 'bg-[#D59D80] text-white font-bold' : 'bg-[#0D1D25] text-[#C6C6D0] hover:text-white border border-white/[0.08]'"
 								class="px-3 py-1.5 rounded-lg text-xs font-mono transition-all flex items-center gap-1.5"
 							>
 								@IconLock("w-3.5 h-3.5")
@@ -421,7 +426,7 @@ templ LandingPage(c *echo.Context) {
 							</button>
 							<button 
 								@click="loadPreset('database')" 
-								:class="currentPreset === 'database' ? 'bg-[#FACC15] text-[#0F0E0D] font-bold' : 'bg-[#0F0E0D] text-[#A19A8F] hover:text-white border border-[#2A2723]'"
+								:class="currentPreset === 'database' ? 'bg-[#D59D80] text-white font-bold' : 'bg-[#0D1D25] text-[#C6C6D0] hover:text-white border border-white/[0.08]'"
 								class="px-3 py-1.5 rounded-lg text-xs font-mono transition-all flex items-center gap-1.5"
 							>
 								@IconDatabase("w-3.5 h-3.5")
@@ -429,7 +434,7 @@ templ LandingPage(c *echo.Context) {
 							</button>
 							<button 
 								@click="loadPreset('code')" 
-								:class="currentPreset === 'code' ? 'bg-[#FACC15] text-[#0F0E0D] font-bold' : 'bg-[#0F0E0D] text-[#A19A8F] hover:text-white border border-[#2A2723]'"
+								:class="currentPreset === 'code' ? 'bg-[#D59D80] text-white font-bold' : 'bg-[#0D1D25] text-[#C6C6D0] hover:text-white border border-white/[0.08]'"
 								class="px-3 py-1.5 rounded-lg text-xs font-mono transition-all flex items-center gap-1.5"
 							>
 								@IconCode("w-3.5 h-3.5")
@@ -443,14 +448,14 @@ templ LandingPage(c *echo.Context) {
 								<label for="demo-input" class="text-white font-semibold flex items-center gap-2">
 									<span>1. Masukkan Konten Data (Plaintext Payload)</span>
 								</label>
-								<span class="text-[#A19A8F]" x-text="'Panjang: ' + inputPayload.length + ' karakter • ' + byteSize + ' bytes'"></span>
+								<span class="text-[#C6C6D0]" x-text="'Panjang: ' + inputPayload.length + ' karakter • ' + byteSize + ' bytes'"></span>
 							</div>
 							<textarea 
 								id="demo-input"
 								x-model="inputPayload" 
 								@input="computeCrypto()" 
 								rows="3" 
-								class="w-full bg-[#0F0E0D] border border-[#2A2723] rounded-xl p-4 text-sm font-mono text-white focus:outline-none focus:border-[#FACC15] transition-colors resize-none placeholder-[#6E675E]"
+								class="w-full bg-[#0D1D25] border border-white/[0.08] rounded-xl p-4 text-sm font-mono text-white focus:outline-none focus:border-[#D59D80] transition-colors resize-none placeholder-[#6E675E]"
 								placeholder="Ketik teks rahasia di sini untuk melihat enkripsi dan CAS sharding langsung..."
 							></textarea>
 						</div>
@@ -459,19 +464,19 @@ templ LandingPage(c *echo.Context) {
 						<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
 							
 							<!-- Output Card 1: CAS Content Address (SHA-256) -->
-							<div class="bg-[#0F0E0D] border border-[#2A2723] rounded-xl p-4 space-y-3">
+							<div class="bg-[#0D1D25] border border-white/[0.08] rounded-xl p-4 space-y-3">
 								<div class="flex items-center justify-between">
-									<span class="text-xs font-mono font-bold text-[#FACC15] flex items-center gap-1.5">
+									<span class="text-xs font-mono font-bold text-[#D59D80] flex items-center gap-1.5">
 										@IconDatabase("w-3.5 h-3.5")
 										<span>Hash Konten CAS (SHA-256)</span>
 									</span>
-									<span class="text-[10px] font-mono px-2 py-0.5 bg-[#201E1B] text-[#A19A8F] rounded">32 Bytes / 256 Bits</span>
+									<span class="text-[10px] font-mono px-2 py-0.5 bg-white/[0.06] backdrop-blur-md text-[#C6C6D0] rounded">32 Bytes / 256 Bits</span>
 								</div>
-								<div class="bg-[#141311] border border-[#23201C] p-3 rounded-lg font-mono text-xs text-white break-all select-all font-semibold" x-text="computedHash || 'Menghitung hash...'">
+								<div class="bg-white/[0.03] backdrop-blur-md border border-[#23201C] p-3 rounded-lg font-mono text-xs text-white break-all select-all font-semibold" x-text="computedHash || 'Menghitung hash...'">
 									--
 								</div>
-								<div class="text-[11px] font-mono text-[#A19A8F] flex items-center gap-2">
-									<span class="text-[#FACC15] flex items-center gap-1">
+								<div class="text-[11px] font-mono text-[#C6C6D0] flex items-center gap-2">
+									<span class="text-[#D59D80] flex items-center gap-1">
 										@IconFolder("w-3.5 h-3.5")
 										<span>Shard Path:</span>
 									</span>
@@ -480,31 +485,31 @@ templ LandingPage(c *echo.Context) {
 							</div>
 
 							<!-- Output Card 2: AES-256-GCM Streaming Framing -->
-							<div class="bg-[#0F0E0D] border border-[#2A2723] rounded-xl p-4 space-y-3">
+							<div class="bg-[#0D1D25] border border-white/[0.08] rounded-xl p-4 space-y-3">
 								<div class="flex items-center justify-between">
 									<span class="text-xs font-mono font-bold text-emerald-400 flex items-center gap-1.5">
 										@IconShield("w-3.5 h-3.5")
 										<span>Frame Enkripsi AES-256-GCM</span>
 									</span>
-									<span class="text-[10px] font-mono px-2 py-0.5 bg-[#201E1B] text-emerald-400 rounded">Stream Envelope</span>
+									<span class="text-[10px] font-mono px-2 py-0.5 bg-white/[0.06] backdrop-blur-md text-emerald-400 rounded">Stream Envelope</span>
 								</div>
-								<div class="bg-[#141311] border border-[#23201C] p-3 rounded-lg font-mono text-xs text-emerald-300 break-all truncate font-semibold" x-text="computedEnvelope">
+								<div class="bg-white/[0.03] backdrop-blur-md border border-[#23201C] p-3 rounded-lg font-mono text-xs text-emerald-300 break-all truncate font-semibold" x-text="computedEnvelope">
 									[4B LEN][12B NONCE][CIPHERTEXT + 16B GCM TAG]
 								</div>
-								<div class="text-[11px] font-mono text-[#A19A8F] flex items-center justify-between">
+								<div class="text-[11px] font-mono text-[#C6C6D0] flex items-center justify-between">
 									<span>Derivasi Kunci: <strong class="text-white">Argon2id (64MB RAM)</strong></span>
-									<span>Entropy: <strong class="text-[#FACC15]" x-text="computedEntropy + ' bits/byte'">--</strong></span>
+									<span>Entropy: <strong class="text-[#D59D80]" x-text="computedEntropy + ' bits/byte'">--</strong></span>
 								</div>
 							</div>
 
 						</div>
 
 						<!-- Interactive Deduplication Test Action Bar -->
-						<div class="p-5 rounded-xl bg-[#141311] border border-[#2A2723] flex flex-col sm:flex-row items-center justify-between gap-4">
+						<div class="p-5 rounded-xl bg-white/[0.03] backdrop-blur-md border border-white/[0.08] flex flex-col sm:flex-row items-center justify-between gap-4">
 							<div class="space-y-1 text-center sm:text-left">
 								<div class="text-sm font-bold text-white flex items-center justify-center sm:justify-start gap-2">
 									<span>Simulasi Ingesti Berkas ke Server</span>
-									<span x-show="lastUploadResult === 'dedup'" class="text-xs font-mono px-2 py-0.5 bg-[#FACC15]/20 text-[#FACC15] border border-[#FACC15]/40 rounded-full font-bold flex items-center gap-1">
+									<span x-show="lastUploadResult === 'dedup'" class="text-xs font-mono px-2 py-0.5 bg-[#D59D80]/20 text-[#D59D80] border border-[#D59D80]/40 rounded-full font-bold flex items-center gap-1">
 										@IconZap("w-3 h-3")
 										<span>0s Dedup Match!</span>
 									</span>
@@ -513,7 +518,7 @@ templ LandingPage(c *echo.Context) {
 										<span>Berkas Baru Tersimpan</span>
 									</span>
 								</div>
-								<p class="text-xs text-[#A19A8F]" x-text="uploadFeedbackText">
+								<p class="text-xs text-[#C6C6D0]" x-text="uploadFeedbackText">
 									Klik tombol di sebelah kanan untuk menyimulasikan penyimpanan berkas ke CAS. Jika Anda mengunggah hash yang sama dua kali, server tidak akan memakan disk tambahan.
 								</p>
 							</div>
@@ -530,16 +535,16 @@ templ LandingPage(c *echo.Context) {
 
 						<!-- Deduplication Telemetry Results -->
 						<div class="grid grid-cols-1 sm:grid-cols-3 gap-3 font-mono text-xs text-center">
-							<div class="bg-[#0F0E0D] border border-[#2A2723] p-3 rounded-xl">
-								<div class="text-[#6E675E] text-[10px]">TOTAL UPLOAD DICOBA</div>
+							<div class="bg-[#0D1D25] border border-white/[0.08] p-3 rounded-xl">
+								<div class="text-[#8F9CA3] text-[10px]">TOTAL UPLOAD DICOBA</div>
 								<div class="text-white font-bold text-lg mt-0.5" x-text="uploadAttempts">0</div>
 							</div>
-							<div class="bg-[#0F0E0D] border border-[#2A2723] p-3 rounded-xl">
-								<div class="text-[#6E675E] text-[10px]">0-DETIK DEDUPLIKASI TERDETEKSI</div>
-								<div class="text-[#FACC15] font-bold text-lg mt-0.5" x-text="dedupHits">0</div>
+							<div class="bg-[#0D1D25] border border-white/[0.08] p-3 rounded-xl">
+								<div class="text-[#8F9CA3] text-[10px]">0-DETIK DEDUPLIKASI TERDETEKSI</div>
+								<div class="text-[#D59D80] font-bold text-lg mt-0.5" x-text="dedupHits">0</div>
 							</div>
-							<div class="bg-[#0F0E0D] border border-[#2A2723] p-3 rounded-xl">
-								<div class="text-[#6E675E] text-[10px]">DISK FISIK DIHEMAT</div>
+							<div class="bg-[#0D1D25] border border-white/[0.08] p-3 rounded-xl">
+								<div class="text-[#8F9CA3] text-[10px]">DISK FISIK DIHEMAT</div>
 								<div class="text-emerald-400 font-bold text-lg mt-0.5" x-text="bytesSavedFormatted">0 Bytes</div>
 							</div>
 						</div>
@@ -552,19 +557,19 @@ templ LandingPage(c *echo.Context) {
 			<!-- ========================================== -->
 			<!-- SECTION 3: BENTO FEATURE GRID              -->
 			<!-- ========================================== -->
-			<section id="fitur" class="py-24 border-t border-[#2A2723] bg-[#0F0E0D] relative">
+			<section id="fitur" class="py-24 border-t border-white/[0.08] bg-[#0D1D25] relative">
 				<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 					
 					<!-- Section Header -->
 					<div class="text-center max-w-3xl mx-auto space-y-4">
-						<div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#1F1D19] border border-[#3A3630] text-xs font-mono text-[#FACC15]">
-							@IconShield("w-3.5 h-3.5 text-[#FACC15]")
+						<div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/[0.04] backdrop-blur-md border border-white/[0.08] text-xs font-mono text-[#D59D80]">
+							@IconShield("w-3.5 h-3.5 text-[#D59D80]")
 							<span>Pilar Arsitektur Enterprise</span>
 						</div>
 						<h2 class="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">
 							Keamanan Nol-Kompromi. Efisiensi Ekstrem.
 						</h2>
-						<p class="text-base text-[#A19A8F]">
+						<p class="text-base text-[#C6C6D0]">
 							Dirancang dari awal untuk menahan ancaman forensik, menghemat kapasitas disk hingga 70%, dan beroperasi tanpa hambatan jaringan.
 						</p>
 					</div>
@@ -579,13 +584,13 @@ templ LandingPage(c *echo.Context) {
 									@IconLock("w-6 h-6")
 								</div>
 								<h3 class="text-xl font-bold text-white">Streaming Enkripsi AES-256-GCM</h3>
-								<p class="text-sm text-[#A19A8F] leading-relaxed">
+								<p class="text-sm text-[#C6C6D0] leading-relaxed">
 									Memproses data blok-demi-blok secara streaming langsung dari request buffer tanpa membebani RAM server, lengkap dengan nonce acak 12-byte per frame dan tag integritas GCM 16-byte.
 								</p>
 							</div>
-							<div class="pt-4 border-t border-[#2A2723] flex items-center justify-between text-xs font-mono text-[#6E675E]">
+							<div class="pt-4 border-t border-white/[0.08] flex items-center justify-between text-xs font-mono text-[#8F9CA3]">
 								<span>RFC 5116 AEAD</span>
-								<span class="text-[#FACC15]">0 Full-File RAM</span>
+								<span class="text-[#D59D80]">0 Full-File RAM</span>
 							</div>
 						</div>
 
@@ -596,11 +601,11 @@ templ LandingPage(c *echo.Context) {
 									@IconZap("w-6 h-6")
 								</div>
 								<h3 class="text-xl font-bold text-white">0-Second CAS Deduplication</h3>
-								<p class="text-sm text-[#A19A8F] leading-relaxed">
+								<p class="text-sm text-[#C6C6D0] leading-relaxed">
 									Setiap berkas diindeks secara kriptografis berdasarkan hash konten SHA-256. Konten yang sama yang diunggah oleh 100 pengguna hanya menggunakan 1 kali alokasi ruang penyimpanan fisik.
 								</p>
 							</div>
-							<div class="pt-4 border-t border-[#2A2723] flex items-center justify-between text-xs font-mono text-[#6E675E]">
+							<div class="pt-4 border-t border-white/[0.08] flex items-center justify-between text-xs font-mono text-[#8F9CA3]">
 								<span>SHA-256 Sharded Index</span>
 								<span class="text-emerald-400">Hemat ~60% Storage</span>
 							</div>
@@ -613,11 +618,11 @@ templ LandingPage(c *echo.Context) {
 									@IconShieldAlert("w-6 h-6")
 								</div>
 								<h3 class="text-xl font-bold text-white">Chitin Shuffler Anti-Forensik</h3>
-								<p class="text-sm text-[#A19A8F] leading-relaxed">
+								<p class="text-sm text-[#C6C6D0] leading-relaxed">
 									Worker latar belakang otomatis yang merotasi jalur shard penyimpanan dan memalsukan stempel waktu akses berkas (<code class="text-xs text-white">mtime</code>) secara acak untuk mematahkan analisis jejak forensik disk.
 								</p>
 							</div>
-							<div class="pt-4 border-t border-[#2A2723] flex items-center justify-between text-xs font-mono text-[#6E675E]">
+							<div class="pt-4 border-t border-white/[0.08] flex items-center justify-between text-xs font-mono text-[#8F9CA3]">
 								<span>Autonomous Worker</span>
 								<span class="text-red-400">Forensics Thwarted</span>
 							</div>
@@ -630,11 +635,11 @@ templ LandingPage(c *echo.Context) {
 									@IconRocket("w-6 h-6")
 								</div>
 								<h3 class="text-xl font-bold text-white">Resumable Chunked Upload</h3>
-								<p class="text-sm text-[#A19A8F] leading-relaxed">
+								<p class="text-sm text-[#C6C6D0] leading-relaxed">
 									Mendukung pengunggahan berkas multi-gigabyte yang dipecah menjadi fragmen biner dengan sesi terisolasi. Jika koneksi terputus, unggahan dapat dilanjutkan seketika tanpa mengulang dari awal.
 								</p>
 							</div>
-							<div class="pt-4 border-t border-[#2A2723] flex items-center justify-between text-xs font-mono text-[#6E675E]">
+							<div class="pt-4 border-t border-white/[0.08] flex items-center justify-between text-xs font-mono text-[#8F9CA3]">
 								<span>50MB Chunk Pipeline</span>
 								<span class="text-blue-400">Auto-Reap Stale</span>
 							</div>
@@ -647,11 +652,11 @@ templ LandingPage(c *echo.Context) {
 									@IconFlame("w-6 h-6")
 								</div>
 								<h3 class="text-xl font-bold text-white">Stinger Panic Purge Protocol</h3>
-								<p class="text-sm text-[#A19A8F] leading-relaxed">
+								<p class="text-sm text-[#C6C6D0] leading-relaxed">
 									Protokol darurat sekali sentuh (<code class="text-xs text-white">POST /api/purge</code>) yang seketika menghapus kunci memori di RAM dan menimpa fisik seluruh blok berkas dengan byte acak kriptografis sebelum dihapus permanen.
 								</p>
 							</div>
-							<div class="pt-4 border-t border-[#2A2723] flex items-center justify-between text-xs font-mono text-[#6E675E]">
+							<div class="pt-4 border-t border-white/[0.08] flex items-center justify-between text-xs font-mono text-[#8F9CA3]">
 								<span>Cryptographic Shredder</span>
 								<span class="text-red-500">Zero Leakage</span>
 							</div>
@@ -664,11 +669,11 @@ templ LandingPage(c *echo.Context) {
 									@IconActivity("w-6 h-6")
 								</div>
 								<h3 class="text-xl font-bold text-white">HOTW Stack & Single Binary</h3>
-								<p class="text-sm text-[#A19A8F] leading-relaxed">
+								<p class="text-sm text-[#C6C6D0] leading-relaxed">
 									Dibangun di atas Templ, Hotwire Turbo 8, Alpine.js, dan Server-Sent Events (SSE). UI reaktif langsung diperbarui dari mutasi DOM server tanpa bundle Node.js/SPA yang berat.
 								</p>
 							</div>
-							<div class="pt-4 border-t border-[#2A2723] flex items-center justify-between text-xs font-mono text-[#6E675E]">
+							<div class="pt-4 border-t border-white/[0.08] flex items-center justify-between text-xs font-mono text-[#8F9CA3]">
 								<span>Go 1.26 + Echo v5</span>
 								<span class="text-emerald-400">&lt;25MB RAM Usage</span>
 							</div>
@@ -682,24 +687,24 @@ templ LandingPage(c *echo.Context) {
 			<!-- ========================================== -->
 			<!-- SECTION 4: INTERACTIVE DEDUP CALCULATOR    -->
 			<!-- ========================================== -->
-			<section id="kalkulator" class="py-24 border-t border-[#2A2723] bg-[#141311] relative">
+			<section id="kalkulator" class="py-24 border-t border-white/[0.08] bg-white/[0.03] backdrop-blur-md relative">
 				<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 					
 					<!-- Section Header -->
 					<div class="text-center max-w-3xl mx-auto space-y-4">
-						<div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#1F1D19] border border-[#3A3630] text-xs font-mono text-[#FACC15]">
-							@IconBarChart2("w-3.5 h-3.5 text-[#FACC15]")
+						<div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/[0.04] backdrop-blur-md border border-white/[0.08] text-xs font-mono text-[#D59D80]">
+							@IconBarChart2("w-3.5 h-3.5 text-[#D59D80]")
 							<span>Estimasi Efisiensi Penyimpanan</span>
 						</div>
 						<h2 class="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">
 							Kalkulator Penghematan CAS & Bandwidth
 						</h2>
-						<p class="text-base text-[#A19A8F]">
+						<p class="text-base text-[#C6C6D0]">
 							Geser parameter di bawah untuk melihat bagaimana Content-Addressable Storage (CAS) Hornetz Drive memangkas biaya infrastruktur penyimpanan awan tim Anda.
 						</p>
 					</div>
 
-					<div class="mt-14 max-w-4xl mx-auto hornetz-card rounded-2xl p-6 sm:p-10 border border-[#3A3630] shadow-2xl">
+					<div class="mt-14 max-w-4xl mx-auto hornetz-card rounded-2xl p-6 sm:p-10 border border-white/[0.08] shadow-2xl">
 						
 						<!-- Controls Grid -->
 						<div class="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -708,7 +713,7 @@ templ LandingPage(c *echo.Context) {
 							<div class="space-y-3">
 								<div class="flex justify-between items-center text-sm">
 									<label for="storage-slider" class="text-white font-bold">Kapasitas Berkas Total (TB)</label>
-									<span class="font-mono text-[#FACC15] font-extrabold text-base" x-text="calcStorageTB + ' TB'">10 TB</span>
+									<span class="font-mono text-[#D59D80] font-extrabold text-base" x-text="calcStorageTB + ' TB'">10 TB</span>
 								</div>
 								<input 
 									id="storage-slider"
@@ -717,9 +722,9 @@ templ LandingPage(c *echo.Context) {
 									max="100" 
 									step="1" 
 									x-model="calcStorageTB" 
-									class="w-full accent-[#FACC15] bg-[#0F0E0D] h-2 rounded-lg cursor-pointer"
+									class="w-full accent-[#D59D80] bg-[#0D1D25] h-2 rounded-lg cursor-pointer"
 								/>
-								<div class="flex justify-between text-[11px] font-mono text-[#6E675E]">
+								<div class="flex justify-between text-[11px] font-mono text-[#8F9CA3]">
 									<span>1 TB</span>
 									<span>50 TB</span>
 									<span>100 TB</span>
@@ -739,9 +744,9 @@ templ LandingPage(c *echo.Context) {
 									max="80" 
 									step="5" 
 									x-model="calcRedundancy" 
-									class="w-full accent-emerald-400 bg-[#0F0E0D] h-2 rounded-lg cursor-pointer"
+									class="w-full accent-emerald-400 bg-[#0D1D25] h-2 rounded-lg cursor-pointer"
 								/>
-								<div class="flex justify-between text-[11px] font-mono text-[#6E675E]">
+								<div class="flex justify-between text-[11px] font-mono text-[#8F9CA3]">
 									<span>10% (Rendah)</span>
 									<span>45% (Rata-rata Tim)</span>
 									<span>80% (Tinggi)</span>
@@ -751,36 +756,36 @@ templ LandingPage(c *echo.Context) {
 						</div>
 
 						<!-- Divider -->
-						<div class="my-8 border-t border-[#2A2723]"></div>
+						<div class="my-8 border-t border-white/[0.08]"></div>
 
 						<!-- Results Dynamic Grid -->
 						<div class="grid grid-cols-1 sm:grid-cols-3 gap-6 text-center">
 							
 							<!-- Result 1: Space Saved -->
-							<div class="bg-[#0F0E0D] border border-[#2A2723] p-5 rounded-2xl">
-								<div class="text-[11px] font-mono text-[#A19A8F]">RUANG DISK DIHEMAT</div>
+							<div class="bg-[#0D1D25] border border-white/[0.08] p-5 rounded-2xl">
+								<div class="text-[11px] font-mono text-[#C6C6D0]">RUANG DISK DIHEMAT</div>
 								<div class="text-2xl sm:text-3xl font-extrabold text-emerald-400 mt-2 font-mono" x-text="savedStorageTB + ' TB'">
 									4.0 TB
 								</div>
-								<div class="text-[11px] text-[#6E675E] mt-1 font-mono">Dieliminasi instan oleh CAS</div>
+								<div class="text-[11px] text-[#8F9CA3] mt-1 font-mono">Dieliminasi instan oleh CAS</div>
 							</div>
 
 							<!-- Result 2: Bandwidth Conserved -->
-							<div class="bg-[#0F0E0D] border border-[#2A2723] p-5 rounded-2xl">
-								<div class="text-[11px] font-mono text-[#A19A8F]">TRANSFER BANDWIDTH DIHEMAT</div>
-								<div class="text-2xl sm:text-3xl font-extrabold text-[#FACC15] mt-2 font-mono" x-text="savedBandwidthTB + ' TB'">
+							<div class="bg-[#0D1D25] border border-white/[0.08] p-5 rounded-2xl">
+								<div class="text-[11px] font-mono text-[#C6C6D0]">TRANSFER BANDWIDTH DIHEMAT</div>
+								<div class="text-2xl sm:text-3xl font-extrabold text-[#D59D80] mt-2 font-mono" x-text="savedBandwidthTB + ' TB'">
 									7.2 TB
 								</div>
-								<div class="text-[11px] text-[#6E675E] mt-1 font-mono">Tanpa re-upload berulang</div>
+								<div class="text-[11px] text-[#8F9CA3] mt-1 font-mono">Tanpa re-upload berulang</div>
 							</div>
 
 							<!-- Result 3: Cloud Cost Saved -->
-							<div class="bg-[#0F0E0D] border border-[#2A2723] p-5 rounded-2xl">
-								<div class="text-[11px] font-mono text-[#A19A8F]">ESTIMASI HEMAT BIAYA TAHUNAN</div>
+							<div class="bg-[#0D1D25] border border-white/[0.08] p-5 rounded-2xl">
+								<div class="text-[11px] font-mono text-[#C6C6D0]">ESTIMASI HEMAT BIAYA TAHUNAN</div>
 								<div class="text-2xl sm:text-3xl font-extrabold text-white mt-2 font-mono" x-text="'$' + annualSavingsUSD">
 									$1,920
 								</div>
-								<div class="text-[11px] text-[#6E675E] mt-1 font-mono">Vs standar AWS S3 Standar</div>
+								<div class="text-[11px] text-[#8F9CA3] mt-1 font-mono">Vs standar AWS S3 Standar</div>
 							</div>
 
 						</div>
@@ -793,19 +798,19 @@ templ LandingPage(c *echo.Context) {
 			<!-- ========================================== -->
 			<!-- SECTION 5: ARCHITECTURE PIPELINE DEEP DIVE -->
 			<!-- ========================================== -->
-			<section id="arsitektur" class="py-24 border-t border-[#2A2723] bg-[#0F0E0D] relative">
+			<section id="arsitektur" class="py-24 border-t border-white/[0.08] bg-[#0D1D25] relative">
 				<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 					
 					<!-- Section Header -->
 					<div class="text-center max-w-3xl mx-auto space-y-4">
-						<div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#1F1D19] border border-[#3A3630] text-xs font-mono text-[#FACC15]">
-							@IconSearch("w-3.5 h-3.5 text-[#FACC15]")
+						<div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/[0.04] backdrop-blur-md border border-white/[0.08] text-xs font-mono text-[#D59D80]">
+							@IconSearch("w-3.5 h-3.5 text-[#D59D80]")
 							<span>Inspeksi Alur Data End-to-End</span>
 						</div>
 						<h2 class="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">
 							Arsitektur Streaming Zero-Trust
 						</h2>
-						<p class="text-base text-[#A19A8F]">
+						<p class="text-base text-[#C6C6D0]">
 							Jelajahi bagaimana paket data bergerak dari peramban hingga masuk ke sharding disk CAS yang diacak.
 						</p>
 					</div>
@@ -814,31 +819,31 @@ templ LandingPage(c *echo.Context) {
 					<div class="mt-14 max-w-5xl mx-auto space-y-6">
 						
 						<!-- Tabs Header -->
-						<div class="flex flex-wrap items-center justify-center gap-2 border-b border-[#2A2723] pb-4">
+						<div class="flex flex-wrap items-center justify-center gap-2 border-b border-white/[0.08] pb-4">
 							<button 
 								@click="archTab = 1" 
-								:class="archTab === 1 ? 'border-[#FACC15] text-[#FACC15] bg-[#1F1D19]' : 'border-transparent text-[#A19A8F] hover:text-white'" 
+								:class="archTab === 1 ? 'border-[#D59D80] text-[#D59D80] bg-white/[0.04] backdrop-blur-md' : 'border-transparent text-[#C6C6D0] hover:text-white'" 
 								class="px-4 py-2.5 rounded-xl border text-xs sm:text-sm font-bold font-mono transition-all flex items-center gap-2"
 							>
 								<span>1. Handshake & Master Key</span>
 							</button>
 							<button 
 								@click="archTab = 2" 
-								:class="archTab === 2 ? 'border-[#FACC15] text-[#FACC15] bg-[#1F1D19]' : 'border-transparent text-[#A19A8F] hover:text-white'" 
+								:class="archTab === 2 ? 'border-[#D59D80] text-[#D59D80] bg-white/[0.04] backdrop-blur-md' : 'border-transparent text-[#C6C6D0] hover:text-white'" 
 								class="px-4 py-2.5 rounded-xl border text-xs sm:text-sm font-bold font-mono transition-all flex items-center gap-2"
 							>
 								<span>2. Streaming AES Chunking</span>
 							</button>
 							<button 
 								@click="archTab = 3" 
-								:class="archTab === 3 ? 'border-[#FACC15] text-[#FACC15] bg-[#1F1D19]' : 'border-transparent text-[#A19A8F] hover:text-white'" 
+								:class="archTab === 3 ? 'border-[#D59D80] text-[#D59D80] bg-white/[0.04] backdrop-blur-md' : 'border-transparent text-[#C6C6D0] hover:text-white'" 
 								class="px-4 py-2.5 rounded-xl border text-xs sm:text-sm font-bold font-mono transition-all flex items-center gap-2"
 							>
 								<span>3. Sharding CAS 0-Detik</span>
 							</button>
 							<button 
 								@click="archTab = 4" 
-								:class="archTab === 4 ? 'border-red-500 text-red-400 bg-red-500/10' : 'border-transparent text-[#A19A8F] hover:text-white'" 
+								:class="archTab === 4 ? 'border-red-500 text-red-400 bg-red-500/10' : 'border-transparent text-[#C6C6D0] hover:text-white'" 
 								class="px-4 py-2.5 rounded-xl border text-xs sm:text-sm font-bold font-mono transition-all flex items-center gap-2"
 							>
 								<span>4. Stinger Purge Protocol</span>
@@ -846,7 +851,7 @@ templ LandingPage(c *echo.Context) {
 						</div>
 
 						<!-- Tab Content Panels -->
-						<div class="hornetz-card rounded-2xl p-6 sm:p-8 border border-[#3A3630]">
+						<div class="hornetz-card rounded-2xl p-6 sm:p-8 border border-white/[0.08]">
 							
 							<!-- Step 1 Panel -->
 							<div x-show="archTab === 1" class="space-y-4">
@@ -855,15 +860,15 @@ templ LandingPage(c *echo.Context) {
 										@IconKey("w-5 h-5 text-[#FACC15]")
 										<span>Derivasi Kunci Argon2id & Autentikasi Vault</span>
 									</h4>
-									<span class="text-xs font-mono text-[#FACC15]">Phase: Client Vault</span>
+									<span class="text-xs font-mono text-[#D59D80]">Phase: Client Vault</span>
 								</div>
-								<p class="text-sm text-[#A19A8F] leading-relaxed">
+								<p class="text-sm text-[#C6C6D0] leading-relaxed">
 									Kunci enkripsi master (MEK) tidak pernah disimpan di disk dalam keadaan teks biasa. Saat autentikasi vault, kunci diturunkan menggunakan algoritma Argon2id berkekuatan tinggi (<code class="text-xs text-white">time=3, memory=64MB, threads=4</code>) dan disimpan sementara di secure memory RAM session dengan masa kedaluwarsa otomatis.
 								</p>
-								<div class="bg-[#0F0E0D] border border-[#2A2723] p-4 rounded-xl font-mono text-xs text-[#E6E1DA] overflow-x-auto space-y-1">
-									<div class="text-[#6E675E]">/* Go Cryptographic Key Derivation Flow */</div>
-									<div class="text-[#FACC15]">mek := argon2.IDKey([]byte(passphrase), salt, 3, 64*1024, 4, 32)</div>
-									<div class="text-[#A19A8F]">sessionStore.StoreVaultKey(sessionID, mek, 15*time.Minute)</div>
+								<div class="bg-[#0D1D25] border border-white/[0.08] p-4 rounded-xl font-mono text-xs text-[#EDEBE8] overflow-x-auto space-y-1">
+									<div class="text-[#8F9CA3]">/* Go Cryptographic Key Derivation Flow */</div>
+									<div class="text-[#D59D80]">mek := argon2.IDKey([]byte(passphrase), salt, 3, 64*1024, 4, 32)</div>
+									<div class="text-[#C6C6D0]">sessionStore.StoreVaultKey(sessionID, mek, 15*time.Minute)</div>
 								</div>
 							</div>
 
@@ -876,11 +881,11 @@ templ LandingPage(c *echo.Context) {
 									</h4>
 									<span class="text-xs font-mono text-emerald-400">Phase: Stream Pipeline</span>
 								</div>
-								<p class="text-sm text-[#A19A8F] leading-relaxed">
+								<p class="text-sm text-[#C6C6D0] leading-relaxed">
 									Pengunggahan berkas besar ditransmisikan dalam pecahan blok biner 64KB melalui <code class="text-xs text-white">crypto.EncryptStream</code>. Setiap blok dibungkus format biner terpadu: <code class="text-xs text-emerald-400">[4-byte length][12-byte nonce][ciphertext + 16-byte GCM auth tag]</code>. Server tidak pernah menampung seluruh berkas ke RAM.
 								</p>
-								<div class="bg-[#0F0E0D] border border-[#2A2723] p-4 rounded-xl font-mono text-xs text-[#E6E1DA] overflow-x-auto space-y-1">
-									<div class="text-[#6E675E]">/* Stream Chunk Framing Engine */</div>
+								<div class="bg-[#0D1D25] border border-white/[0.08] p-4 rounded-xl font-mono text-xs text-[#EDEBE8] overflow-x-auto space-y-1">
+									<div class="text-[#8F9CA3]">/* Stream Chunk Framing Engine */</div>
 									<div class="text-white">blockNonce := make([]byte, 12)</div>
 									<div class="text-white">binary.BigEndian.PutUint32(lenBuf, uint32(len(sealedBlock)))</div>
 									<div class="text-emerald-400">writer.Write(lenBuf); writer.Write(blockNonce); writer.Write(sealedBlock)</div>
@@ -894,13 +899,13 @@ templ LandingPage(c *echo.Context) {
 										@IconFolder("w-5 h-5 text-[#FACC15]")
 										<span>Content-Addressable Storage (CAS) Deep Sharding</span>
 									</h4>
-									<span class="text-xs font-mono text-[#FACC15]">Phase: Storage Sharding</span>
+									<span class="text-xs font-mono text-[#D59D80]">Phase: Storage Sharding</span>
 								</div>
-								<p class="text-sm text-[#A19A8F] leading-relaxed">
-									Saat stream selesai, verifikasi hash SHA-256 dilakukan secara atomik. Berkas disimpan dalam struktur pohon hierarkis berlapis dua level: <code class="text-xs text-[#FACC15]">storage/cas/ab/cd/abcdef...</code> untuk mencegah bottleneck filesystem saat volume mencapai jutaan berkas.
+								<p class="text-sm text-[#C6C6D0] leading-relaxed">
+									Saat stream selesai, verifikasi hash SHA-256 dilakukan secara atomik. Berkas disimpan dalam struktur pohon hierarkis berlapis dua level: <code class="text-xs text-[#D59D80]">storage/cas/ab/cd/abcdef...</code> untuk mencegah bottleneck filesystem saat volume mencapai jutaan berkas.
 								</p>
-								<div class="bg-[#0F0E0D] border border-[#2A2723] p-4 rounded-xl font-mono text-xs text-[#E6E1DA] overflow-x-auto space-y-1">
-									<div class="text-[#6E675E]">/* Zero-Second CAS Deduplication Check */</div>
+								<div class="bg-[#0D1D25] border border-white/[0.08] p-4 rounded-xl font-mono text-xs text-[#EDEBE8] overflow-x-auto space-y-1">
+									<div class="text-[#8F9CA3]">/* Zero-Second CAS Deduplication Check */</div>
 									<div class="text-white">casPath := filepath.Join(casDir, hash[:2], hash[2:4], hash)</div>
 									<div class="text-yellow-400">{ "if FileExists(casPath) { return LinkExistingCAS(fileID, hash) } /* 0-second dedup! */" }</div>
 								</div>
@@ -915,11 +920,11 @@ templ LandingPage(c *echo.Context) {
 									</h4>
 									<span class="text-xs font-mono text-red-400">Phase: Emergency Obliteration</span>
 								</div>
-								<p class="text-sm text-[#A19A8F] leading-relaxed">
+								<p class="text-sm text-[#C6C6D0] leading-relaxed">
 									Ketika ancaman fisik atau kompromi terdeteksi, Stinger Purge memusnahkan seluruh kunci sesi RAM dengan menimpanya dengan nol byte (<code class="text-xs text-white">memzero</code>), lalu menimpa seluruh blok penyimpanan disk dengan byte acak kriptografis dari <code class="text-xs text-white">crypto/rand</code> sebelum menghapus indeksnya.
 								</p>
-								<div class="bg-[#0F0E0D] border border-[#2A2723] p-4 rounded-xl font-mono text-xs text-[#E6E1DA] overflow-x-auto space-y-1">
-									<div class="text-[#6E675E]">/* Disk Overwrite with Cryptographic Random Bytes */</div>
+								<div class="bg-[#0D1D25] border border-white/[0.08] p-4 rounded-xl font-mono text-xs text-[#EDEBE8] overflow-x-auto space-y-1">
+									<div class="text-[#8F9CA3]">/* Disk Overwrite with Cryptographic Random Bytes */</div>
 									<div class="text-red-400">io.CopyN(targetFile, rand.Reader, fileSize)</div>
 									<div class="text-white">targetFile.Sync()</div>
 									<div class="text-red-500">os.Remove(targetFile.Name()) /* Zero data recovery possible */</div>
@@ -936,9 +941,9 @@ templ LandingPage(c *echo.Context) {
 			<!-- ========================================== -->
 			<!-- SECTION 6: LIVE BACKEND TELEMETRY & PING   -->
 			<!-- ========================================== -->
-			<section class="py-20 border-t border-[#2A2723] bg-[#121110] relative">
+			<section class="py-20 border-t border-white/[0.08] bg-[#0D1D25] relative">
 				<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-					<div class="hornetz-card rounded-2xl p-8 border border-[#3A3630] bg-gradient-to-r from-[#171614] via-[#1A1916] to-[#171614]">
+					<div class="hornetz-card rounded-2xl p-8 border border-white/[0.08] bg-gradient-to-r from-[#171614] via-[#1A1916] to-[#171614]">
 						<div class="flex flex-col lg:flex-row items-center justify-between gap-8">
 							
 							<!-- Telemetry Info -->
@@ -948,30 +953,30 @@ templ LandingPage(c *echo.Context) {
 									<span>Koneksi Backend Aktif</span>
 								</div>
 								<h3 class="text-2xl font-bold text-white">Telemetri & Status Server Langsung</h3>
-								<p class="text-sm text-[#A19A8F] max-w-xl">
-									Data diambil secara langsung dari endpoint <code class="text-xs text-[#FACC15]">/api/storage/stats</code> server Go Hornetz Drive.
+								<p class="text-sm text-[#C6C6D0] max-w-xl">
+									Data diambil secara langsung dari endpoint <code class="text-xs text-[#D59D80]">/api/storage/stats</code> server Go Hornetz Drive.
 								</p>
 							</div>
 
 							<!-- Telemetry Stats & Ping Button -->
 							<div class="flex flex-wrap items-center justify-center gap-4">
-								<div class="bg-[#0F0E0D] border border-[#2A2723] px-5 py-3 rounded-xl text-center font-mono">
-									<div class="text-[10px] text-[#6E675E]">KAPASITAS KUOTA</div>
+								<div class="bg-[#0D1D25] border border-white/[0.08] px-5 py-3 rounded-xl text-center font-mono">
+									<div class="text-[10px] text-[#8F9CA3]">KAPASITAS KUOTA</div>
 									<div class="text-white font-bold text-base mt-0.5" x-text="liveStats.quotaFormatted || '2 TB'">2 TB</div>
 								</div>
-								<div class="bg-[#0F0E0D] border border-[#2A2723] px-5 py-3 rounded-xl text-center font-mono">
-									<div class="text-[10px] text-[#6E675E]">BERKAS TERINDEKS</div>
-									<div class="text-[#FACC15] font-bold text-base mt-0.5" x-text="liveStats.fileCount || '14'">14</div>
+								<div class="bg-[#0D1D25] border border-white/[0.08] px-5 py-3 rounded-xl text-center font-mono">
+									<div class="text-[10px] text-[#8F9CA3]">BERKAS TERINDEKS</div>
+									<div class="text-[#D59D80] font-bold text-base mt-0.5" x-text="liveStats.fileCount || '14'">14</div>
 								</div>
-								<div class="bg-[#0F0E0D] border border-[#2A2723] px-5 py-3 rounded-xl text-center font-mono">
-									<div class="text-[10px] text-[#6E675E]">LATENSI PING</div>
+								<div class="bg-[#0D1D25] border border-white/[0.08] px-5 py-3 rounded-xl text-center font-mono">
+									<div class="text-[10px] text-[#8F9CA3]">LATENSI PING</div>
 									<div class="text-emerald-400 font-bold text-base mt-0.5" x-text="pingLatency ? pingLatency + ' ms' : '<1 ms'">&lt;1 ms</div>
 								</div>
 
 								<button 
 									@click="testServerPing()" 
 									:disabled="isPinging"
-									class="px-5 py-3 rounded-xl bg-[#201E1B] hover:bg-[#2A2723] text-white border border-[#3A3630] font-mono text-xs font-bold transition-all flex items-center gap-2"
+									class="px-5 py-3 rounded-xl bg-white/[0.06] backdrop-blur-md hover:bg-[#2A2723] text-white border border-white/[0.08] font-mono text-xs font-bold transition-all flex items-center gap-2"
 								>
 									<span x-show="!isPinging" class="flex items-center gap-1.5">
 										@IconRefresh("w-3.5 h-3.5")
@@ -992,19 +997,19 @@ templ LandingPage(c *echo.Context) {
 			<!-- ========================================== -->
 			<!-- SECTION 7: COMPARISON MATRIX               -->
 			<!-- ========================================== -->
-			<section id="spesifikasi" class="py-24 border-t border-[#2A2723] bg-[#0F0E0D] relative">
+			<section id="spesifikasi" class="py-24 border-t border-white/[0.08] bg-[#0D1D25] relative">
 				<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 					
 					<!-- Section Header -->
 					<div class="text-center max-w-3xl mx-auto space-y-4">
-						<div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#1F1D19] border border-[#3A3630] text-xs font-mono text-[#FACC15]">
-							@IconShieldCheck("w-3.5 h-3.5 text-[#FACC15]")
+						<div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/[0.04] backdrop-blur-md border border-white/[0.08] text-xs font-mono text-[#D59D80]">
+							@IconShieldCheck("w-3.5 h-3.5 text-[#D59D80]")
 							<span>Perbandingan Arsitektur</span>
 						</div>
 						<h2 class="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">
 							Hornetz Drive vs Solusi Tradisional
 						</h2>
-						<p class="text-base text-[#A19A8F]">
+						<p class="text-base text-[#C6C6D0]">
 							Lihat bagaimana teknologi Zero-Trust dan Content-Addressable Storage melampaui arsitektur penyimpanan generasi lama.
 						</p>
 					</div>
@@ -1013,37 +1018,37 @@ templ LandingPage(c *echo.Context) {
 					<div class="mt-14 overflow-x-auto">
 						<table class="w-full text-left text-sm border-collapse min-w-[700px]">
 							<thead>
-								<tr class="border-b border-[#2A2723] font-mono text-xs">
-									<th class="py-4 px-6 text-[#A19A8F] font-normal">FITUR & ARSITEKTUR</th>
-									<th class="py-4 px-6 text-[#FACC15] font-bold bg-[#1C1A17] rounded-t-xl">
+								<tr class="border-b border-white/[0.08] font-mono text-xs">
+									<th class="py-4 px-6 text-[#C6C6D0] font-normal">FITUR & ARSITEKTUR</th>
+									<th class="py-4 px-6 text-[#D59D80] font-bold bg-white/[0.04] backdrop-blur-md rounded-t-xl">
 										<span class="inline-flex items-center gap-1.5">
 											@IconZap("w-4 h-4 fill-current")
 											<span>HORNETZ DRIVE</span>
 										</span>
 									</th>
-									<th class="py-4 px-6 text-[#A19A8F] font-normal">AWS S3 / STANDARD</th>
-									<th class="py-4 px-6 text-[#A19A8F] font-normal">GOOGLE DRIVE</th>
-									<th class="py-4 px-6 text-[#A19A8F] font-normal">NEXTCLOUD</th>
+									<th class="py-4 px-6 text-[#C6C6D0] font-normal">AWS S3 / STANDARD</th>
+									<th class="py-4 px-6 text-[#C6C6D0] font-normal">GOOGLE DRIVE</th>
+									<th class="py-4 px-6 text-[#C6C6D0] font-normal">NEXTCLOUD</th>
 								</tr>
 							</thead>
-							<tbody class="divide-y divide-[#2A2723]/60 text-xs font-mono">
+							<tbody class="divide-y divide-white/[0.08]/60 text-xs font-mono">
 								<!-- Row 1 -->
-								<tr class="hover:bg-[#141311]">
+								<tr class="hover:bg-white/[0.03] backdrop-blur-md">
 									<td class="py-4 px-6 text-white font-semibold">Streaming Enkripsi AES-256-GCM</td>
-									<td class="py-4 px-6 bg-[#171614] text-emerald-400 font-bold">
+									<td class="py-4 px-6 bg-white/[0.03] backdrop-blur-md text-emerald-400 font-bold">
 										<span class="inline-flex items-center gap-1.5">
 											@IconCheck("w-4 h-4 shrink-0")
 											<span>Bawaan (Zero-RAM Buffering)</span>
 										</span>
 									</td>
-									<td class="py-4 px-6 text-[#6E675E]">Kunci Milik Penyedia (Server-Side)</td>
-									<td class="py-4 px-6 text-[#6E675E]">Kunci Milik Penyedia</td>
-									<td class="py-4 px-6 text-[#A19A8F]">Opsional (Beban Server Tinggi)</td>
+									<td class="py-4 px-6 text-[#8F9CA3]">Kunci Milik Penyedia (Server-Side)</td>
+									<td class="py-4 px-6 text-[#8F9CA3]">Kunci Milik Penyedia</td>
+									<td class="py-4 px-6 text-[#C6C6D0]">Opsional (Beban Server Tinggi)</td>
 								</tr>
 								<!-- Row 2 -->
-								<tr class="hover:bg-[#141311]">
+								<tr class="hover:bg-white/[0.03] backdrop-blur-md">
 									<td class="py-4 px-6 text-white font-semibold">0-Second Deduplikasi (CAS)</td>
-									<td class="py-4 px-6 bg-[#171614] text-[#FACC15] font-bold">
+									<td class="py-4 px-6 bg-white/[0.03] backdrop-blur-md text-[#D59D80] font-bold">
 										<span class="inline-flex items-center gap-1.5">
 											@IconCheck("w-4 h-4 shrink-0")
 											<span>SHA-256 Instan (0-Byte Disk)</span>
@@ -1069,9 +1074,9 @@ templ LandingPage(c *echo.Context) {
 									</td>
 								</tr>
 								<!-- Row 3 -->
-								<tr class="hover:bg-[#141311]">
+								<tr class="hover:bg-white/[0.03] backdrop-blur-md">
 									<td class="py-4 px-6 text-white font-semibold">Chitin Shuffler Anti-Forensik</td>
-									<td class="py-4 px-6 bg-[#171614] text-emerald-400 font-bold">
+									<td class="py-4 px-6 bg-white/[0.03] backdrop-blur-md text-emerald-400 font-bold">
 										<span class="inline-flex items-center gap-1.5">
 											@IconCheck("w-4 h-4 shrink-0")
 											<span>Rotasi Otomatis & Obfuscate</span>
@@ -1097,9 +1102,9 @@ templ LandingPage(c *echo.Context) {
 									</td>
 								</tr>
 								<!-- Row 4 -->
-								<tr class="hover:bg-[#141311]">
+								<tr class="hover:bg-white/[0.03] backdrop-blur-md">
 									<td class="py-4 px-6 text-white font-semibold">Stinger Panic Purge Protocol</td>
-									<td class="py-4 px-6 bg-[#171614] text-red-400 font-bold">
+									<td class="py-4 px-6 bg-white/[0.03] backdrop-blur-md text-red-400 font-bold">
 										<span class="inline-flex items-center gap-1.5">
 											@IconCheck("w-4 h-4 shrink-0")
 											<span>Shredding os.urandom Seketika</span>
@@ -1125,17 +1130,17 @@ templ LandingPage(c *echo.Context) {
 									</td>
 								</tr>
 								<!-- Row 5 -->
-								<tr class="hover:bg-[#141311]">
+								<tr class="hover:bg-white/[0.03] backdrop-blur-md">
 									<td class="py-4 px-6 text-white font-semibold">Deployment Footprint</td>
-									<td class="py-4 px-6 bg-[#171614] text-white font-bold">
+									<td class="py-4 px-6 bg-white/[0.03] backdrop-blur-md text-white font-bold">
 										<span class="inline-flex items-center gap-1.5">
 											@IconCheck("w-4 h-4 text-emerald-400 shrink-0")
 											<span>1 Biner Statis Go (&lt;25MB)</span>
 										</span>
 									</td>
-									<td class="py-4 px-6 text-[#A19A8F]">Proprietary Cloud Lock-in</td>
-									<td class="py-4 px-6 text-[#A19A8F]">Proprietary SaaS</td>
-									<td class="py-4 px-6 text-[#6E675E]">PHP + Apache + Redis (&gt;500MB)</td>
+									<td class="py-4 px-6 text-[#C6C6D0]">Proprietary Cloud Lock-in</td>
+									<td class="py-4 px-6 text-[#C6C6D0]">Proprietary SaaS</td>
+									<td class="py-4 px-6 text-[#8F9CA3]">PHP + Apache + Redis (&gt;500MB)</td>
 								</tr>
 							</tbody>
 						</table>
@@ -1147,19 +1152,19 @@ templ LandingPage(c *echo.Context) {
 			<!-- ========================================== -->
 			<!-- SECTION 8: FAQ ACCORDION                   -->
 			<!-- ========================================== -->
-			<section id="faq" class="py-24 border-t border-[#2A2723] bg-[#121110] relative">
+			<section id="faq" class="py-24 border-t border-white/[0.08] bg-[#0D1D25] relative">
 				<div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
 					
 					<!-- Section Header -->
 					<div class="text-center max-w-3xl mx-auto space-y-4">
-						<div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#1F1D19] border border-[#3A3630] text-xs font-mono text-[#FACC15]">
-							@IconHelpCircle("w-3.5 h-3.5 text-[#FACC15]")
+						<div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/[0.04] backdrop-blur-md border border-white/[0.08] text-xs font-mono text-[#D59D80]">
+							@IconHelpCircle("w-3.5 h-3.5 text-[#D59D80]")
 							<span>Pertanyaan Umum</span>
 						</div>
 						<h2 class="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">
 							Pertanyaan yang Sering Diajukan
 						</h2>
-						<p class="text-base text-[#A19A8F]">
+						<p class="text-base text-[#C6C6D0]">
 							Pelajari rincian teknis seputar privasi, enkripsi, dan operasional mandiri Hornetz Drive.
 						</p>
 					</div>
@@ -1168,15 +1173,15 @@ templ LandingPage(c *echo.Context) {
 					<div class="mt-14 space-y-4">
 						
 						<!-- Item 1 -->
-						<div class="hornetz-card rounded-xl border border-[#2A2723] overflow-hidden">
+						<div class="hornetz-card rounded-xl border border-white/[0.08] overflow-hidden">
 							<button 
 								@click="toggleFAQ(1)" 
-								class="w-full px-6 py-5 text-left flex items-center justify-between text-base font-bold text-white hover:text-[#FACC15] transition-colors"
+								class="w-full px-6 py-5 text-left flex items-center justify-between text-base font-bold text-white hover:text-[#D59D80] transition-colors"
 							>
 								<span>Bagaimana cara kerja deduplikasi 0-detik tanpa membocorkan data pengguna lain?</span>
-								<span class="text-lg text-[#FACC15]" x-text="openFAQ === 1 ? '−' : '+'">+</span>
+								<span class="text-lg text-[#D59D80]" x-text="openFAQ === 1 ? '−' : '+'">+</span>
 							</button>
-							<div x-show="openFAQ === 1" x-cloak class="px-6 pb-6 text-sm text-[#A19A8F] leading-relaxed border-t border-[#2A2723] pt-4 space-y-2">
+							<div x-show="openFAQ === 1" x-cloak class="px-6 pb-6 text-sm text-[#C6C6D0] leading-relaxed border-t border-white/[0.08] pt-4 space-y-2">
 								<p>
 									Hornetz Drive menggunakan Content-Addressable Storage (CAS) yang diindeks oleh hash SHA-256 dari konten biner terenkripsi. Ketika pengguna mengunggah berkas yang secara identik sudah ada di dalam cluster CAS, server memverifikasi kecocokan hash dan hanya mencatat referensi kepemilikan baru pada database metadata—tanpa menulis ulang byte ke disk fisik.
 								</p>
@@ -1184,15 +1189,15 @@ templ LandingPage(c *echo.Context) {
 						</div>
 
 						<!-- Item 2 -->
-						<div class="hornetz-card rounded-xl border border-[#2A2723] overflow-hidden">
+						<div class="hornetz-card rounded-xl border border-white/[0.08] overflow-hidden">
 							<button 
 								@click="toggleFAQ(2)" 
-								class="w-full px-6 py-5 text-left flex items-center justify-between text-base font-bold text-white hover:text-[#FACC15] transition-colors"
+								class="w-full px-6 py-5 text-left flex items-center justify-between text-base font-bold text-white hover:text-[#D59D80] transition-colors"
 							>
 								<span>Apakah kunci enkripsi master pernah meninggalkan perangkat saya?</span>
-								<span class="text-lg text-[#FACC15]" x-text="openFAQ === 2 ? '−' : '+'">+</span>
+								<span class="text-lg text-[#D59D80]" x-text="openFAQ === 2 ? '−' : '+'">+</span>
 							</button>
-							<div x-show="openFAQ === 2" x-cloak class="px-6 pb-6 text-sm text-[#A19A8F] leading-relaxed border-t border-[#2A2723] pt-4 space-y-2">
+							<div x-show="openFAQ === 2" x-cloak class="px-6 pb-6 text-sm text-[#C6C6D0] leading-relaxed border-t border-white/[0.08] pt-4 space-y-2">
 								<p>
 									Tidak. Arsitektur Zero-Trust menjamin bahwa Master Encryption Key (MEK) diturunkan melalui Argon2id secara lokal. Sesi enkripsi hanya aktif sementara di memory RAM berisolasi (tidak pernah ditulis ke disk atau log). Ketika tombol Kunci Vault ditekan, kunci langsung dimusnahkan seketika dari RAM.
 								</p>
@@ -1200,15 +1205,15 @@ templ LandingPage(c *echo.Context) {
 						</div>
 
 						<!-- Item 3 -->
-						<div class="hornetz-card rounded-xl border border-[#2A2723] overflow-hidden">
+						<div class="hornetz-card rounded-xl border border-white/[0.08] overflow-hidden">
 							<button 
 								@click="toggleFAQ(3)" 
-								class="w-full px-6 py-5 text-left flex items-center justify-between text-base font-bold text-white hover:text-[#FACC15] transition-colors"
+								class="w-full px-6 py-5 text-left flex items-center justify-between text-base font-bold text-white hover:text-[#D59D80] transition-colors"
 							>
 								<span>Apa yang terjadi saat Stinger Panic Purge dipicu?</span>
-								<span class="text-lg text-[#FACC15]" x-text="openFAQ === 3 ? '−' : '+'">+</span>
+								<span class="text-lg text-[#D59D80]" x-text="openFAQ === 3 ? '−' : '+'">+</span>
 							</button>
-							<div x-show="openFAQ === 3" x-cloak class="px-6 pb-6 text-sm text-[#A19A8F] leading-relaxed border-t border-[#2A2723] pt-4 space-y-2">
+							<div x-show="openFAQ === 3" x-cloak class="px-6 pb-6 text-sm text-[#C6C6D0] leading-relaxed border-t border-white/[0.08] pt-4 space-y-2">
 								<p>
 									Protokol Stinger Purge dirancang untuk situasi bahaya ekstrem. Begitu dipanggil dengan otentikasi master, proses akan seketika menimpa fisik seluruh blok file CAS dengan urutan byte acak kriptografis (<code class="text-xs text-white">os.urandom</code>), melakukan pembersihan paksa buffer memori, dan menghapus seluruh tabel database secara permanen sehingga data tidak dapat dipulihkan bahkan dengan teknik forensik laboratorium disk.
 								</p>
@@ -1216,15 +1221,15 @@ templ LandingPage(c *echo.Context) {
 						</div>
 
 						<!-- Item 4 -->
-						<div class="hornetz-card rounded-xl border border-[#2A2723] overflow-hidden">
+						<div class="hornetz-card rounded-xl border border-white/[0.08] overflow-hidden">
 							<button 
 								@click="toggleFAQ(4)" 
-								class="w-full px-6 py-5 text-left flex items-center justify-between text-base font-bold text-white hover:text-[#FACC15] transition-colors"
+								class="w-full px-6 py-5 text-left flex items-center justify-between text-base font-bold text-white hover:text-[#D59D80] transition-colors"
 							>
 								<span>Bisakah Hornetz Drive dijalankan secara mandiri (self-hosted)?</span>
-								<span class="text-lg text-[#FACC15]" x-text="openFAQ === 4 ? '−' : '+'">+</span>
+								<span class="text-lg text-[#D59D80]" x-text="openFAQ === 4 ? '−' : '+'">+</span>
 							</button>
-							<div x-show="openFAQ === 4" x-cloak class="px-6 pb-6 text-sm text-[#A19A8F] leading-relaxed border-t border-[#2A2723] pt-4 space-y-2">
+							<div x-show="openFAQ === 4" x-cloak class="px-6 pb-6 text-sm text-[#C6C6D0] leading-relaxed border-t border-white/[0.08] pt-4 space-y-2">
 								<p>
 									Tentu saja. Hornetz Drive dikompilasi menjadi satu berkas binary biner mandiri statis Go (atau kontainer Docker ringan berbasis Alpine Linux). Anda hanya butuh satu perintah untuk menjalankannya dengan SQLite3 bawaan berkinerja tinggi (WAL Mode) atau menyambungkannya ke PostgreSQL enterprise.
 								</p>
@@ -1239,22 +1244,22 @@ templ LandingPage(c *echo.Context) {
 			<!-- ========================================== -->
 			<!-- SECTION 9: CALL TO ACTION BANNER           -->
 			<!-- ========================================== -->
-			<section class="py-24 border-t border-[#2A2723] bg-gradient-to-b from-[#141311] to-[#0F0E0D] relative overflow-hidden">
+			<section class="py-24 border-t border-white/[0.08] bg-gradient-to-b from-[#141311] to-[#0F0E0D] relative overflow-hidden">
 				<div class="absolute inset-0 glow-mesh pointer-events-none"></div>
 				<div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 text-center space-y-8 relative z-10">
 					
-					<div class="w-16 h-16 mx-auto rounded-2xl bg-[#FACC15] text-[#0F0E0D] flex items-center justify-center font-black text-3xl shadow-[0_0_30px_rgba(250,204,21,0.4)]">
+					<div class="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-br from-[#B6410F] to-[#D59D80] text-white flex items-center justify-center font-black text-3xl shadow-[0_0_30px_rgba(182,65,15,0.4)]">
 						@IconZap("w-8 h-8 fill-current")
 					</div>
 
 					<h2 class="text-3xl sm:text-5xl font-extrabold text-white tracking-tight leading-tight">
 						Siap Melindungi Aset Anda dengan<br/>
-						<span class="text-transparent bg-clip-text bg-gradient-to-r from-[#FACC15] to-[#EAB308]">
+						<span class="text-transparent bg-clip-text bg-gradient-to-r from-[#B6410F] to-[#D59D80]">
 							Zero-Trust Cloud Storage?
 						</span>
 					</h2>
 
-					<p class="text-base sm:text-lg text-[#A19A8F] max-w-2xl mx-auto font-normal">
+					<p class="text-base sm:text-lg text-[#C6C6D0] max-w-2xl mx-auto font-normal">
 						Mulai simpan berkas Anda dengan enkripsi mutlak dan nikmati efisiensi deduplikasi CAS tanpa konfigurasi yang rumit.
 					</p>
 
@@ -1270,7 +1275,7 @@ templ LandingPage(c *echo.Context) {
 
 						<a 
 							href="#demo" 
-							class="w-full sm:w-auto px-8 py-4 rounded-xl text-base font-bold bg-[#171614] hover:bg-[#201E1B] text-white border border-[#2A2723] hover:border-[#FACC15]/40 transition-colors"
+							class="w-full sm:w-auto px-8 py-4 rounded-xl text-base font-bold bg-white/[0.03] backdrop-blur-md hover:bg-white/[0.06] backdrop-blur-md text-white border border-white/[0.08] hover:border-[#D59D80]/40 transition-colors"
 						>
 							Uji Coba Enkripsi
 						</a>
@@ -1284,7 +1289,7 @@ templ LandingPage(c *echo.Context) {
 		<!-- ========================================== -->
 		<!-- FOOTER                                     -->
 		<!-- ========================================== -->
-		<footer class="bg-[#0C0B0A] border-t border-[#2A2723] py-12 z-10 text-xs text-[#A19A8F] font-mono">
+		<footer class="bg-[#09151B] border-t border-white/[0.08] py-12 z-10 text-xs text-[#C6C6D0] font-mono">
 			<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row items-center justify-between gap-6">
 				
 				<div class="flex items-center gap-2.5">
@@ -1292,18 +1297,18 @@ templ LandingPage(c *echo.Context) {
 						@IconZap("w-4 h-4 fill-current")
 					</div>
 					<span class="text-white font-bold">Hornetz Drive v2.0</span>
-					<span class="text-[#6E675E]">• Zero-Trust Encrypted Storage Engine</span>
+					<span class="text-[#8F9CA3]">• Zero-Trust Encrypted Storage Engine</span>
 				</div>
 
 				<div class="flex flex-wrap items-center gap-6">
-					<a href="#fitur" class="hover:text-[#FACC15] transition-colors">Fitur</a>
-					<a href="#arsitektur" class="hover:text-[#FACC15] transition-colors">Arsitektur</a>
-					<a href="#demo" class="hover:text-[#FACC15] transition-colors">Playground</a>
-					<a href="#faq" class="hover:text-[#FACC15] transition-colors">FAQ</a>
-					<a href="/app" class="text-[#FACC15] hover:underline font-bold">Buka Drive Console</a>
+					<a href="#fitur" class="hover:text-[#D59D80] transition-colors">Fitur</a>
+					<a href="#arsitektur" class="hover:text-[#D59D80] transition-colors">Arsitektur</a>
+					<a href="#demo" class="hover:text-[#D59D80] transition-colors">Playground</a>
+					<a href="#faq" class="hover:text-[#D59D80] transition-colors">FAQ</a>
+					<a href="/app" class="text-[#D59D80] hover:underline font-bold">Buka Drive Console</a>
 				</div>
 
-				<div class="text-[#6E675E] text-center md:text-right">
+				<div class="text-[#8F9CA3] text-center md:text-right">
 					Ditenagai oleh HOTW Stack (Go 1.26 + Templ + Turbo 8 + Alpine.js).
 				</div>
 
