@@ -52,3 +52,32 @@ func TestLandingPage_Render(t *testing.T) {
 		}
 	}
 }
+
+func TestLandingPage_LucideIcons(t *testing.T) {
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	comp := LandingPage(c)
+	var buf bytes.Buffer
+	err := comp.Render(context.Background(), &buf)
+	if err != nil {
+		t.Fatalf("Failed to render LandingPage: %v", err)
+	}
+
+	html := buf.String()
+
+	// Verify Lucide SVGs are rendered
+	if !strings.Contains(html, "viewBox=\"0 0 24 24\"") {
+		t.Errorf("LandingPage HTML does not contain Lucide SVG icons with viewBox=\"0 0 24 24\"")
+	}
+
+	// Verify emojis are not present in landing page
+	emojis := []string{"🐝", "🚀", "⚡", "🦀", "🔒", "🗄️", "💻", "📄", "✔", "✖", "🚨", "📊", "🔍", "🔑", "🗂️", "🔄", "⚖️", "💬", "⬆️"}
+	for _, em := range emojis {
+		if strings.Contains(html, em) {
+			t.Errorf("LandingPage HTML still contains legacy emoji %q", em)
+		}
+	}
+}

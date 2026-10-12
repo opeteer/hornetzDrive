@@ -106,7 +106,7 @@ templ LandingPage(c *echo.Context) {
 				<!-- Brand Logo -->
 				<a href="/" class="flex items-center gap-3 group">
 					<div class="w-10 h-10 rounded-xl bg-[#FACC15] text-[#0F0E0D] flex items-center justify-center font-black text-2xl shadow-[0_0_15px_rgba(250,204,21,0.35)] group-hover:scale-105 transition-transform">
-						🐝
+						@IconZap("w-6 h-6 fill-current")
 					</div>
 					<div>
 						<div class="flex items-center gap-2">
@@ -155,8 +155,12 @@ templ LandingPage(c *echo.Context) {
 						class="md:hidden p-2 text-[#A19A8F] hover:text-white focus:outline-none"
 						aria-label="Toggle navigation menu"
 					>
-						<svg x-show="!mobileNavOpen" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
-						<svg x-show="mobileNavOpen" x-cloak class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+						<div x-show="!mobileNavOpen">
+							@IconMenu("w-6 h-6")
+						</div>
+						<div x-show="mobileNavOpen" x-cloak>
+							@IconX("w-6 h-6")
+						</div>
 					</button>
 				</div>
 			</div>
@@ -225,14 +229,15 @@ templ LandingPage(c *echo.Context) {
 									class="hornetz-btn w-full sm:w-auto px-8 py-4 rounded-xl text-base font-bold flex items-center justify-center gap-2 shadow-xl shadow-yellow-500/20"
 								>
 									<span>Buka Web Drive Sekarang</span>
-									<span>🚀</span>
+									@IconRocket("w-4 h-4")
 								</a>
 
 								<a 
 									href="#demo" 
 									class="w-full sm:w-auto px-7 py-4 rounded-xl text-base font-bold bg-[#171614] hover:bg-[#201E1B] text-white border border-[#2A2723] hover:border-[#FACC15]/50 flex items-center justify-center gap-2 transition-all"
 								>
-									<span>⚡ Coba Simulasi Enkripsi</span>
+									@IconZap("w-4 h-4 text-[#FACC15]")
+									<span>Coba Simulasi Enkripsi</span>
 								</a>
 							</div>
 
@@ -245,9 +250,20 @@ templ LandingPage(c *echo.Context) {
 									</div>
 									<button 
 										@click="copyQuickstart()" 
-										class="ml-3 shrink-0 px-2.5 py-1 bg-[#201E1B] hover:bg-[#2E2B26] text-white rounded text-[11px] font-semibold transition-colors flex items-center gap-1"
+										class="ml-3 shrink-0 px-2.5 py-1 bg-[#201E1B] hover:bg-[#2E2B26] text-white rounded text-[11px] font-semibold transition-colors flex items-center gap-1.5"
 									>
-										<span x-text="copiedQuickstart ? '✓ Tersalin' : 'Salin'">Salin</span>
+										<template x-if="copiedQuickstart">
+											<span class="flex items-center gap-1 text-emerald-400">
+												@IconCheck("w-3.5 h-3.5")
+												<span>Tersalin</span>
+											</span>
+										</template>
+										<template x-if="!copiedQuickstart">
+											<span class="flex items-center gap-1 text-[#A19A8F]">
+												@IconCopy("w-3.5 h-3.5")
+												<span>Salin</span>
+											</span>
+										</template>
 									</button>
 								</div>
 							</div>
@@ -255,15 +271,15 @@ templ LandingPage(c *echo.Context) {
 							<!-- Feature Badges -->
 							<div class="pt-4 flex flex-wrap items-center justify-center lg:justify-start gap-6 text-xs text-[#A19A8F] font-medium">
 								<div class="flex items-center gap-2">
-									<span class="text-emerald-400 text-sm">✔</span>
+									@IconCheck("w-4 h-4 text-emerald-400 shrink-0")
 									<span>0-Second CAS Deduplikasi</span>
 								</div>
 								<div class="flex items-center gap-2">
-									<span class="text-emerald-400 text-sm">✔</span>
+									@IconCheck("w-4 h-4 text-emerald-400 shrink-0")
 									<span>Single Static Binary Go</span>
 								</div>
 								<div class="flex items-center gap-2">
-									<span class="text-emerald-400 text-sm">✔</span>
+									@IconCheck("w-4 h-4 text-emerald-400 shrink-0")
 									<span>Stinger Panic Purge</span>
 								</div>
 							</div>
@@ -312,8 +328,8 @@ templ LandingPage(c *echo.Context) {
 									<!-- Mock File Item 1 -->
 									<div class="bg-[#0F0E0D] border border-[#2A2723] p-3 rounded-xl flex items-center justify-between text-xs">
 										<div class="flex items-center gap-2.5 min-w-0">
-											<div class="w-8 h-8 rounded-lg bg-[#201E1B] border border-[#3A3630] flex items-center justify-center text-sm shrink-0">
-												🔐
+											<div class="w-8 h-8 rounded-lg bg-[#201E1B] border border-[#3A3630] flex items-center justify-center shrink-0">
+												@IconLock("w-4 h-4 text-[#FACC15]")
 											</div>
 											<div class="min-w-0">
 												<div class="text-white font-semibold truncate font-mono text-xs">financial_q4_audit.tar.enc</div>
@@ -326,8 +342,8 @@ templ LandingPage(c *echo.Context) {
 									<!-- Mock File Item 2 (Live Dedup Hit) -->
 									<div class="bg-[#0F0E0D] border border-[#2A2723] p-3 rounded-xl flex items-center justify-between text-xs">
 										<div class="flex items-center gap-2.5 min-w-0">
-											<div class="w-8 h-8 rounded-lg bg-[#201E1B] border border-[#3A3630] flex items-center justify-center text-sm shrink-0">
-												📄
+											<div class="w-8 h-8 rounded-lg bg-[#201E1B] border border-[#3A3630] flex items-center justify-center shrink-0">
+												@IconFileText("w-4 h-4 text-[#FACC15]")
 											</div>
 											<div class="min-w-0">
 												<div class="text-white font-semibold truncate font-mono text-xs">core_architecture_spec.pdf</div>
@@ -340,8 +356,8 @@ templ LandingPage(c *echo.Context) {
 									<!-- Mock File Item 3 -->
 									<div class="bg-[#0F0E0D] border border-[#2A2723] p-3 rounded-xl flex items-center justify-between text-xs">
 										<div class="flex items-center gap-2.5 min-w-0">
-											<div class="w-8 h-8 rounded-lg bg-[#201E1B] border border-[#3A3630] flex items-center justify-center text-sm shrink-0">
-												🗄️
+											<div class="w-8 h-8 rounded-lg bg-[#201E1B] border border-[#3A3630] flex items-center justify-center shrink-0">
+												@IconDatabase("w-4 h-4 text-[#FACC15]")
 											</div>
 											<div class="min-w-0">
 												<div class="text-white font-semibold truncate font-mono text-xs">production_db_dump.sql.enc</div>
@@ -355,7 +371,7 @@ templ LandingPage(c *echo.Context) {
 								<!-- Live CAS Shuffler Banner -->
 								<div class="mt-4 p-2.5 rounded-lg bg-[#141311] border border-[#2A2723] flex items-center justify-between text-[11px] font-mono">
 									<div class="flex items-center gap-2">
-										<span class="text-amber-400">🛡️</span>
+										@IconShield("w-3.5 h-3.5 text-amber-400")
 										<span class="text-[#A19A8F]">Chitin Shuffler:</span>
 										<span class="text-white">Rotasi Shard Aktif</span>
 									</div>
@@ -378,7 +394,8 @@ templ LandingPage(c *echo.Context) {
 					<!-- Section Header -->
 					<div class="text-center max-w-3xl mx-auto space-y-4">
 						<div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#1F1D19] border border-[#3A3630] text-xs font-mono text-[#FACC15]">
-							<span>⚡ Interaktif Browser Playground</span>
+							@IconZap("w-3.5 h-3.5 text-[#FACC15]")
+							<span>Interaktif Browser Playground</span>
 						</div>
 						<h2 class="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">
 							Coba Enkripsi & Deduplikasi CAS Secara Langsung
@@ -397,23 +414,26 @@ templ LandingPage(c *echo.Context) {
 							<button 
 								@click="loadPreset('secret')" 
 								:class="currentPreset === 'secret' ? 'bg-[#FACC15] text-[#0F0E0D] font-bold' : 'bg-[#0F0E0D] text-[#A19A8F] hover:text-white border border-[#2A2723]'"
-								class="px-3 py-1.5 rounded-lg text-xs font-mono transition-all"
+								class="px-3 py-1.5 rounded-lg text-xs font-mono transition-all flex items-center gap-1.5"
 							>
-								🔒 Dokumen Rahasia
+								@IconLock("w-3.5 h-3.5")
+								<span>Dokumen Rahasia</span>
 							</button>
 							<button 
 								@click="loadPreset('database')" 
 								:class="currentPreset === 'database' ? 'bg-[#FACC15] text-[#0F0E0D] font-bold' : 'bg-[#0F0E0D] text-[#A19A8F] hover:text-white border border-[#2A2723]'"
-								class="px-3 py-1.5 rounded-lg text-xs font-mono transition-all"
+								class="px-3 py-1.5 rounded-lg text-xs font-mono transition-all flex items-center gap-1.5"
 							>
-								🗄️ Backup Database
+								@IconDatabase("w-3.5 h-3.5")
+								<span>Backup Database</span>
 							</button>
 							<button 
 								@click="loadPreset('code')" 
 								:class="currentPreset === 'code' ? 'bg-[#FACC15] text-[#0F0E0D] font-bold' : 'bg-[#0F0E0D] text-[#A19A8F] hover:text-white border border-[#2A2723]'"
-								class="px-3 py-1.5 rounded-lg text-xs font-mono transition-all"
+								class="px-3 py-1.5 rounded-lg text-xs font-mono transition-all flex items-center gap-1.5"
 							>
-								💻 Kode Sumber Go
+								@IconCode("w-3.5 h-3.5")
+								<span>Kode Sumber Go</span>
 							</button>
 						</div>
 
@@ -442,7 +462,8 @@ templ LandingPage(c *echo.Context) {
 							<div class="bg-[#0F0E0D] border border-[#2A2723] rounded-xl p-4 space-y-3">
 								<div class="flex items-center justify-between">
 									<span class="text-xs font-mono font-bold text-[#FACC15] flex items-center gap-1.5">
-										<span>#️⃣</span> Hash Konten CAS (SHA-256)
+										@IconDatabase("w-3.5 h-3.5")
+										<span>Hash Konten CAS (SHA-256)</span>
 									</span>
 									<span class="text-[10px] font-mono px-2 py-0.5 bg-[#201E1B] text-[#A19A8F] rounded">32 Bytes / 256 Bits</span>
 								</div>
@@ -450,7 +471,10 @@ templ LandingPage(c *echo.Context) {
 									--
 								</div>
 								<div class="text-[11px] font-mono text-[#A19A8F] flex items-center gap-2">
-									<span class="text-[#FACC15]">📂 Shard Path:</span>
+									<span class="text-[#FACC15] flex items-center gap-1">
+										@IconFolder("w-3.5 h-3.5")
+										<span>Shard Path:</span>
+									</span>
 									<span class="text-white font-semibold truncate" x-text="computedShardPath">storage/cas/--/--/...</span>
 								</div>
 							</div>
@@ -459,7 +483,8 @@ templ LandingPage(c *echo.Context) {
 							<div class="bg-[#0F0E0D] border border-[#2A2723] rounded-xl p-4 space-y-3">
 								<div class="flex items-center justify-between">
 									<span class="text-xs font-mono font-bold text-emerald-400 flex items-center gap-1.5">
-										<span>🔐</span> Frame Enkripsi AES-256-GCM
+										@IconShield("w-3.5 h-3.5")
+										<span>Frame Enkripsi AES-256-GCM</span>
 									</span>
 									<span class="text-[10px] font-mono px-2 py-0.5 bg-[#201E1B] text-emerald-400 rounded">Stream Envelope</span>
 								</div>
@@ -479,8 +504,14 @@ templ LandingPage(c *echo.Context) {
 							<div class="space-y-1 text-center sm:text-left">
 								<div class="text-sm font-bold text-white flex items-center justify-center sm:justify-start gap-2">
 									<span>Simulasi Ingesti Berkas ke Server</span>
-									<span x-show="lastUploadResult === 'dedup'" class="text-xs font-mono px-2 py-0.5 bg-[#FACC15]/20 text-[#FACC15] border border-[#FACC15]/40 rounded-full font-bold">⚡ 0s Dedup Match!</span>
-									<span x-show="lastUploadResult === 'new'" class="text-xs font-mono px-2 py-0.5 bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 rounded-full font-bold">✓ Berkas Baru Tersimpan</span>
+									<span x-show="lastUploadResult === 'dedup'" class="text-xs font-mono px-2 py-0.5 bg-[#FACC15]/20 text-[#FACC15] border border-[#FACC15]/40 rounded-full font-bold flex items-center gap-1">
+										@IconZap("w-3 h-3")
+										<span>0s Dedup Match!</span>
+									</span>
+									<span x-show="lastUploadResult === 'new'" class="text-xs font-mono px-2 py-0.5 bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 rounded-full font-bold flex items-center gap-1">
+										@IconCheck("w-3 h-3")
+										<span>Berkas Baru Tersimpan</span>
+									</span>
 								</div>
 								<p class="text-xs text-[#A19A8F]" x-text="uploadFeedbackText">
 									Klik tombol di sebelah kanan untuk menyimulasikan penyimpanan berkas ke CAS. Jika Anda mengunggah hash yang sama dua kali, server tidak akan memakan disk tambahan.
@@ -493,7 +524,7 @@ templ LandingPage(c *echo.Context) {
 								class="hornetz-btn shrink-0 px-6 py-3 rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg"
 							>
 								<span>Unggah ke CAS Virtual</span>
-								<span>⬆️</span>
+								@IconUploadCloud("w-4 h-4")
 							</button>
 						</div>
 
@@ -527,7 +558,8 @@ templ LandingPage(c *echo.Context) {
 					<!-- Section Header -->
 					<div class="text-center max-w-3xl mx-auto space-y-4">
 						<div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#1F1D19] border border-[#3A3630] text-xs font-mono text-[#FACC15]">
-							<span>🛡️ Pilar Arsitektur Enterprise</span>
+							@IconShield("w-3.5 h-3.5 text-[#FACC15]")
+							<span>Pilar Arsitektur Enterprise</span>
 						</div>
 						<h2 class="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">
 							Keamanan Nol-Kompromi. Efisiensi Ekstrem.
@@ -543,8 +575,8 @@ templ LandingPage(c *echo.Context) {
 						<!-- Card 1: Streaming AES-256-GCM -->
 						<div class="hornetz-card hornetz-card-glow rounded-2xl p-7 space-y-4 flex flex-col justify-between">
 							<div class="space-y-4">
-								<div class="w-12 h-12 rounded-xl bg-amber-400/10 border border-amber-400/30 flex items-center justify-center text-2xl text-amber-400">
-									🔐
+								<div class="w-12 h-12 rounded-xl bg-amber-400/10 border border-amber-400/30 flex items-center justify-center text-amber-400">
+									@IconLock("w-6 h-6")
 								</div>
 								<h3 class="text-xl font-bold text-white">Streaming Enkripsi AES-256-GCM</h3>
 								<p class="text-sm text-[#A19A8F] leading-relaxed">
@@ -560,8 +592,8 @@ templ LandingPage(c *echo.Context) {
 						<!-- Card 2: 0-Second CAS Deduplication -->
 						<div class="hornetz-card hornetz-card-glow rounded-2xl p-7 space-y-4 flex flex-col justify-between">
 							<div class="space-y-4">
-								<div class="w-12 h-12 rounded-xl bg-yellow-400/10 border border-yellow-400/30 flex items-center justify-center text-2xl text-yellow-400">
-									⚡
+								<div class="w-12 h-12 rounded-xl bg-yellow-400/10 border border-yellow-400/30 flex items-center justify-center text-yellow-400">
+									@IconZap("w-6 h-6")
 								</div>
 								<h3 class="text-xl font-bold text-white">0-Second CAS Deduplication</h3>
 								<p class="text-sm text-[#A19A8F] leading-relaxed">
@@ -577,8 +609,8 @@ templ LandingPage(c *echo.Context) {
 						<!-- Card 3: Chitin Shuffler Anti-Forensics -->
 						<div class="hornetz-card hornetz-card-glow rounded-2xl p-7 space-y-4 flex flex-col justify-between">
 							<div class="space-y-4">
-								<div class="w-12 h-12 rounded-xl bg-red-400/10 border border-red-400/30 flex items-center justify-center text-2xl text-red-400">
-									🦀
+								<div class="w-12 h-12 rounded-xl bg-red-400/10 border border-red-400/30 flex items-center justify-center text-red-400">
+									@IconShieldAlert("w-6 h-6")
 								</div>
 								<h3 class="text-xl font-bold text-white">Chitin Shuffler Anti-Forensik</h3>
 								<p class="text-sm text-[#A19A8F] leading-relaxed">
@@ -594,8 +626,8 @@ templ LandingPage(c *echo.Context) {
 						<!-- Card 4: Resumable Multipart Engine -->
 						<div class="hornetz-card hornetz-card-glow rounded-2xl p-7 space-y-4 flex flex-col justify-between">
 							<div class="space-y-4">
-								<div class="w-12 h-12 rounded-xl bg-blue-400/10 border border-blue-400/30 flex items-center justify-center text-2xl text-blue-400">
-									🚀
+								<div class="w-12 h-12 rounded-xl bg-blue-400/10 border border-blue-400/30 flex items-center justify-center text-blue-400">
+									@IconRocket("w-6 h-6")
 								</div>
 								<h3 class="text-xl font-bold text-white">Resumable Chunked Upload</h3>
 								<p class="text-sm text-[#A19A8F] leading-relaxed">
@@ -611,8 +643,8 @@ templ LandingPage(c *echo.Context) {
 						<!-- Card 5: Stinger Panic Purge Protocol -->
 						<div class="hornetz-card hornetz-card-glow rounded-2xl p-7 space-y-4 flex flex-col justify-between">
 							<div class="space-y-4">
-								<div class="w-12 h-12 rounded-xl bg-red-500/10 border border-red-500/30 flex items-center justify-center text-2xl text-red-500">
-									🚨
+								<div class="w-12 h-12 rounded-xl bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-500">
+									@IconFlame("w-6 h-6")
 								</div>
 								<h3 class="text-xl font-bold text-white">Stinger Panic Purge Protocol</h3>
 								<p class="text-sm text-[#A19A8F] leading-relaxed">
@@ -628,8 +660,8 @@ templ LandingPage(c *echo.Context) {
 						<!-- Card 6: HOTW Stack Single-Binary -->
 						<div class="hornetz-card hornetz-card-glow rounded-2xl p-7 space-y-4 flex flex-col justify-between">
 							<div class="space-y-4">
-								<div class="w-12 h-12 rounded-xl bg-emerald-400/10 border border-emerald-400/30 flex items-center justify-center text-2xl text-emerald-400">
-									⚡
+								<div class="w-12 h-12 rounded-xl bg-emerald-400/10 border border-emerald-400/30 flex items-center justify-center text-emerald-400">
+									@IconActivity("w-6 h-6")
 								</div>
 								<h3 class="text-xl font-bold text-white">HOTW Stack & Single Binary</h3>
 								<p class="text-sm text-[#A19A8F] leading-relaxed">
@@ -656,7 +688,8 @@ templ LandingPage(c *echo.Context) {
 					<!-- Section Header -->
 					<div class="text-center max-w-3xl mx-auto space-y-4">
 						<div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#1F1D19] border border-[#3A3630] text-xs font-mono text-[#FACC15]">
-							<span>📊 Estimasi Efisiensi Penyimpanan</span>
+							@IconBarChart2("w-3.5 h-3.5 text-[#FACC15]")
+							<span>Estimasi Efisiensi Penyimpanan</span>
 						</div>
 						<h2 class="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">
 							Kalkulator Penghematan CAS & Bandwidth
@@ -766,7 +799,8 @@ templ LandingPage(c *echo.Context) {
 					<!-- Section Header -->
 					<div class="text-center max-w-3xl mx-auto space-y-4">
 						<div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#1F1D19] border border-[#3A3630] text-xs font-mono text-[#FACC15]">
-							<span>🔍 Inspeksi Alur Data End-to-End</span>
+							@IconSearch("w-3.5 h-3.5 text-[#FACC15]")
+							<span>Inspeksi Alur Data End-to-End</span>
 						</div>
 						<h2 class="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">
 							Arsitektur Streaming Zero-Trust
@@ -818,7 +852,8 @@ templ LandingPage(c *echo.Context) {
 							<div x-show="archTab === 1" class="space-y-4">
 								<div class="flex items-center justify-between">
 									<h4 class="text-lg font-bold text-white flex items-center gap-2">
-										<span>🔑 Derivasi Kunci Argon2id & Autentikasi Vault</span>
+										@IconKey("w-5 h-5 text-[#FACC15]")
+										<span>Derivasi Kunci Argon2id & Autentikasi Vault</span>
 									</h4>
 									<span class="text-xs font-mono text-[#FACC15]">Phase: Client Vault</span>
 								</div>
@@ -836,7 +871,8 @@ templ LandingPage(c *echo.Context) {
 							<div x-show="archTab === 2" x-cloak class="space-y-4">
 								<div class="flex items-center justify-between">
 									<h4 class="text-lg font-bold text-white flex items-center gap-2">
-										<span>⚡ Chunked Stream AES-256-GCM Framing</span>
+										@IconZap("w-5 h-5 text-emerald-400")
+										<span>Chunked Stream AES-256-GCM Framing</span>
 									</h4>
 									<span class="text-xs font-mono text-emerald-400">Phase: Stream Pipeline</span>
 								</div>
@@ -855,7 +891,8 @@ templ LandingPage(c *echo.Context) {
 							<div x-show="archTab === 3" x-cloak class="space-y-4">
 								<div class="flex items-center justify-between">
 									<h4 class="text-lg font-bold text-white flex items-center gap-2">
-										<span>🗂️ Content-Addressable Storage (CAS) Deep Sharding</span>
+										@IconFolder("w-5 h-5 text-[#FACC15]")
+										<span>Content-Addressable Storage (CAS) Deep Sharding</span>
 									</h4>
 									<span class="text-xs font-mono text-[#FACC15]">Phase: Storage Sharding</span>
 								</div>
@@ -873,7 +910,8 @@ templ LandingPage(c *echo.Context) {
 							<div x-show="archTab === 4" x-cloak class="space-y-4">
 								<div class="flex items-center justify-between">
 									<h4 class="text-lg font-bold text-red-400 flex items-center gap-2">
-										<span>🚨 Stinger Panic Purge: Cryptographic Shredding</span>
+										@IconFlame("w-5 h-5 text-red-400")
+										<span>Stinger Panic Purge: Cryptographic Shredding</span>
 									</h4>
 									<span class="text-xs font-mono text-red-400">Phase: Emergency Obliteration</span>
 								</div>
@@ -935,8 +973,14 @@ templ LandingPage(c *echo.Context) {
 									:disabled="isPinging"
 									class="px-5 py-3 rounded-xl bg-[#201E1B] hover:bg-[#2A2723] text-white border border-[#3A3630] font-mono text-xs font-bold transition-all flex items-center gap-2"
 								>
-									<span x-show="!isPinging">🔄 Tes Ping Server</span>
-									<span x-show="isPinging" x-cloak>Menghubungi...</span>
+									<span x-show="!isPinging" class="flex items-center gap-1.5">
+										@IconRefresh("w-3.5 h-3.5")
+										<span>Tes Ping Server</span>
+									</span>
+									<span x-show="isPinging" x-cloak class="flex items-center gap-1.5">
+										<span class="animate-spin">@IconRefresh("w-3.5 h-3.5")</span>
+										<span>Menghubungi...</span>
+									</span>
 								</button>
 							</div>
 
@@ -954,7 +998,8 @@ templ LandingPage(c *echo.Context) {
 					<!-- Section Header -->
 					<div class="text-center max-w-3xl mx-auto space-y-4">
 						<div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#1F1D19] border border-[#3A3630] text-xs font-mono text-[#FACC15]">
-							<span>⚖️ Perbandingan Arsitektur</span>
+							@IconShieldCheck("w-3.5 h-3.5 text-[#FACC15]")
+							<span>Perbandingan Arsitektur</span>
 						</div>
 						<h2 class="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">
 							Hornetz Drive vs Solusi Tradisional
@@ -970,7 +1015,12 @@ templ LandingPage(c *echo.Context) {
 							<thead>
 								<tr class="border-b border-[#2A2723] font-mono text-xs">
 									<th class="py-4 px-6 text-[#A19A8F] font-normal">FITUR & ARSITEKTUR</th>
-									<th class="py-4 px-6 text-[#FACC15] font-bold bg-[#1C1A17] rounded-t-xl">🐝 HORNETZ DRIVE</th>
+									<th class="py-4 px-6 text-[#FACC15] font-bold bg-[#1C1A17] rounded-t-xl">
+										<span class="inline-flex items-center gap-1.5">
+											@IconZap("w-4 h-4 fill-current")
+											<span>HORNETZ DRIVE</span>
+										</span>
+									</th>
 									<th class="py-4 px-6 text-[#A19A8F] font-normal">AWS S3 / STANDARD</th>
 									<th class="py-4 px-6 text-[#A19A8F] font-normal">GOOGLE DRIVE</th>
 									<th class="py-4 px-6 text-[#A19A8F] font-normal">NEXTCLOUD</th>
@@ -980,7 +1030,12 @@ templ LandingPage(c *echo.Context) {
 								<!-- Row 1 -->
 								<tr class="hover:bg-[#141311]">
 									<td class="py-4 px-6 text-white font-semibold">Streaming Enkripsi AES-256-GCM</td>
-									<td class="py-4 px-6 bg-[#171614] text-emerald-400 font-bold">✔ Bawaan (Zero-RAM Buffering)</td>
+									<td class="py-4 px-6 bg-[#171614] text-emerald-400 font-bold">
+										<span class="inline-flex items-center gap-1.5">
+											@IconCheck("w-4 h-4 shrink-0")
+											<span>Bawaan (Zero-RAM Buffering)</span>
+										</span>
+									</td>
 									<td class="py-4 px-6 text-[#6E675E]">Kunci Milik Penyedia (Server-Side)</td>
 									<td class="py-4 px-6 text-[#6E675E]">Kunci Milik Penyedia</td>
 									<td class="py-4 px-6 text-[#A19A8F]">Opsional (Beban Server Tinggi)</td>
@@ -988,31 +1043,96 @@ templ LandingPage(c *echo.Context) {
 								<!-- Row 2 -->
 								<tr class="hover:bg-[#141311]">
 									<td class="py-4 px-6 text-white font-semibold">0-Second Deduplikasi (CAS)</td>
-									<td class="py-4 px-6 bg-[#171614] text-[#FACC15] font-bold">✔ SHA-256 Instan (0-Byte Disk)</td>
-									<td class="py-4 px-6 text-red-400">✖ Tidak Ada (Duplikasi Penuh)</td>
-									<td class="py-4 px-6 text-red-400">✖ Memotong Kuota Pengguna</td>
-									<td class="py-4 px-6 text-red-400">✖ Tidak Ada</td>
+									<td class="py-4 px-6 bg-[#171614] text-[#FACC15] font-bold">
+										<span class="inline-flex items-center gap-1.5">
+											@IconCheck("w-4 h-4 shrink-0")
+											<span>SHA-256 Instan (0-Byte Disk)</span>
+										</span>
+									</td>
+									<td class="py-4 px-6 text-red-400">
+										<span class="inline-flex items-center gap-1.5">
+											@IconX("w-4 h-4 shrink-0")
+											<span>Tidak Ada (Duplikasi Penuh)</span>
+										</span>
+									</td>
+									<td class="py-4 px-6 text-red-400">
+										<span class="inline-flex items-center gap-1.5">
+											@IconX("w-4 h-4 shrink-0")
+											<span>Memotong Kuota Pengguna</span>
+										</span>
+									</td>
+									<td class="py-4 px-6 text-red-400">
+										<span class="inline-flex items-center gap-1.5">
+											@IconX("w-4 h-4 shrink-0")
+											<span>Tidak Ada</span>
+										</span>
+									</td>
 								</tr>
 								<!-- Row 3 -->
 								<tr class="hover:bg-[#141311]">
 									<td class="py-4 px-6 text-white font-semibold">Chitin Shuffler Anti-Forensik</td>
-									<td class="py-4 px-6 bg-[#171614] text-emerald-400 font-bold">✔ Rotasi Otomatis & Obfuscate</td>
-									<td class="py-4 px-6 text-red-400">✖ Jejak Log Lengkap</td>
-									<td class="py-4 px-6 text-red-400">✖ Analisis Metadata Penuh</td>
-									<td class="py-4 px-6 text-red-400">✖ Tidak Ada</td>
+									<td class="py-4 px-6 bg-[#171614] text-emerald-400 font-bold">
+										<span class="inline-flex items-center gap-1.5">
+											@IconCheck("w-4 h-4 shrink-0")
+											<span>Rotasi Otomatis & Obfuscate</span>
+										</span>
+									</td>
+									<td class="py-4 px-6 text-red-400">
+										<span class="inline-flex items-center gap-1.5">
+											@IconX("w-4 h-4 shrink-0")
+											<span>Jejak Log Lengkap</span>
+										</span>
+									</td>
+									<td class="py-4 px-6 text-red-400">
+										<span class="inline-flex items-center gap-1.5">
+											@IconX("w-4 h-4 shrink-0")
+											<span>Analisis Metadata Penuh</span>
+										</span>
+									</td>
+									<td class="py-4 px-6 text-red-400">
+										<span class="inline-flex items-center gap-1.5">
+											@IconX("w-4 h-4 shrink-0")
+											<span>Tidak Ada</span>
+										</span>
+									</td>
 								</tr>
 								<!-- Row 4 -->
 								<tr class="hover:bg-[#141311]">
 									<td class="py-4 px-6 text-white font-semibold">Stinger Panic Purge Protocol</td>
-									<td class="py-4 px-6 bg-[#171614] text-red-400 font-bold">✔ Shredding os.urandom Seketika</td>
-									<td class="py-4 px-6 text-red-400">✖ Soft-Delete (Tersimpan di Disk)</td>
-									<td class="py-4 px-6 text-red-400">✖ Trash Retention 30 Hari</td>
-									<td class="py-4 px-6 text-red-400">✖ OS Delete Standar</td>
+									<td class="py-4 px-6 bg-[#171614] text-red-400 font-bold">
+										<span class="inline-flex items-center gap-1.5">
+											@IconCheck("w-4 h-4 shrink-0")
+											<span>Shredding os.urandom Seketika</span>
+										</span>
+									</td>
+									<td class="py-4 px-6 text-red-400">
+										<span class="inline-flex items-center gap-1.5">
+											@IconX("w-4 h-4 shrink-0")
+											<span>Soft-Delete (Tersimpan di Disk)</span>
+										</span>
+									</td>
+									<td class="py-4 px-6 text-red-400">
+										<span class="inline-flex items-center gap-1.5">
+											@IconX("w-4 h-4 shrink-0")
+											<span>Trash Retention 30 Hari</span>
+										</span>
+									</td>
+									<td class="py-4 px-6 text-red-400">
+										<span class="inline-flex items-center gap-1.5">
+											@IconX("w-4 h-4 shrink-0")
+											<span>OS Delete Standar</span>
+										</span>
+									</td>
 								</tr>
 								<!-- Row 5 -->
 								<tr class="hover:bg-[#141311]">
 									<td class="py-4 px-6 text-white font-semibold">Deployment Footprint</td>
-									<td class="py-4 px-6 bg-[#171614] text-white font-bold">✔ 1 Biner Statis Go (&lt;25MB)</td>
+									<td class="py-4 px-6 bg-[#171614] text-white font-bold">
+										<span class="inline-flex items-center gap-1.5">
+											@IconCheck("w-4 h-4 text-emerald-400 shrink-0")
+											<span>1 Biner Statis Go (&lt;25MB)</span>
+										</span>
+									</td>
 									<td class="py-4 px-6 text-[#A19A8F]">Proprietary Cloud Lock-in</td>
 									<td class="py-4 px-6 text-[#A19A8F]">Proprietary SaaS</td>
 									<td class="py-4 px-6 text-[#6E675E]">PHP + Apache + Redis (&gt;500MB)</td>
@@ -1033,7 +1153,8 @@ templ LandingPage(c *echo.Context) {
 					<!-- Section Header -->
 					<div class="text-center max-w-3xl mx-auto space-y-4">
 						<div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#1F1D19] border border-[#3A3630] text-xs font-mono text-[#FACC15]">
-							<span>💬 Pertanyaan Umum</span>
+							@IconHelpCircle("w-3.5 h-3.5 text-[#FACC15]")
+							<span>Pertanyaan Umum</span>
 						</div>
 						<h2 class="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">
 							Pertanyaan yang Sering Diajukan
@@ -1123,7 +1244,7 @@ templ LandingPage(c *echo.Context) {
 				<div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 text-center space-y-8 relative z-10">
 					
 					<div class="w-16 h-16 mx-auto rounded-2xl bg-[#FACC15] text-[#0F0E0D] flex items-center justify-center font-black text-3xl shadow-[0_0_30px_rgba(250,204,21,0.4)]">
-						🐝
+						@IconZap("w-8 h-8 fill-current")
 					</div>
 
 					<h2 class="text-3xl sm:text-5xl font-extrabold text-white tracking-tight leading-tight">
@@ -1166,8 +1287,10 @@ templ LandingPage(c *echo.Context) {
 		<footer class="bg-[#0C0B0A] border-t border-[#2A2723] py-12 z-10 text-xs text-[#A19A8F] font-mono">
 			<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row items-center justify-between gap-6">
 				
-				<div class="flex items-center gap-3">
-					<span class="text-base">🐝</span>
+				<div class="flex items-center gap-2.5">
+					<div class="w-6 h-6 rounded-lg bg-[#FACC15] text-[#0F0E0D] flex items-center justify-center font-black text-xs">
+						@IconZap("w-4 h-4 fill-current")
+					</div>
 					<span class="text-white font-bold">Hornetz Drive v2.0</span>
 					<span class="text-[#6E675E]">• Zero-Trust Encrypted Storage Engine</span>
 				</div>
@@ -1313,12 +1436,12 @@ templ LandingPage(c *echo.Context) {
 						this.lastUploadResult = 'dedup';
 						this.totalBytesSaved += this.byteSize;
 						this.bytesSavedFormatted = this.formatBytes(this.totalBytesSaved);
-						this.uploadFeedbackText = `⚡ DEDUPLIKASI TERDETEKSI: Hash cocok dengan berkas yang sudah ada! 0 byte disk tambahan digunakan.`;
+						this.uploadFeedbackText = `DEDUPLIKASI TERDETEKSI: Hash cocok dengan berkas yang sudah ada! 0 byte disk tambahan digunakan.`;
 					} else {
 						// New physical write
 						this.virtualCasStore.add(hash);
 						this.lastUploadResult = 'new';
-						this.uploadFeedbackText = `✓ Berkas baru berhasil diindeks ke CAS pada shard: ${this.computedShardPath}`;
+						this.uploadFeedbackText = `Berkas baru berhasil diindeks ke CAS pada shard: ${this.computedShardPath}`;
 					}
 				},
 

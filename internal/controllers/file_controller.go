@@ -739,32 +739,32 @@ func getFileIcon(name, mime string) string {
 	ext := strings.ToLower(getFileExt(name))
 	switch ext {
 	case "pdf":
-		return "📄"
+		return "file-text"
 	case "key", "pem", "crt", "pub":
-		return "🔑"
+		return "key"
 	case "tar.gz", "zip", "tar", "gz", "7z", "rar":
-		return "📦"
+		return "archive"
 	case "png", "jpg", "jpeg", "gif", "webp", "svg":
-		return "🖼️"
+		return "image"
 	case "mp4", "mkv", "webm", "mov", "avi":
-		return "🎬"
+		return "video"
 	case "mp3", "wav", "ogg", "flac":
-		return "🎵"
+		return "music"
 	case "go", "js", "ts", "html", "css", "json", "sql", "sh", "py", "md", "rs", "cpp", "c":
-		return "💻"
+		return "code"
 	case "xls", "xlsx", "csv":
-		return "📊"
+		return "bar-chart-2"
 	case "doc", "docx", "txt", "rtf":
-		return "📄"
+		return "file-text"
 	default:
 		if strings.HasPrefix(mime, "image/") {
-			return "🖼️"
+			return "image"
 		} else if strings.HasPrefix(mime, "video/") {
-			return "🎬"
+			return "video"
 		} else if strings.HasPrefix(mime, "audio/") {
-			return "🎵"
+			return "music"
 		}
-		return "📄"
+		return "file"
 	}
 }
 

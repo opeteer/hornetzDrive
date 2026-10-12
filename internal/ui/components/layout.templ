@@ -69,12 +69,12 @@ templ Layout(title string) {
 		<header class="h-16 bg-[#171614] border-b border-[#2A2723] px-6 flex items-center justify-between z-20 shrink-0">
 			<!-- Logo & Title -->
 			<div class="flex items-center gap-3">
-				<button @click="$store.drive.isMobileMenuOpen = !$store.drive.isMobileMenuOpen" class="md:hidden text-[#FACC15] mr-1 text-2xl font-bold focus:outline-none">
-					☰
+				<button @click="$store.drive.isMobileMenuOpen = !$store.drive.isMobileMenuOpen" class="md:hidden text-[#FACC15] mr-1 focus:outline-none">
+					@IconMenu("w-6 h-6")
 				</button>
 				<div class="flex items-center gap-3 cursor-pointer" @click="$store.drive.setTab('storage')">
-					<div class="w-9 h-9 rounded-lg bg-[#FACC15] text-[#0F0E0D] flex items-center justify-center font-black text-xl shadow-[0_0_12px_rgba(250,204,21,0.3)]">
-						🐝
+					<div class="w-9 h-9 rounded-lg bg-[#FACC15] text-[#0F0E0D] flex items-center justify-center shadow-[0_0_12px_rgba(250,204,21,0.3)]">
+						@IconZap("w-5 h-5 fill-current")
 					</div>
 					<div>
 						<div class="flex items-center gap-2">
@@ -96,8 +96,12 @@ templ Layout(title string) {
 						placeholder="Cari berkas, folder, atau hash SHA-256..." 
 						class="w-full bg-[#0F0E0D] border border-[#2A2723] text-sm text-white px-10 py-2 rounded-lg focus:outline-none focus:border-[#FACC15] transition-colors placeholder-[#6E675E]"
 					/>
-					<div class="absolute left-3 top-2.5 text-[#A19A8F] text-sm">🔍</div>
-					<button x-show="$store.drive.searchQuery" @click="$store.drive.clearSearch()" class="absolute right-3 top-2.5 text-xs text-[#A19A8F] hover:text-white">✕</button>
+					<div class="absolute left-3 top-2.5 text-[#A19A8F]">
+						@IconSearch("w-4 h-4")
+					</div>
+					<button x-show="$store.drive.searchQuery" @click="$store.drive.clearSearch()" class="absolute right-3 top-2.5 text-[#A19A8F] hover:text-white">
+						@IconX("w-4 h-4")
+					</button>
 				</div>
 			</div>
 
@@ -110,7 +114,7 @@ templ Layout(title string) {
 					class="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#0F0E0D] hover:bg-[#201E1B] text-[#A19A8F] hover:text-[#FACC15] border border-[#2A2723] text-xs font-mono transition-colors"
 					title="Kembali ke Beranda"
 				>
-					<span>🏠</span>
+					@IconHome("w-4 h-4")
 					<span>Beranda</span>
 				</a>
 
@@ -158,14 +162,16 @@ templ Layout(title string) {
 								class="hornetz-btn py-3 px-3 rounded-lg flex items-center justify-center gap-1.5 text-xs shadow-md font-bold"
 								title="Unggah satu atau banyak berkas"
 							>
-								<span class="text-base">+</span> Berkas
+								@IconUploadCloud("w-4 h-4")
+								<span>Berkas</span>
 							</button>
 							<button 
 								@click="$refs.folderInput.click()" 
 								class="bg-[#171614] border border-[#2A2723] hover:border-[#FACC15] text-white hover:text-[#FACC15] py-3 px-3 rounded-lg flex items-center justify-center gap-1.5 text-xs font-bold transition-colors shadow-md"
 								title="Unggah satu folder beserta seluruh isinya"
 							>
-								<span class="text-base">📁</span> Folder
+								@IconFolderPlus("w-4 h-4")
+								<span>Folder</span>
 							</button>
 						</div>
 						<!-- Hidden Real File Inputs -->
@@ -196,7 +202,8 @@ templ Layout(title string) {
 							:class="$store.drive.activeTab === 'storage' ? 'bg-[#FACC15]/10 text-[#FACC15] border-l-4 border-[#FACC15] font-bold' : 'text-[#A19A8F] hover:text-white hover:bg-[#201E1B]'" 
 							class="w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-r-lg transition-colors"
 						>
-							<span class="text-base">📁</span> Penyimpanan Saya
+							@IconHardDrive("w-4 h-4")
+							<span>Penyimpanan Saya</span>
 						</button>
 
 						<button 
@@ -205,7 +212,8 @@ templ Layout(title string) {
 							class="w-full text-left flex items-center justify-between px-3 py-2.5 rounded-r-lg transition-colors"
 						>
 							<span class="flex items-center gap-3">
-								<span class="text-base">🛡️</span> Vault Terenkripsi
+								@IconShieldCheck("w-4 h-4")
+								<span>Vault Terenkripsi</span>
 							</span>
 							<span class="text-[10px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded font-mono font-semibold">AKTIF</span>
 						</button>
@@ -215,7 +223,8 @@ templ Layout(title string) {
 							:class="$store.drive.activeTab === 'recent' ? 'bg-[#FACC15]/10 text-[#FACC15] border-l-4 border-[#FACC15] font-bold' : 'text-[#A19A8F] hover:text-white hover:bg-[#201E1B]'" 
 							class="w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-r-lg transition-colors"
 						>
-							<span class="text-base">⚡</span> Berkas Terbaru
+							@IconClock("w-4 h-4")
+							<span>Berkas Terbaru</span>
 						</button>
 
 						<button 
@@ -223,7 +232,8 @@ templ Layout(title string) {
 							:class="$store.drive.activeTab === 'starred' ? 'bg-[#FACC15]/10 text-[#FACC15] border-l-4 border-[#FACC15] font-bold' : 'text-[#A19A8F] hover:text-white hover:bg-[#201E1B]'" 
 							class="w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-r-lg transition-colors"
 						>
-							<span class="text-base">⭐</span> Berbintang
+							@IconStar("w-4 h-4", false)
+							<span>Berbintang</span>
 						</button>
 
 						<button 
@@ -231,7 +241,8 @@ templ Layout(title string) {
 							:class="$store.drive.activeTab === 'trash' ? 'bg-[#FACC15]/10 text-[#FACC15] border-l-4 border-[#FACC15] font-bold' : 'text-[#A19A8F] hover:text-white hover:bg-[#201E1B]'" 
 							class="w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-r-lg transition-colors"
 						>
-							<span class="text-base">🗑️</span> Sampah
+							@IconTrash("w-4 h-4")
+							<span>Sampah</span>
 						</button>
 					</nav>
 				</div>
@@ -241,7 +252,10 @@ templ Layout(title string) {
 					<!-- Vault Key Status Card -->
 					<div class="bg-[#0F0E0D] border border-[#2A2723] p-3 rounded-lg text-xs font-mono space-y-2">
 						<div class="flex justify-between items-center text-[11px]">
-							<span class="text-[#FACC15] font-bold">🛡️ Swarm Vault</span>
+							<span class="text-[#FACC15] font-bold flex items-center gap-1.5">
+								@IconShield("w-3.5 h-3.5")
+								<span>Swarm Vault</span>
+							</span>
 							<span class="text-emerald-400 font-semibold">Argon2id + AES</span>
 						</div>
 						<div class="text-[10px] text-[#A19A8F] space-y-1">
@@ -255,7 +269,8 @@ templ Layout(title string) {
 						@click="$store.drive.triggerPanicPurge()" 
 						class="w-full bg-red-500/10 hover:bg-red-600 text-red-400 hover:text-white border border-red-500/30 text-xs font-semibold py-2 px-3 rounded-lg transition-colors flex items-center justify-center gap-2"
 					>
-						🚨 Emergency Panic Purge
+						@IconFlame("w-4 h-4")
+						<span>Emergency Panic Purge</span>
 					</button>
 
 					<!-- Storage Progress Bar -->
@@ -290,7 +305,12 @@ templ Layout(title string) {
 		>
 			<div class="flex justify-between items-center text-xs font-bold text-white">
 				<span class="flex items-center gap-2">
-					<span :class="$store.drive.uploadProgress === 100 ? 'text-emerald-400' : 'animate-spin text-[#FACC15]'" x-text="$store.drive.uploadProgress === 100 ? '✅' : '⏳'"></span> 
+					<span x-show="$store.drive.uploadProgress === 100" class="text-emerald-400">
+						@IconCheck("w-4 h-4")
+					</span>
+					<span x-show="$store.drive.uploadProgress !== 100" class="animate-spin text-[#FACC15]">
+						@IconLoader("w-4 h-4")
+					</span>
 					<span class="truncate max-w-[150px]" x-text="$store.drive.uploadFileName">Mengunggah...</span>
 				</span>
 				<span class="text-[#FACC15] font-mono" x-text="$store.drive.uploadProgress + '%'">0%</span>
@@ -317,8 +337,8 @@ templ Layout(title string) {
 				class="bg-[#171614] border-2 border-[#FACC15] w-full max-w-sm rounded-2xl p-6 shadow-2xl space-y-6"
 			>
 				<div class="text-center space-y-2">
-					<div class="w-16 h-16 mx-auto bg-[#FACC15]/10 border border-[#FACC15]/40 rounded-full flex items-center justify-center text-4xl text-[#FACC15]">
-						🛡️
+					<div class="w-16 h-16 mx-auto bg-[#FACC15]/10 border border-[#FACC15]/40 rounded-full flex items-center justify-center text-[#FACC15]">
+						@IconLock("w-8 h-8")
 					</div>
 					<h3 class="font-bold text-lg text-white">Buka Vault Terenkripsi</h3>
 					<p class="text-xs text-[#A19A8F]">Masukkan kata sandi master untuk mengakses berkas rahasia.</p>
@@ -364,8 +384,8 @@ templ Layout(title string) {
 				class="bg-[#171614] border-2 border-[#FACC15] w-full max-w-sm rounded-2xl p-6 shadow-2xl space-y-6"
 			>
 				<div class="text-center space-y-2">
-					<div class="w-16 h-16 mx-auto bg-[#FACC15]/10 border border-[#FACC15]/40 rounded-full flex items-center justify-center text-4xl text-[#FACC15]">
-						📁
+					<div class="w-16 h-16 mx-auto bg-[#FACC15]/10 border border-[#FACC15]/40 rounded-full flex items-center justify-center text-[#FACC15]">
+						@IconFolderPlus("w-8 h-8")
 					</div>
 					<h3 class="font-bold text-lg text-white">Buat Folder Baru</h3>
 					<p class="text-xs text-[#A19A8F]">Masukkan nama folder untuk mengelompokkan berkas Anda.</p>
@@ -411,8 +431,8 @@ templ Layout(title string) {
 				class="bg-[#171614] border-2 border-red-500 w-full max-w-sm rounded-2xl p-6 shadow-2xl space-y-6"
 			>
 				<div class="text-center space-y-2">
-					<div class="w-16 h-16 mx-auto bg-red-500/10 border border-red-500/40 rounded-full flex items-center justify-center text-4xl text-red-500 animate-pulse">
-						🚨
+					<div class="w-16 h-16 mx-auto bg-red-500/10 border border-red-500/40 rounded-full flex items-center justify-center text-red-500 animate-pulse">
+						@IconAlertTriangle("w-8 h-8")
 					</div>
 					<h3 class="font-bold text-lg text-white">Konfirmasi Panic Purge</h3>
 					<p class="text-xs text-red-400">PERINGATAN: Seluruh berkas di CAS dan database akan dimusnahkan seketika. Masukkan kata sandi master untuk konfirmasi.</p>
@@ -453,8 +473,8 @@ templ Layout(title string) {
 			x-transition 
 			class="fixed inset-0 bg-black/85 backdrop-blur-sm border-4 border-dashed border-[#FACC15] flex flex-col items-center justify-center z-50 pointer-events-none space-y-4"
 		>
-			<div class="w-20 h-20 rounded-2xl bg-[#FACC15]/20 border border-[#FACC15] flex items-center justify-center text-4xl text-[#FACC15] animate-bounce">
-				📥
+			<div class="w-20 h-20 rounded-2xl bg-[#FACC15]/20 border border-[#FACC15] flex items-center justify-center text-[#FACC15] animate-bounce">
+				@IconUploadCloud("w-10 h-10")
 			</div>
 			<div class="text-center space-y-1">
 				<h2 class="text-xl font-extrabold text-white">Lepaskan Berkas untuk Mengunggah</h2>
@@ -860,7 +880,7 @@ templ Layout(title string) {
 							const file = dt.files[i];
 							// Reject folder placeholders (0-byte file without extension and empty MIME)
 							if (file.size === 0 && !file.type && !file.name.includes('.')) {
-								alert(`⚠️ "${file.name}" terdeteksi sebagai folder. Silakan gunakan tombol "📁 Folder" untuk mengunggah folder beserta isinya.`);
+								alert(`"${file.name}" terdeteksi sebagai folder. Silakan gunakan tombol "Folder" untuk mengunggah folder beserta isinya.`);
 								continue;
 							}
 							file.targetFolderId = targetFolderId;
@@ -1097,7 +1117,7 @@ templ Layout(title string) {
 						this.uploadProgress = 0;
 						this.currentSpeedText = 'Gagal';
 						this.uploadStatusText = 'Status: Gagal';
-						alert("❌ Gagal mengunggah berkas: " + err.message);
+						alert("Gagal mengunggah berkas: " + err.message);
 					}
 				},
 
@@ -1211,7 +1231,7 @@ templ Layout(title string) {
 						const data = await res.json().catch(() => ({}));
 						this.showPurgeConfirmModal = false;
 						this.purgePassword = '';
-						alert("💀 PANIC PURGE SUKSES EXECUTED!\n\n- Status: " + (data.status || 'purged') + "\n- Pesan: " + (data.message || ''));
+						alert("PANIC PURGE BERHASIL DIEKSEKUSI!\n\n- Status: " + (data.status || 'purged') + "\n- Pesan: " + (data.message || ''));
 						this.fetchFiles();
 						this.fetchFolders();
 						this.fetchStorageStats();
@@ -1324,6 +1344,23 @@ templ Layout(title string) {
 					} catch(e) {
 						alert("Gagal mengubah nama berkas: " + e.message);
 					}
+				},
+
+				getFileIconSvg(icon, extraClass = 'w-6 h-6') {
+					const cls = extraClass;
+					const icons = {
+						'file-text': '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"></path><path d="M14 2v4a2 2 0 0 0 2 2h4"></path><path d="M10 9H8"></path><path d="M16 13H8"></path><path d="M16 17H8"></path>',
+						'key': '<circle cx="7.5" cy="15.5" r="5.5"></circle><path d="m21 2-9.6 9.6"></path><path d="m15.5 7.5 3 3L22 7l-3-3"></path>',
+						'archive': '<rect width="20" height="5" x="2" y="3" rx="1"></rect><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"></path><path d="M10 12h4"></path>',
+						'image': '<rect width="18" height="18" x="3" y="3" rx="2" ry="2"></rect><circle cx="9" cy="9" r="2"></circle><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"></path>',
+						'video': '<path d="m22 8-6 4 6 4V8Z"></path><rect width="14" height="12" x="2" y="6" rx="2" ry="2"></rect>',
+						'music': '<path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle>',
+						'code': '<polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline>',
+						'bar-chart-2': '<line x1="18" x2="18" y1="20" y2="10"></line><line x1="12" x2="12" y1="20" y2="4"></line><line x1="6" x2="6" y1="20" y2="14"></line>',
+						'file': '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"></path><path d="M14 2v4a2 2 0 0 0 2 2h4"></path>'
+					};
+					const body = icons[icon] || icons['file'];
+					return `<svg class="${cls}" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${body}</svg>`;
 				}
 			});
 		});
