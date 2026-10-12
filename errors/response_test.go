@@ -213,4 +213,7 @@ func TestResponse_HTMLContentNegotiation(t *testing.T) {
 	if !strings.Contains(body, "req-html-777") {
 		t.Errorf("expected request id in HTML output, got: %s", body)
 	}
+	if !strings.Contains(body, "Plus Jakarta Sans") {
+		t.Errorf("expected Plus Jakarta Sans font in HTML error output, got: %s", body)
+	}
 }

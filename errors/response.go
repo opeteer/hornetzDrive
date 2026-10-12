@@ -172,13 +172,16 @@ var defaultHTMLErrorTemplate = template.Must(template.New("error").Parse(`<!DOCT
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{{.Status}} - {{.Title}}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #0f172a; color: #f8fafc; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 1.5rem; }
+    body { font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #f8fafc; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 1.5rem; }
     .card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 2.5rem; max-width: 520px; width: 100%; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5); }
     .badge { display: inline-block; font-size: 0.875rem; font-weight: 700; padding: 0.25rem 0.75rem; border-radius: 9999px; background: #ef4444; color: #ffffff; text-transform: uppercase; margin-bottom: 1rem; }
     h1 { font-size: 1.75rem; margin: 0 0 0.5rem 0; font-weight: 700; }
     p { color: #94a3b8; font-size: 1rem; line-height: 1.5; margin: 0 0 1.5rem 0; }
-    .req-id { font-size: 0.75rem; color: #64748b; background: #0f172a; padding: 0.5rem 0.75rem; border-radius: 6px; font-family: monospace; word-break: break-all; margin-bottom: 1.5rem; }
+    .req-id { font-size: 0.75rem; color: #64748b; background: #0f172a; padding: 0.5rem 0.75rem; border-radius: 6px; font-family: 'JetBrains Mono', monospace; word-break: break-all; margin-bottom: 1.5rem; }
     .btn { display: inline-block; background: #3b82f6; color: white; padding: 0.625rem 1.25rem; border-radius: 6px; font-weight: 600; text-decoration: none; transition: background 0.15s ease-in-out; }
     .btn:hover { background: #2563eb; }
   </style>
