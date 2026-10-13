@@ -343,7 +343,7 @@ templ Layout(title string) {
 					<div class="bg-[#2E3137]/30 border border-[#3F4247]/50 p-3 rounded-xl text-xs space-y-2 backdrop-blur-md shadow-sm">
 						<div class="flex justify-between items-center text-[11px]">
 							<span class="text-[#86898B]">Penyimpanan</span>
-							<span class="text-[#F5CE0D] font-bold font-mono" x-text="`${$store.drive.storageUsedText} / ${$store.drive.storageQuotaText}`">0 B / 2 TB</span>
+							<span class="text-[#F5CE0D] font-bold font-mono" x-text="`${$store.drive.storageUsedText} / ${$store.drive.storageQuotaText}`">0 B / -</span>
 						</div>
 						<div class="w-full h-1.5 bg-black/40 rounded-full overflow-hidden border border-white/[0.04]">
 							<div 
@@ -581,7 +581,7 @@ templ Layout(title string) {
 				dragCounter: 0,
 				storageUsedBytes: 0,
 				storageUsedText: '0 B',
-				storageQuotaText: '2 TB',
+				storageQuotaText: '-',
 				storagePercent: 0,
 				currentSpeedText: 'Idle',
 				isTransferring: false,

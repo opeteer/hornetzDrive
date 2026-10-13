@@ -118,3 +118,19 @@ func (c *CASEngine) MoveToCAS(tempPath string) (string, error) {
 	return hash, err
 }
 
+// TotalCapacity returns the total filesystem capacity in bytes for the CAS storage directory.
+// If the base directory does not exist or querying fails, it falls back to the parent directory or working directory.
+func (c *CASEngine) TotalCapacity() (int64, error) {
+	dir := c.BaseDir
+	if dir == "" {
+		dir = "."
+	}
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		dir = filepath.Dir(dir)
+		if _, err := os.Stat(dir); os.IsNotExist(err) {
+			dir = "."
+		}
+	}
+	return GetTotalDiskCapacity(dir)
+}
+

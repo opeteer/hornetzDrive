@@ -195,11 +195,57 @@ func TestFileController_GetStorageStats(t *testing.T) {
 	if stats.FileCount != 3 {
 		t.Fatalf("Expected 3 files when unauthenticated, got %d", stats.FileCount)
 	}
-	if stats.QuotaFormatted != "2 TB" {
-		t.Fatalf("Expected quota_formatted '2 TB', got %s", stats.QuotaFormatted)
+	if stats.QuotaBytes <= 0 {
+		t.Fatalf("Expected quota_bytes > 0, got %d", stats.QuotaBytes)
+	}
+	if stats.QuotaFormatted != formatBytes(stats.QuotaBytes) {
+		t.Fatalf("Expected quota_formatted '%s', got %s", formatBytes(stats.QuotaBytes), stats.QuotaFormatted)
 	}
 	if stats.PercentUsed <= 0 || stats.PercentUsed > 100 {
 		t.Fatalf("Invalid percent_used: %f", stats.PercentUsed)
+	}
+
+	// Test manual QuotaBytes override
+	fileCtrl.QuotaBytes = 500 * 1024 * 1024 * 1024 // 500 GB
+	overrideReq := httptest.NewRequest(http.MethodGet, "/api/storage/stats", nil)
+	overrideRec := httptest.NewRecorder()
+	overrideC := e.NewContext(overrideReq, overrideRec)
+	if err := fileCtrl.GetStorageStats(overrideC); err != nil {
+		t.Fatalf("GetStorageStats with override error: %v", err)
+	}
+	var overrideStats StorageStats
+	if err := json.Unmarshal(overrideRec.Body.Bytes(), &overrideStats); err != nil {
+		t.Fatalf("Failed to unmarshal storage stats: %v", err)
+	}
+	if overrideStats.QuotaBytes != 500*1024*1024*1024 {
+		t.Fatalf("Expected QuotaBytes 500GB, got %d", overrideStats.QuotaBytes)
+	}
+	if overrideStats.QuotaFormatted != "500.0 GB" {
+		t.Fatalf("Expected QuotaFormatted '500.0 GB', got %s", overrideStats.QuotaFormatted)
+	}
+	fileCtrl.QuotaBytes = 0 // reset override
+
+	// Test dynamic capacity against actual host storage path
+	prodCas, err := storage.NewCASEngine("storage/cas")
+	if err == nil {
+		prodCtrl := &FileController{
+			DB:  dbEngine,
+			CAS: prodCas,
+		}
+		prodReq := httptest.NewRequest(http.MethodGet, "/api/storage/stats", nil)
+		prodRec := httptest.NewRecorder()
+		prodC := e.NewContext(prodReq, prodRec)
+		if err := prodCtrl.GetStorageStats(prodC); err != nil {
+			t.Fatalf("GetStorageStats for prodCas error: %v", err)
+		}
+		var prodStats StorageStats
+		if err := json.Unmarshal(prodRec.Body.Bytes(), &prodStats); err != nil {
+			t.Fatalf("Failed to unmarshal prod storage stats: %v", err)
+		}
+		t.Logf("Host storage capacity: %d bytes (%s)", prodStats.QuotaBytes, prodStats.QuotaFormatted)
+		if prodStats.QuotaFormatted == "2 TB" {
+			t.Fatalf("Storage stats should not report hardcoded 2 TB")
+		}
 	}
 
 	// Authenticated request with session key should include vault files

@@ -25,22 +25,24 @@ import (
 
 // AppConfig defines the type-safe environment configuration schema for Hornetz Drive.
 type AppConfig struct {
-	Port     string `env:"PORT" envDefault:"8071"`
-	DBDriver string `env:"DB_DRIVER" envDefault:"sqlite3"`
-	DBDSN    string `env:"DB_DSN" envDefault:"file:hornetz.db?cache=shared&mode=rwc&_journal_mode=WAL&_foreign_keys=on"`
-	CASDir   string `env:"CAS_DIR" envDefault:"storage/cas"`
-	TmpDir   string `env:"TMP_DIR" envDefault:"storage/tmp"`
+	Port         string `env:"PORT" envDefault:"8071"`
+	DBDriver     string `env:"DB_DRIVER" envDefault:"sqlite3"`
+	DBDSN        string `env:"DB_DSN" envDefault:"file:hornetz.db?cache=shared&mode=rwc&_journal_mode=WAL&_foreign_keys=on"`
+	CASDir       string `env:"CAS_DIR" envDefault:"storage/cas"`
+	TmpDir       string `env:"TMP_DIR" envDefault:"storage/tmp"`
+	StorageQuota int64  `env:"STORAGE_QUOTA" envDefault:"0"`
 }
 
 func main() {
 	appCfg, err := ztatic.LoadConfig[AppConfig]()
 	if err != nil {
 		appCfg = &AppConfig{
-			Port:     "8071",
-			DBDriver: "sqlite3",
-			DBDSN:    "file:hornetz.db?cache=shared&mode=rwc&_journal_mode=WAL&_foreign_keys=on",
-			CASDir:   "storage/cas",
-			TmpDir:   "storage/tmp",
+			Port:         "8071",
+			DBDriver:     "sqlite3",
+			DBDSN:        "file:hornetz.db?cache=shared&mode=rwc&_journal_mode=WAL&_foreign_keys=on",
+			CASDir:       "storage/cas",
+			TmpDir:       "storage/tmp",
+			StorageQuota: 0,
 		}
 	}
 
@@ -98,8 +100,9 @@ func main() {
 	}
 
 	fileCtrl := &controllers.FileController{
-		DB:  dbEngine,
-		CAS: casEngine,
+		DB:         dbEngine,
+		CAS:        casEngine,
+		QuotaBytes: appCfg.StorageQuota,
 	}
 	fileCtrl.SeedInitialData()
 

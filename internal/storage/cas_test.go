@@ -94,3 +94,29 @@ func TestCASEngine_ExistsDoesNotCreateDirectories(t *testing.T) {
 		t.Fatalf("c.Exists() created directory %s on disk!", expectedSubdir)
 	}
 }
+
+func TestCASEngine_TotalCapacity(t *testing.T) {
+	tempDir := t.TempDir()
+	cas, err := NewCASEngine(tempDir)
+	if err != nil {
+		t.Fatalf("Failed to init CAS: %v", err)
+	}
+
+	capBytes, err := cas.TotalCapacity()
+	if err != nil {
+		t.Fatalf("TotalCapacity failed: %v", err)
+	}
+	if capBytes <= 0 {
+		t.Fatalf("Expected TotalCapacity > 0, got %d", capBytes)
+	}
+
+	// Test fallback when BaseDir does not exist yet
+	nonExistentCas := &CASEngine{BaseDir: filepath.Join(tempDir, "non_existent_subdir")}
+	capFallback, err := nonExistentCas.TotalCapacity()
+	if err != nil {
+		t.Fatalf("TotalCapacity with non-existent dir failed: %v", err)
+	}
+	if capFallback <= 0 {
+		t.Fatalf("Expected fallback TotalCapacity > 0, got %d", capFallback)
+	}
+}

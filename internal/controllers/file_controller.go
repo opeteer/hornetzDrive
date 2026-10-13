@@ -22,9 +22,10 @@ import (
 )
 
 type FileController struct {
-	DB       *data.DBEngine
-	CAS      *storage.CASEngine
-	seedOnce sync.Once
+	DB         *data.DBEngine
+	CAS        *storage.CASEngine
+	QuotaBytes int64
+	seedOnce   sync.Once
 }
 
 type FileRecord struct {
@@ -707,19 +708,38 @@ func (fc *FileController) GetStorageStats(c *echo.Context) error {
 	activeUsed := activeBytes.Int64
 	trashedUsed := trashBytes.Int64
 	totalPhysicalUsed := activeUsed + trashedUsed
-	const quotaBytes int64 = 2 * 1024 * 1024 * 1024 * 1024 // 2 TB
-	percent := (float64(totalPhysicalUsed) / float64(quotaBytes)) * 100
+	quotaBytes := fc.getQuotaBytes()
+	var percent float64
+	if quotaBytes > 0 {
+		percent = (float64(totalPhysicalUsed) / float64(quotaBytes)) * 100
+	}
 
 	return c.JSON(http.StatusOK, StorageStats{
 		UsedBytes:      totalPhysicalUsed,
 		QuotaBytes:     quotaBytes,
 		UsedFormatted:  formatBytes(totalPhysicalUsed),
-		QuotaFormatted: "2 TB",
+		QuotaFormatted: formatBytes(quotaBytes),
 		PercentUsed:    percent,
 		FileCount:      activeCount,
 		TrashBytes:     trashedUsed,
 		TrashFormatted: formatBytes(trashedUsed),
 	})
+}
+
+func (fc *FileController) getQuotaBytes() int64 {
+	if fc.QuotaBytes > 0 {
+		return fc.QuotaBytes
+	}
+	if fc.CAS != nil {
+		if total, err := fc.CAS.TotalCapacity(); err == nil && total > 0 {
+			return total
+		}
+	}
+	if total, err := storage.GetTotalDiskCapacity("."); err == nil && total > 0 {
+		return total
+	}
+	// Fallback to 500 GB if filesystem capacity cannot be queried
+	return 500 * 1024 * 1024 * 1024
 }
 
 func formatBytes(b int64) string {

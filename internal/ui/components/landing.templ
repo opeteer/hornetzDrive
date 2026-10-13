@@ -962,7 +962,7 @@ templ LandingPage(c *echo.Context) {
 							<div class="flex flex-wrap items-center justify-center gap-4">
 								<div class="bg-[#121519] border border-[#3F4247]/50 px-5 py-3 rounded-xl text-center font-mono">
 									<div class="text-[10px] text-[#86898B]">KAPASITAS KUOTA</div>
-									<div class="text-white font-bold text-base mt-0.5" x-text="liveStats.quotaFormatted || '2 TB'">2 TB</div>
+									<div class="text-white font-bold text-base mt-0.5" x-text="liveStats.quota_formatted || liveStats.quotaFormatted || '-'">-</div>
 								</div>
 								<div class="bg-[#121519] border border-[#3F4247]/50 px-5 py-3 rounded-xl text-center font-mono">
 									<div class="text-[10px] text-[#86898B]">BERKAS TERINDEKS</div>
@@ -1323,7 +1323,7 @@ templ LandingPage(c *echo.Context) {
 			return {
 				mobileNavOpen: false,
 				copiedQuickstart: false,
-				serverStatusText: 'Online (2 TB)',
+				serverStatusText: 'Online',
 				simulatedSpeed: '84.2 MB/s',
 				simulatedRatio: '68.4%',
 				
@@ -1352,9 +1352,11 @@ templ LandingPage(c *echo.Context) {
 
 				// Section 6: Telemetry
 				liveStats: {
-					quotaFormatted: '2 TB',
+					quota_formatted: '-',
+					quotaFormatted: '-',
+					file_count: 14,
 					fileCount: 14,
-					usedFormatted: '1.2 GB'
+					used_formatted: '0 B'
 				},
 				pingLatency: null,
 				isPinging: false,
@@ -1481,7 +1483,7 @@ templ LandingPage(c *echo.Context) {
 						if (res.ok) {
 							const data = await res.json();
 							this.liveStats = data;
-							this.serverStatusText = 'Online (' + (data.quota_formatted || '2 TB') + ')';
+							this.serverStatusText = data.quota_formatted ? ('Online (' + data.quota_formatted + ')') : 'Online';
 						}
 					} catch (e) {
 						// Server telemetry offline / static fallback
