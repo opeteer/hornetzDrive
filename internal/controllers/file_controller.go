@@ -473,6 +473,12 @@ func (fc *FileController) DownloadFile(c *echo.Context) error {
 		return echo.NewHTTPError(http.StatusNotFound, "File not found")
 	}
 
+	var createdAtStr sql.NullString
+	_ = fc.DB.SQL.QueryRow(fc.DB.Rebind("SELECT created_at FROM files WHERE id = ?"), id).Scan(&createdAtStr)
+	if createdAtStr.Valid {
+		f.CreatedAt = createdAtStr.String
+	}
+
 	// Protect confidential Vault files: require active unlocked vault session
 	if fc.IsVaultFolder(f.FolderID) {
 		if !fc.isVaultUnlocked(c) {
@@ -485,7 +491,44 @@ func (fc *FileController) DownloadFile(c *echo.Context) error {
 	safeName = strings.ReplaceAll(safeName, "\r", "")
 	safeName = strings.ReplaceAll(safeName, "\n", "")
 
+	etag := fmt.Sprintf("\"%s\"", f.CasHash)
+	c.Response().Header().Set("ETag", etag)
 	c.Response().Header().Set("Accept-Ranges", "bytes")
+
+	var lastModTime time.Time
+	if f.CreatedAt != "" {
+		if t, err := time.Parse(time.RFC3339, f.CreatedAt); err == nil {
+			lastModTime = t
+		} else if t, err := time.Parse("2006-01-02 15:04:05", f.CreatedAt); err == nil {
+			lastModTime = t
+		} else if t, err := time.Parse("2006-01-02T15:04:05Z", f.CreatedAt); err == nil {
+			lastModTime = t
+		}
+	}
+	if !lastModTime.IsZero() {
+		c.Response().Header().Set("Last-Modified", lastModTime.UTC().Format(http.TimeFormat))
+	}
+
+	// RFC 7233 If-Range validation: only evaluate Range if validator matches
+	rangeHeader := c.Request().Header.Get("Range")
+	ifRange := c.Request().Header.Get("If-Range")
+	rangeAllowed := true
+	if rangeHeader != "" && ifRange != "" {
+		if strings.HasPrefix(ifRange, "\"") || strings.HasPrefix(ifRange, "W/\"") {
+			cleanIfRange := strings.TrimPrefix(ifRange, "W/")
+			if cleanIfRange != etag {
+				rangeAllowed = false
+			}
+		} else if !lastModTime.IsZero() {
+			if t, err := http.ParseTime(ifRange); err == nil {
+				if !lastModTime.Truncate(time.Second).Equal(t) {
+					rangeAllowed = false
+				}
+			} else {
+				rangeAllowed = false
+			}
+		}
+	}
 
 	var file *os.File
 	if fc.CAS != nil {
@@ -501,7 +544,7 @@ func (fc *FileController) DownloadFile(c *echo.Context) error {
 		c.Response().Header().Set("Content-Type", "text/plain; charset=utf-8")
 		c.Response().Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", safeName))
 
-		if rangeHeader := c.Request().Header.Get("Range"); rangeHeader != "" {
+		if rangeHeader != "" && rangeAllowed {
 			start, end, satisfiable, isRange := parseRangeHeader(rangeHeader, totalSize)
 			if isRange {
 				if !satisfiable {
@@ -544,7 +587,7 @@ func (fc *FileController) DownloadFile(c *echo.Context) error {
 	c.Response().Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", safeName))
 
 	// RFC 7233 Range request handling for decrypted stream
-	if rangeHeader := c.Request().Header.Get("Range"); rangeHeader != "" {
+	if rangeHeader != "" && rangeAllowed {
 		start, end, satisfiable, isRange := parseRangeHeader(rangeHeader, f.Size)
 		if isRange {
 			if !satisfiable {

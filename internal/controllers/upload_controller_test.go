@@ -676,6 +676,211 @@ func TestUploadController_ZeroByteDirectory_Rejected(t *testing.T) {
 	}
 }
 
+func TestUploadController_ResumeHalfUploadedSession(t *testing.T) {
+	e, ctrl := setupUploadTest(t)
+
+	// 1. First init session for a 20-byte file
+	body1 := []byte(`{"filename":"resume_me.bin","mime_type":"application/octet-stream","size":20,"folder_id":"root"}`)
+	req1 := httptest.NewRequest(http.MethodPost, "/upload/init", bytes.NewReader(body1))
+	req1.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec1 := httptest.NewRecorder()
+	c1 := e.NewContext(req1, rec1)
+
+	if err := ctrl.InitSession(c1); err != nil {
+		t.Fatalf("InitSession 1 error: %v", err)
+	}
+	if rec1.Code != http.StatusCreated {
+		t.Fatalf("Expected 201 Created, got %d", rec1.Code)
+	}
+	var res1 map[string]interface{}
+	json.Unmarshal(rec1.Body.Bytes(), &res1)
+	sessID := res1["session_id"].(string)
+
+	// 2. Upload chunk of 10 bytes (half-uploaded) with Content-Range
+	chunk1 := []byte("0123456789")
+	reqChunk1 := httptest.NewRequest(http.MethodPut, "/upload/"+sessID, bytes.NewReader(chunk1))
+	reqChunk1.Header.Set("Content-Range", "bytes 0-9/20")
+	recChunk1 := httptest.NewRecorder()
+	cChunk1 := e.NewContext(reqChunk1, recChunk1)
+	cChunk1.SetPathValues(echo.PathValues{{Name: "session_id", Value: sessID}})
+
+	if err := ctrl.UploadChunk(cChunk1); err != nil {
+		t.Fatalf("UploadChunk 1 error: %v", err)
+	}
+	if recChunk1.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK for chunk 1, got %d", recChunk1.Code)
+	}
+
+	// 3. User attempts to upload the same file again (e.g. after network drop / reconnect)
+	req2 := httptest.NewRequest(http.MethodPost, "/upload/init", bytes.NewReader(body1))
+	req2.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec2 := httptest.NewRecorder()
+	c2 := e.NewContext(req2, rec2)
+
+	if err := ctrl.InitSession(c2); err != nil {
+		t.Fatalf("InitSession 2 error: %v", err)
+	}
+
+	// Should return HTTP 200 with resumed=true and uploaded=10
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("Expected HTTP 200 for resuming half-uploaded session, got %d: %s", rec2.Code, rec2.Body.String())
+	}
+	var res2 map[string]interface{}
+	json.Unmarshal(rec2.Body.Bytes(), &res2)
+	if res2["resumed"] != true {
+		t.Fatalf("Expected resumed to be true, got %v", res2["resumed"])
+	}
+	if int64(res2["uploaded"].(float64)) != 10 {
+		t.Fatalf("Expected uploaded to be 10, got %v", res2["uploaded"])
+	}
+	if res2["session_id"] != sessID {
+		t.Fatalf("Expected matching session_id %s, got %v", sessID, res2["session_id"])
+	}
+
+	// 4. Client completes the remaining 10 bytes starting from byte 10
+	chunk2 := []byte("ABCDEFGHIJ")
+	reqChunk2 := httptest.NewRequest(http.MethodPut, "/upload/"+sessID, bytes.NewReader(chunk2))
+	reqChunk2.Header.Set("Content-Range", "bytes 10-19/20")
+	recChunk2 := httptest.NewRecorder()
+	cChunk2 := e.NewContext(reqChunk2, recChunk2)
+	cChunk2.SetPathValues(echo.PathValues{{Name: "session_id", Value: sessID}})
+
+	if err := ctrl.UploadChunk(cChunk2); err != nil {
+		t.Fatalf("UploadChunk 2 error: %v", err)
+	}
+	if recChunk2.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK on completion, got %d: %s", recChunk2.Code, recChunk2.Body.String())
+	}
+	var resChunk2 map[string]interface{}
+	json.Unmarshal(recChunk2.Body.Bytes(), &resChunk2)
+	if resChunk2["status"] != "completed" {
+		t.Fatalf("Expected completed status, got %v", resChunk2["status"])
+	}
+}
+
+func TestUploadController_DuplicateChunkProtection(t *testing.T) {
+	e, ctrl := setupUploadTest(t)
+
+	sess, err := ctrl.SessionMgr.CreateSession(1, "root", "dup_test.bin", "application/octet-stream", 30)
+	if err != nil {
+		t.Fatalf("CreateSession failed: %v", err)
+	}
+
+	// 1. Send first chunk 0-9
+	chunk := []byte("0123456789")
+	req1 := httptest.NewRequest(http.MethodPut, "/upload/"+sess.ID, bytes.NewReader(chunk))
+	req1.Header.Set("Content-Range", "bytes 0-9/30")
+	rec1 := httptest.NewRecorder()
+	c1 := e.NewContext(req1, rec1)
+	c1.SetPathValues(echo.PathValues{{Name: "session_id", Value: sess.ID}})
+
+	if err := ctrl.UploadChunk(c1); err != nil {
+		t.Fatalf("UploadChunk 1 error: %v", err)
+	}
+	if rec1.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK, got %d", rec1.Code)
+	}
+
+	// Get temp file size after chunk 1
+	info1, err := os.Stat(sess.TempFilePath)
+	if err != nil {
+		t.Fatalf("Stat temp file failed: %v", err)
+	}
+	fileSizeAfterChunk1 := info1.Size()
+
+	// 2. Re-send exact same chunk 0-9 (simulating network retry where client missed response)
+	reqDup := httptest.NewRequest(http.MethodPut, "/upload/"+sess.ID, bytes.NewReader(chunk))
+	reqDup.Header.Set("Content-Range", "bytes 0-9/30")
+	recDup := httptest.NewRecorder()
+	cDup := e.NewContext(reqDup, recDup)
+	cDup.SetPathValues(echo.PathValues{{Name: "session_id", Value: sess.ID}})
+
+	if err := ctrl.UploadChunk(cDup); err != nil {
+		t.Fatalf("UploadChunk duplicate error: %v", err)
+	}
+	if recDup.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK for duplicate chunk, got %d", recDup.Code)
+	}
+
+	// Verify temp file size did NOT grow (duplicate bytes avoided!)
+	info2, _ := os.Stat(sess.TempFilePath)
+	if info2.Size() != fileSizeAfterChunk1 {
+		t.Fatalf("Duplicate chunk was appended to file! Expected size %d, got %d", fileSizeAfterChunk1, info2.Size())
+	}
+	if sess.UploadedSize != 10 {
+		t.Fatalf("Expected UploadedSize to remain 10, got %d", sess.UploadedSize)
+	}
+}
+
+func TestUploadController_ContentRangeMismatch(t *testing.T) {
+	e, ctrl := setupUploadTest(t)
+
+	sess, err := ctrl.SessionMgr.CreateSession(1, "root", "mismatch.bin", "application/octet-stream", 50)
+	if err != nil {
+		t.Fatalf("CreateSession failed: %v", err)
+	}
+
+	// Send chunk starting at byte 20 when server is at byte 0
+	chunk := []byte("0123456789")
+	req := httptest.NewRequest(http.MethodPut, "/upload/"+sess.ID, bytes.NewReader(chunk))
+	req.Header.Set("Content-Range", "bytes 20-29/50")
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetPathValues(echo.PathValues{{Name: "session_id", Value: sess.ID}})
+
+	errChunk := ctrl.UploadChunk(c)
+	if errChunk != nil {
+		// Could be an error or HTTP status
+	}
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("Expected HTTP 409 Conflict for offset mismatch, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestUploadController_AlreadyCompletedFile_InstantCompleted(t *testing.T) {
+	e, ctrl := setupUploadTest(t)
+
+	dbEngine, err := data.NewDBEngine("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to create memory DB: %v", err)
+	}
+	defer dbEngine.Close()
+
+	_, _ = dbEngine.SQL.Exec(`
+		CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT, password_hash TEXT, salt BLOB, encrypted_vault_key BLOB);
+		CREATE TABLE folders (id TEXT PRIMARY KEY, owner_id INTEGER, parent_id TEXT, name TEXT);
+		CREATE TABLE files (id TEXT PRIMARY KEY, owner_id INTEGER, folder_id TEXT, name TEXT, mime_type TEXT, size BIGINT, cas_hash TEXT, is_deleted BOOLEAN DEFAULT FALSE);
+		INSERT INTO files (id, owner_id, folder_id, name, mime_type, size, cas_hash, is_deleted) VALUES 
+			('done_file_1', 1, 'f1', 'already_done.pdf', 'application/pdf', 1048576, 'dummy_cas_done', FALSE);
+	`)
+	ctrl.DB = dbEngine
+
+	body := []byte(`{"filename":"already_done.pdf","mime_type":"application/pdf","size":1048576,"folder_id":"f1"}`)
+	req := httptest.NewRequest(http.MethodPost, "/upload/init", bytes.NewReader(body))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := ctrl.InitSession(c); err != nil {
+		t.Fatalf("InitSession error: %v", err)
+	}
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Expected HTTP 200 OK for already completed file, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var res map[string]interface{}
+	json.Unmarshal(rec.Body.Bytes(), &res)
+	if res["status"] != "completed" {
+		t.Fatalf("Expected status 'completed', got %v", res["status"])
+	}
+	if res["file_id"] != "done_file_1" {
+		t.Fatalf("Expected file_id 'done_file_1', got %v", res["file_id"])
+	}
+}
+
+
+
 
 
 

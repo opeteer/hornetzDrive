@@ -12,6 +12,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -24,6 +26,31 @@ import (
 	"ztatic-go-framework/internal/upload"
 	"ztatic-go-framework/realtime"
 )
+
+func parseContentRangeHeader(header string) (start int64, end int64, total int64, hasRange bool) {
+	if header == "" || !strings.HasPrefix(header, "bytes ") {
+		return 0, 0, 0, false
+	}
+	spec := strings.TrimPrefix(header, "bytes ")
+	parts := strings.Split(spec, "/")
+	if len(parts) != 2 {
+		return 0, 0, 0, false
+	}
+	rangeParts := strings.Split(parts[0], "-")
+	if len(rangeParts) != 2 {
+		return 0, 0, 0, false
+	}
+	s, err1 := strconv.ParseInt(rangeParts[0], 10, 64)
+	e, err2 := strconv.ParseInt(rangeParts[1], 10, 64)
+	if err1 != nil || err2 != nil || s < 0 || e < s {
+		return 0, 0, 0, false
+	}
+	var t int64 = -1
+	if parts[1] != "*" {
+		t, _ = strconv.ParseInt(parts[1], 10, 64)
+	}
+	return s, e, t, true
+}
 
 type UploadController struct {
 	SessionMgr        *upload.SessionManager
@@ -193,6 +220,44 @@ func (uc *UploadController) InitSession(c *echo.Context) error {
 		}
 	}
 
+	// Check if an identical file is already completely stored in this folder
+	if req.Size > 0 && uc.DB != nil && uc.DB.SQL != nil {
+		var existingFileID, existingCas string
+		var queryCheck string
+		var row *sql.Row
+		if folderID == "" {
+			queryCheck = uc.DB.Rebind("SELECT id, cas_hash FROM files WHERE owner_id = 1 AND (folder_id IS NULL OR folder_id = '' OR folder_id = 'root') AND name = ? AND size = ? AND (is_deleted = FALSE OR is_deleted = 0) LIMIT 1")
+			row = uc.DB.SQL.QueryRow(queryCheck, cleanFilename, req.Size)
+		} else {
+			queryCheck = uc.DB.Rebind("SELECT id, cas_hash FROM files WHERE owner_id = 1 AND folder_id = ? AND name = ? AND size = ? AND (is_deleted = FALSE OR is_deleted = 0) LIMIT 1")
+			row = uc.DB.SQL.QueryRow(queryCheck, folderID, cleanFilename, req.Size)
+		}
+		if err := row.Scan(&existingFileID, &existingCas); err == nil && existingFileID != "" && existingCas != "" {
+			return c.JSON(http.StatusOK, map[string]interface{}{
+				"status":   "completed",
+				"message":  "file already exists in folder",
+				"cas_hash": existingCas,
+				"file_id":  existingFileID,
+			})
+		}
+	}
+
+	// Check if a half-uploaded session for this file already exists in this folder
+	if existingSess, found := uc.SessionMgr.FindActiveSession(1, folderID, cleanFilename, req.Size); found {
+		if existingSess.UploadedSize > 0 {
+			existingSess.LastActiveAt = time.Now()
+			_ = uc.SessionMgr.PersistSession(existingSess)
+			c.Response().Header().Set("Location", "/upload/"+existingSess.ID)
+			return c.JSON(http.StatusOK, map[string]interface{}{
+				"session_id": existingSess.ID,
+				"chunk_size": 1024 * 1024 * 2,
+				"uploaded":   existingSess.UploadedSize,
+				"status":     "incomplete",
+				"resumed":    true,
+			})
+		}
+	}
+
 	sess, err := uc.SessionMgr.CreateSession(1, folderID, cleanFilename, req.MimeType, req.Size)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to initiate upload")
@@ -215,6 +280,27 @@ func (uc *UploadController) UploadChunk(c *echo.Context) error {
 
 	sess.Mu.Lock()
 	defer sess.Mu.Unlock()
+
+	// Content-Range validation & duplicate chunk protection (for resumability and network error retries)
+	contentRange := c.Request().Header.Get("Content-Range")
+	if crStart, crEnd, _, hasRange := parseContentRangeHeader(contentRange); hasRange {
+		// If client retried a chunk that was already completely written to disk:
+		if crEnd < sess.UploadedSize {
+			return c.JSON(http.StatusOK, map[string]interface{}{
+				"status":   "incomplete",
+				"uploaded": sess.UploadedSize,
+				"message":  "chunk already processed",
+			})
+		}
+		// If chunk offset does not match current server offset:
+		if crStart != sess.UploadedSize {
+			return c.JSON(http.StatusConflict, map[string]interface{}{
+				"error":           "offset mismatch",
+				"uploaded":        sess.UploadedSize,
+				"expected_offset": sess.UploadedSize,
+			})
+		}
+	}
 
 	f, err := os.OpenFile(sess.TempFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
@@ -296,6 +382,7 @@ func (uc *UploadController) UploadChunk(c *echo.Context) error {
 
 	sess.UploadedSize += written
 	sess.LastActiveAt = time.Now()
+	_ = uc.SessionMgr.PersistSession(sess)
 
 	// BUG-SYS-50: Explicitly flush and close temp file descriptor before completion and CAS move
 	_ = bufWriter.Flush()

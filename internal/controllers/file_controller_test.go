@@ -1275,6 +1275,72 @@ func TestSearch_VaultIsolation(t *testing.T) {
 	}
 }
 
+func TestFileController_ResumableDownloadWithETagAndIfRange(t *testing.T) {
+	e := echo.New()
+	dbEngine, err := data.NewDBEngine("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to create memory DB: %v", err)
+	}
+	defer dbEngine.Close()
+
+	_, _ = dbEngine.SQL.Exec(`
+		CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT NOT NULL, password_hash TEXT, salt BLOB, encrypted_vault_key BLOB);
+		CREATE TABLE folders (id TEXT PRIMARY KEY, owner_id INTEGER, parent_id TEXT, name TEXT);
+		CREATE TABLE files (id TEXT PRIMARY KEY, owner_id INTEGER, folder_id TEXT, name TEXT, mime_type TEXT, size BIGINT, cas_hash TEXT, is_deleted BOOLEAN DEFAULT FALSE, created_at DATETIME DEFAULT '2026-05-01 12:00:00');
+		INSERT INTO files (id, owner_id, folder_id, name, mime_type, size, cas_hash, is_deleted) VALUES 
+			('resume_doc', 1, 'f1', 'rfc_test.txt', 'text/plain', 50, 'cas_etag_123', FALSE);
+	`)
+
+	fileCtrl := &FileController{DB: dbEngine}
+	e.GET("/api/files/:id/download", fileCtrl.DownloadFile)
+
+	// 1. Initial request: check for Accept-Ranges, ETag, and Last-Modified
+	req1 := httptest.NewRequest(http.MethodGet, "/api/files/resume_doc/download", nil)
+	rec1 := httptest.NewRecorder()
+	e.ServeHTTP(rec1, req1)
+
+	if rec1.Code != http.StatusOK {
+		t.Fatalf("Expected HTTP 200, got %d", rec1.Code)
+	}
+	etag := rec1.Header().Get("ETag")
+	if etag != `"cas_etag_123"` {
+		t.Fatalf("Expected ETag \"cas_etag_123\", got %q", etag)
+	}
+	if rec1.Header().Get("Accept-Ranges") != "bytes" {
+		t.Fatalf("Expected Accept-Ranges: bytes, got %q", rec1.Header().Get("Accept-Ranges"))
+	}
+	if rec1.Header().Get("Last-Modified") == "" {
+		t.Fatalf("Expected Last-Modified header to be set")
+	}
+
+	// 2. Resumed download: Range bytes=10-25 with matching If-Range
+	req2 := httptest.NewRequest(http.MethodGet, "/api/files/resume_doc/download", nil)
+	req2.Header.Set("Range", "bytes=10-25")
+	req2.Header.Set("If-Range", etag)
+	rec2 := httptest.NewRecorder()
+	e.ServeHTTP(rec2, req2)
+
+	if rec2.Code != http.StatusPartialContent {
+		t.Fatalf("Expected HTTP 206 Partial Content for matching If-Range, got %d", rec2.Code)
+	}
+	if rec2.Header().Get("Content-Range") == "" {
+		t.Fatalf("Expected Content-Range header in 206 response")
+	}
+
+	// 3. Resumed download: Range bytes=10-25 with MISMATCHING If-Range
+	// Per RFC 7233: when validator does not match, server MUST ignore Range and return 200 OK with full representation
+	req3 := httptest.NewRequest(http.MethodGet, "/api/files/resume_doc/download", nil)
+	req3.Header.Set("Range", "bytes=10-25")
+	req3.Header.Set("If-Range", `"different_stale_etag"`)
+	rec3 := httptest.NewRecorder()
+	e.ServeHTTP(rec3, req3)
+
+	if rec3.Code != http.StatusOK {
+		t.Fatalf("Expected HTTP 200 OK for mismatched If-Range (RFC 7233), got %d", rec3.Code)
+	}
+}
+
+
 
 
 

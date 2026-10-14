@@ -1196,6 +1196,19 @@ templ Layout(title string) {
 					}
 				},
 
+				waitForOnline() {
+					if (typeof navigator === 'undefined' || !('onLine' in navigator) || navigator.onLine) {
+						return Promise.resolve();
+					}
+					return new Promise(resolve => {
+						const handler = () => {
+							window.removeEventListener('online', handler);
+							resolve();
+						};
+						window.addEventListener('online', handler);
+					});
+				},
+
 				async executeUpload(file) {
 					if (!file) return;
 
@@ -1257,67 +1270,132 @@ templ Layout(title string) {
 						}
 
 						const sessionId = initData.session_id;
-						this.uploadStatusText = 'Status: Mengunggah';
+						let offset = (typeof initData.uploaded === 'number') ? initData.uploaded : 0;
+						const totalSize = file.size;
+
+						if (offset > 0) {
+							const resumedPct = Math.min(Math.round((offset / Math.max(totalSize, 1)) * 90) + 5, 95);
+							this.uploadProgress = resumedPct;
+							this.uploadStatusText = `Status: Melanjutkan Unggahan (${Math.round((offset / Math.max(totalSize, 1)) * 100)}%)`;
+						} else {
+							this.uploadStatusText = 'Status: Mengunggah';
+						}
 
 						// Chunked upload: 2MB chunks to stay well below 50MB RouteLimit
 						const chunkSize = 2 * 1024 * 1024;
-						let offset = 0;
-						const totalSize = file.size;
 
 						while (offset < totalSize || totalSize === 0) {
 							const end = Math.min(offset + chunkSize, totalSize);
 							const chunk = file.slice(offset, end);
 							const currentOffset = offset;
 
-							await new Promise((resolve, reject) => {
-								const xhr = new XMLHttpRequest();
-								xhr.open("PUT", `/upload/${sessionId}`);
-								xhr.setRequestHeader("X-CSRF-Token", this.getCsrfToken());
-								xhr.setRequestHeader("Content-Type", "application/octet-stream");
-								xhr.setRequestHeader("Content-Range", `bytes ${currentOffset}-${end > 0 ? end - 1 : 0}/${totalSize}`);
+							let chunkSuccess = false;
+							let retryCount = 0;
+							const maxRetries = 8;
 
-								let lastLoaded = 0;
-								let lastTime = performance.now();
-
-								xhr.upload.onprogress = (event) => {
-									if (event.lengthComputable && event.total > 0) {
-										const now = performance.now();
-										const timeDiff = (now - lastTime) / 1000;
-										if (timeDiff >= 0.25) {
-											const bytesDiff = event.loaded - lastLoaded;
-											const speedMBps = ((bytesDiff / (1024 * 1024)) / timeDiff).toFixed(1);
-											this.currentSpeedText = `${speedMBps} MB/s`;
-											lastLoaded = event.loaded;
-											lastTime = now;
-										}
-										const loadedTotal = currentOffset + event.loaded;
-										const streamPercent = 5 + Math.round((loadedTotal / Math.max(totalSize, 1)) * 90);
-										this.uploadProgress = Math.max(this.uploadProgress, Math.min(streamPercent, 95));
+							while (!chunkSuccess) {
+								try {
+									if (typeof navigator !== 'undefined' && 'onLine' in navigator && !navigator.onLine) {
+										this.uploadStatusText = 'Status: Jaringan Terputus, Menunggu Koneksi...';
+										this.currentSpeedText = 'Terputus';
+										await this.waitForOnline();
 									}
-								};
 
-								xhr.onload = () => {
-									if (xhr.status >= 200 && xhr.status < 300) {
-										resolve(xhr.response);
-									} else {
-										let errMsg = `Gagal mengunggah payload berkas (Status HTTP ${xhr.status})`;
+									if (retryCount > 0) {
+										this.uploadStatusText = `Status: Menghubungkan Kembali (${retryCount}/${maxRetries})...`;
 										try {
-											const errJson = JSON.parse(xhr.responseText);
-											if (errJson.message) {
-												errMsg = errJson.message;
-											} else if (errJson.error && typeof errJson.error === 'object' && errJson.error.message) {
-												errMsg = errJson.error.message;
-											} else if (typeof errJson.error === 'string') {
-												errMsg = errJson.error;
+											const checkRes = await fetch(`/upload/${sessionId}`, {
+												headers: { 'X-CSRF-Token': this.getCsrfToken() }
+											});
+											if (checkRes.ok) {
+												const checkData = await checkRes.json();
+												if (checkData.status === 'completed') {
+													offset = totalSize;
+													chunkSuccess = true;
+													break;
+												}
+												if (typeof checkData.uploaded === 'number' && checkData.uploaded !== currentOffset) {
+													offset = checkData.uploaded;
+													break;
+												}
 											}
-										} catch(e) {}
-										reject(new Error(errMsg));
+										} catch(checkErr) {}
 									}
-								};
 
-								xhr.onerror = () => reject(new Error("Network transfer error during upload"));
-								xhr.send(chunk);
-							});
+									await new Promise((resolve, reject) => {
+										const xhr = new XMLHttpRequest();
+										xhr.open("PUT", `/upload/${sessionId}`);
+										xhr.setRequestHeader("X-CSRF-Token", this.getCsrfToken());
+										xhr.setRequestHeader("Content-Type", "application/octet-stream");
+										xhr.setRequestHeader("Content-Range", `bytes ${currentOffset}-${end > 0 ? end - 1 : 0}/${totalSize}`);
+										xhr.timeout = 60000;
+
+										let lastLoaded = 0;
+										let lastTime = performance.now();
+
+										xhr.upload.onprogress = (event) => {
+											if (event.lengthComputable && event.total > 0) {
+												const now = performance.now();
+												const timeDiff = (now - lastTime) / 1000;
+												if (timeDiff >= 0.25) {
+													const bytesDiff = event.loaded - lastLoaded;
+													const speedMBps = ((bytesDiff / (1024 * 1024)) / timeDiff).toFixed(1);
+													this.currentSpeedText = `${speedMBps} MB/s`;
+													lastLoaded = event.loaded;
+													lastTime = now;
+												}
+												const loadedTotal = currentOffset + event.loaded;
+												const streamPercent = 5 + Math.round((loadedTotal / Math.max(totalSize, 1)) * 90);
+												this.uploadProgress = Math.max(this.uploadProgress, Math.min(streamPercent, 95));
+											}
+										};
+
+										xhr.onload = () => {
+											if (xhr.status >= 200 && xhr.status < 300) {
+												resolve(xhr.response);
+											} else if (xhr.status === 409) {
+												try {
+													const errJson = JSON.parse(xhr.responseText);
+													if (typeof errJson.expected_offset === 'number') {
+														offset = errJson.expected_offset;
+														resolve(xhr.response);
+														return;
+													}
+												} catch(e) {}
+												reject(new Error("Offset mismatch (HTTP 409)"));
+											} else {
+												let errMsg = `Gagal mengunggah payload berkas (Status HTTP ${xhr.status})`;
+												try {
+													const errJson = JSON.parse(xhr.responseText);
+													if (errJson.message) {
+														errMsg = errJson.message;
+													} else if (errJson.error && typeof errJson.error === 'object' && errJson.error.message) {
+														errMsg = errJson.error.message;
+													} else if (typeof errJson.error === 'string') {
+														errMsg = errJson.error;
+													}
+												} catch(e) {}
+												reject(new Error(errMsg));
+											}
+										};
+
+										xhr.onerror = () => reject(new Error("Network transfer error during upload"));
+										xhr.ontimeout = () => reject(new Error("Network timeout during upload"));
+										xhr.send(chunk);
+									});
+
+									chunkSuccess = true;
+								} catch (chunkErr) {
+									retryCount++;
+									if (retryCount >= maxRetries) {
+										throw new Error(`Koneksi terputus berulang kali setelah ${maxRetries} percobaan: ${chunkErr.message}`);
+									}
+									const backoff = Math.min(1000 * Math.pow(1.5, retryCount), 10000);
+									this.uploadStatusText = `Status: Gangguan Jaringan, mencoba lagi dlm ${(backoff / 1000).toFixed(0)}s (${retryCount}/${maxRetries})...`;
+									this.currentSpeedText = 'Mencoba lagi...';
+									await new Promise(r => setTimeout(r, backoff));
+								}
+							}
 
 							offset = end;
 							if (totalSize === 0) break;
@@ -1420,6 +1498,8 @@ templ Layout(title string) {
 
 				downloadFile(file) {
 					if (!file) return;
+					this.isTransferring = true;
+					this.currentSpeedText = 'Mengunduh...';
 					const a = document.createElement('a');
 					a.href = `/api/files/${file.id}/download`;
 					a.download = file.name || '';
@@ -1427,6 +1507,10 @@ templ Layout(title string) {
 					a.click();
 					a.remove();
 					this.selectedFile = null;
+					setTimeout(() => {
+						this.isTransferring = false;
+						this.currentSpeedText = 'Idle';
+					}, 2500);
 				},
 
 				triggerPanicPurge() {
