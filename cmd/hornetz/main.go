@@ -16,6 +16,7 @@ import (
 	"ztatic-go-framework/fullstack"
 	"ztatic-go-framework/internal/auth"
 	"ztatic-go-framework/internal/controllers"
+	"ztatic-go-framework/internal/download"
 	"ztatic-go-framework/internal/storage"
 	"ztatic-go-framework/internal/ui/components"
 	"ztatic-go-framework/internal/upload"
@@ -138,6 +139,23 @@ func main() {
 	app.POST("/api/files/:id/star", fileCtrl.StarFile)
 	app.POST("/api/vault/lock", auth.LockVault)
 
+	downloadMgr, err := download.NewDownloadManager(casEngine, dbEngine, broker, appCfg.TmpDir, appCfg.StorageQuota)
+	if err != nil {
+		log.Error("Failed to init Download Manager", "error", err)
+		return
+	}
+
+	downloadCtrl := &controllers.DownloadController{
+		Manager: downloadMgr,
+		DB:      dbEngine,
+		CAS:     casEngine,
+	}
+
+	app.POST("/api/downloads", downloadCtrl.StartDownload)
+	app.GET("/api/downloads/:id", downloadCtrl.GetDownloadStatus)
+	app.DELETE("/api/downloads/:id", downloadCtrl.CancelDownload)
+	app.POST("/api/downloads/parse", downloadCtrl.ParseLink)
+
 	uploadCtrl := &controllers.UploadController{
 		SessionMgr: sessionMgr,
 		CAS:        casEngine,
@@ -168,6 +186,7 @@ func main() {
 			sessionMgr.CleanupStaleSessions(24 * time.Hour)
 			auth.GlobalSessionStore.CleanupStaleKeys()
 			uploadCtrl.PruneCompletedSessions(5 * time.Minute)
+			downloadMgr.PruneOldTasks(1 * time.Hour)
 		}
 	}()
 

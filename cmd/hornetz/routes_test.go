@@ -117,6 +117,18 @@ func TestRoutes_DashboardApp(t *testing.T) {
 	if !strings.Contains(body, `:title="file.name"`) {
 		t.Errorf("Expected ':title=\"file.name\"' on file card titles")
 	}
+	if !strings.Contains(body, "isDownloadLink") {
+		t.Errorf("Expected 'isDownloadLink' check in /app dashboard search bar")
+	}
+	if !strings.Contains(body, "startDownloadFromLink") {
+		t.Errorf("Expected 'startDownloadFromLink' method in /app dashboard store")
+	}
+	if !strings.Contains(body, "Tautan Unduhan Terdeteksi") {
+		t.Errorf("Expected 'Tautan Unduhan Terdeteksi' card in live search dropdown")
+	}
+	if !strings.Contains(body, "Torrent Magnet") {
+		t.Errorf("Expected 'Torrent Magnet' badge in live search dropdown")
+	}
 }
 
 func TestRoutes_GzipCompression(t *testing.T) {
