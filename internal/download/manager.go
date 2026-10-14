@@ -188,7 +188,23 @@ func (dm *DownloadManager) executeDownload(ctx context.Context, task *DownloadTa
 	hasher := sha256.New()
 	multiDest := io.MultiWriter(encStream, hasher)
 
+	currentUsed := dm.getUserStorageUsed(task.OwnerID)
+	if dm.QuotaBytes > 0 && currentUsed >= dm.QuotaBytes {
+		dm.failTask(task, "Kapasitas penyimpanan terlampaui (Storage quota exceeded)")
+		return
+	}
+
 	onProgress := func(downloaded int64, total int64, speed string) {
+		if dm.QuotaBytes > 0 && (currentUsed+downloaded) > dm.QuotaBytes {
+			task.Mu.Lock()
+			if task.CancelFunc != nil {
+				task.CancelFunc()
+			}
+			task.Mu.Unlock()
+			dm.failTask(task, "Kapasitas penyimpanan terlampaui (Storage quota exceeded)")
+			return
+		}
+
 		task.Mu.Lock()
 		task.DownloadedBytes = downloaded
 		task.TotalBytes = total
@@ -359,16 +375,33 @@ func (dm *DownloadManager) CancelTask(id string) bool {
 	if val, ok := dm.tasks.Load(id); ok {
 		if t, ok := val.(*DownloadTask); ok {
 			t.Mu.Lock()
+			if t.Status == StatusCompleted {
+				t.Mu.Unlock()
+				return false
+			}
 			if t.CancelFunc != nil {
 				t.CancelFunc()
 			}
 			t.Status = StatusCancelled
 			t.StatusText = "Dibatalkan"
+			t.SpeedText = "Dibatalkan"
+			t.Progress = 0
+			t.CompletedAt = time.Now()
 			t.Mu.Unlock()
 			return true
 		}
 	}
 	return false
+}
+
+func (dm *DownloadManager) getUserStorageUsed(ownerID int) int64 {
+	if dm.DB == nil || dm.DB.SQL == nil {
+		return 0
+	}
+	var used int64
+	query := dm.DB.Rebind("SELECT COALESCE(SUM(size), 0) FROM files WHERE owner_id = ? AND is_deleted = 0")
+	_ = dm.DB.SQL.QueryRow(query, ownerID).Scan(&used)
+	return used
 }
 
 // ListTasks returns all tasks for an owner.

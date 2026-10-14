@@ -14,11 +14,12 @@ func IsDownloadLink(link string) bool {
 	}
 
 	norm := NormalizeLink(trimmed)
-	if strings.HasPrefix(norm, "http://") || strings.HasPrefix(norm, "https://") {
+	lower := strings.ToLower(norm)
+	if strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://") {
 		return len(norm) > 8 && !strings.ContainsAny(norm, " \t\r\n")
 	}
-	if strings.HasPrefix(norm, "magnet:?") {
-		return len(norm) > 8 && strings.Contains(norm, "xt=urn:btih:")
+	if strings.HasPrefix(lower, "magnet:?") {
+		return len(norm) > 8 && strings.Contains(lower, "xt=urn:btih:")
 	}
 	return false
 }
@@ -31,10 +32,11 @@ func DetectLinkType(link string) (DownloadType, error) {
 	}
 
 	norm := NormalizeLink(trimmed)
-	if strings.HasPrefix(norm, "http://") || strings.HasPrefix(norm, "https://") {
+	lower := strings.ToLower(norm)
+	if strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://") {
 		return DownloadTypeDirect, nil
 	}
-	if strings.HasPrefix(norm, "magnet:?") {
+	if strings.HasPrefix(lower, "magnet:?") {
 		return DownloadTypeMagnet, nil
 	}
 	return "", errors.New("unsupported download link protocol: must start with http://, https://, or magnet:?")
@@ -64,5 +66,5 @@ func CleanFilename(name string, fallback string) string {
 		}
 		return "downloaded_file"
 	}
-	return clean
+	return trimmed
 }

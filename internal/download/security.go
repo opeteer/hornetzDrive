@@ -11,6 +11,9 @@ import (
 // AllowPrivateNetworks is a flag to allow loopback and private IP addresses (mainly for test suites).
 var AllowPrivateNetworks = false
 
+// lookupIP resolves hostnames to IPs; overridable in tests to operate offline/in sandboxes.
+var lookupIP = net.LookupIP
+
 var privateCIDRs []*net.IPNet
 
 func init() {
@@ -78,6 +81,16 @@ func ValidateSafeURL(rawURL string, allowPrivate bool) (*url.URL, error) {
 	if ip != nil {
 		if IsPrivateIP(ip) {
 			return nil, fmt.Errorf("access to private IP address %s is prohibited", hostname)
+		}
+	} else {
+		ips, err := lookupIP(hostname)
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve host %s: %w", hostname, err)
+		}
+		for _, resolvedIP := range ips {
+			if IsPrivateIP(resolvedIP) {
+				return nil, fmt.Errorf("host %s resolves to private IP address %s", hostname, resolvedIP.String())
+			}
 		}
 	}
 

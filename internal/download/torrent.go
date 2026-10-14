@@ -85,8 +85,20 @@ func (tc *TorrentClient) DownloadTorrent(ctx context.Context, info *MagnetInfo, 
 	}
 
 	// If no peers or web seeds succeeded
-	if len(info.WebSeeds) == 0 && len(info.Trackers) == 0 {
-		return errors.New("magnet link contains neither web seeds nor reachable trackers")
+	if len(peers) == 0 {
+		var hasUDP bool
+		for _, tr := range info.Trackers {
+			if strings.HasPrefix(tr, "udp://") {
+				hasUDP = true
+				break
+			}
+		}
+		if hasUDP && len(info.WebSeeds) == 0 {
+			return fmt.Errorf("magnet link only contains UDP trackers (udp://); no reachable HTTP trackers or web seeds found for %s", info.HexHash[:8])
+		}
+		if len(info.WebSeeds) == 0 && len(info.Trackers) == 0 {
+			return errors.New("magnet link contains neither web seeds nor reachable trackers")
+		}
 	}
 
 	return fmt.Errorf("unable to establish peer connections or retrieve metadata for info_hash %s (all peers timed out)", info.HexHash[:8])
@@ -268,6 +280,17 @@ func (tc *TorrentClient) downloadFromPeer(ctx context.Context, peerAddr string, 
 	var downloaded int64
 	total := info.ExactLength
 
+	sendRequest := func(index uint32, begin uint32, length uint32) error {
+		reqMsg := make([]byte, 17)
+		binary.BigEndian.PutUint32(reqMsg[0:4], 13) // length prefix = 13 bytes
+		reqMsg[4] = 6                               // Message ID: Request
+		binary.BigEndian.PutUint32(reqMsg[5:9], index)
+		binary.BigEndian.PutUint32(reqMsg[9:13], begin)
+		binary.BigEndian.PutUint32(reqMsg[13:17], length)
+		_, err := conn.Write(reqMsg)
+		return err
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -298,7 +321,12 @@ func (tc *TorrentClient) downloadFromPeer(ctx context.Context, peerAddr string, 
 		msgID := msgData[0]
 		switch msgID {
 		case 1:
-			// Unchoke - peer is ready for requests!
+			// Unchoke - peer is ready for requests! Send initial 16KB block request
+			initSize := uint32(16384)
+			if total > 0 && int64(initSize) > total {
+				initSize = uint32(total)
+			}
+			_ = sendRequest(0, 0, initSize)
 		case 7:
 			// Piece payload: index(4) + begin(4) + block data
 			if len(msgData) > 9 {
@@ -316,6 +344,17 @@ func (tc *TorrentClient) downloadFromPeer(ctx context.Context, peerAddr string, 
 						speed = fmt.Sprintf("%.1f MB/s", mbps)
 					}
 					onProgress(downloaded, total, speed)
+				}
+
+				// Request next sequential block
+				if total == 0 || downloaded < total {
+					nextBlockSize := uint32(16384)
+					if total > 0 && (total-downloaded) < int64(nextBlockSize) {
+						nextBlockSize = uint32(total - downloaded)
+					}
+					pieceIndex := uint32(downloaded / (256 * 1024))
+					pieceBegin := uint32(downloaded % (256 * 1024))
+					_ = sendRequest(pieceIndex, pieceBegin, nextBlockSize)
 				}
 			}
 		}

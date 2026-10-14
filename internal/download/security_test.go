@@ -1,6 +1,7 @@
 package download
 
 import (
+	"net"
 	"testing"
 )
 
@@ -9,6 +10,19 @@ func TestValidateSafeURL_SSRF(t *testing.T) {
 	orig := AllowPrivateNetworks
 	AllowPrivateNetworks = false
 	defer func() { AllowPrivateNetworks = orig }()
+
+	origLookup := lookupIP
+	lookupIP = func(host string) ([]net.IP, error) {
+		switch host {
+		case "releases.ubuntu.com":
+			return []net.IP{net.ParseIP("185.125.190.40")}, nil
+		case "rebind.internal.test":
+			return []net.IP{net.ParseIP("192.168.1.50")}, nil
+		default:
+			return net.LookupIP(host)
+		}
+	}
+	defer func() { lookupIP = origLookup }()
 
 	tests := []struct {
 		name    string
@@ -22,6 +36,7 @@ func TestValidateSafeURL_SSRF(t *testing.T) {
 		{"Class B Private 172.16.x", "http://172.16.0.1/admin", true},
 		{"Class C Private 192.168.x", "http://192.168.1.1/backup.tar", true},
 		{"AWS Metadata endpoint", "http://169.254.169.254/latest/meta-data/", true},
+		{"DNS Rebinding to Private IP", "http://rebind.internal.test/secret.txt", true},
 		{"Public domain", "https://releases.ubuntu.com/24.04/ubuntu.iso", false},
 		{"Public IP", "http://93.184.216.34/index.html", false},
 	}

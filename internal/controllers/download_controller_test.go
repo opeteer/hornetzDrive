@@ -129,7 +129,7 @@ func TestDownloadController_StartDownload_Direct(t *testing.T) {
 }
 
 func TestDownloadController_StartDownload_Magnet(t *testing.T) {
-	e, _, fs := setupDownloadControllerTest(t)
+	e, ctrl, fs := setupDownloadControllerTest(t)
 	defer fs.Close()
 
 	magURI := "magnet:?xt=urn:btih:da39a3ee5e6b4b0d3255bfef95601890afd80709&dn=sample.iso&ws=" + fs.URL + "/sample.iso"
@@ -146,6 +146,19 @@ func TestDownloadController_StartDownload_Magnet(t *testing.T) {
 
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("Expected HTTP 202, got %d", rec.Code)
+	}
+
+	var res download.DownloadTask
+	json.Unmarshal(rec.Body.Bytes(), &res)
+	if res.ID != "" {
+		deadline := time.Now().Add(3 * time.Second)
+		for time.Now().Before(deadline) {
+			tSnap, found := ctrl.Manager.GetTask(res.ID)
+			if found && (tSnap.Status == download.StatusCompleted || tSnap.Status == download.StatusFailed || tSnap.Status == download.StatusCancelled) {
+				break
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
 	}
 }
 
@@ -169,7 +182,7 @@ func TestDownloadController_StartDownload_InvalidLink(t *testing.T) {
 }
 
 func TestDownloadController_VaultProtection(t *testing.T) {
-	e, _, fs := setupDownloadControllerTest(t)
+	e, ctrl, fs := setupDownloadControllerTest(t)
 	defer fs.Close()
 
 	payload := map[string]string{
@@ -200,6 +213,19 @@ func TestDownloadController_VaultProtection(t *testing.T) {
 
 	if rec2.Code != http.StatusAccepted {
 		t.Errorf("Expected 202 Accepted, got %d", rec2.Code)
+	}
+
+	var res download.DownloadTask
+	json.Unmarshal(rec2.Body.Bytes(), &res)
+	if res.ID != "" {
+		deadline := time.Now().Add(3 * time.Second)
+		for time.Now().Before(deadline) {
+			tSnap, found := ctrl.Manager.GetTask(res.ID)
+			if found && (tSnap.Status == download.StatusCompleted || tSnap.Status == download.StatusFailed || tSnap.Status == download.StatusCancelled) {
+				break
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
 	}
 }
 
@@ -276,7 +302,7 @@ func TestDownloadController_StartDownload_WithFilenameOverride(t *testing.T) {
 }
 
 func TestDownloadController_StartBatchDownload(t *testing.T) {
-	e, _, fs := setupDownloadControllerTest(t)
+	e, ctrl, fs := setupDownloadControllerTest(t)
 	defer fs.Close()
 
 	payload := map[string]interface{}{
@@ -302,6 +328,23 @@ func TestDownloadController_StartBatchDownload(t *testing.T) {
 
 	if res.Count != 2 || len(res.Tasks) != 2 {
 		t.Errorf("Expected 2 batch tasks, got count=%d, len=%d", res.Count, len(res.Tasks))
+	}
+
+	// Wait for batch tasks to finish to prevent goroutines from writing to t.TempDir() after test completes
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		allDone := true
+		for _, task := range res.Tasks {
+			tSnap, found := ctrl.Manager.GetTask(task.ID)
+			if found && tSnap.Status != download.StatusCompleted && tSnap.Status != download.StatusFailed && tSnap.Status != download.StatusCancelled {
+				allDone = false
+				break
+			}
+		}
+		if allDone {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
 }
 

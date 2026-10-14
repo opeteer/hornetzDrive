@@ -75,8 +75,9 @@ func decodeString(r *bufio.Reader) (string, error) {
 	}
 
 	strLen, err := strconv.ParseInt(string(lenBuf), 10, 64)
-	if err != nil || strLen < 0 {
-		return "", errors.New("bencode: invalid string length")
+	const maxBencodeStringLen = 10 * 1024 * 1024 // 10MB sanity ceiling
+	if err != nil || strLen < 0 || strLen > maxBencodeStringLen {
+		return "", errors.New("bencode: invalid or excessive string length")
 	}
 
 	buf := make([]byte, strLen)

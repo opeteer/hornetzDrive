@@ -550,23 +550,40 @@ templ Layout(title string) {
 			class="fixed bottom-6 right-6 bg-[#121519]/90 backdrop-blur-2xl border border-[#3F4247]/60 p-4 rounded-2xl shadow-2xl z-50 w-80 space-y-2"
 		>
 			<div class="flex justify-between items-center text-xs font-bold text-white">
-				<span class="flex items-center gap-2">
-					<span x-show="$store.drive.uploadProgress === 100" class="text-emerald-400">
+				<span class="flex items-center gap-2 min-w-0">
+					<span x-show="$store.drive.uploadStatusText && $store.drive.uploadStatusText.includes('Gagal')" class="text-rose-400 shrink-0">
+						@IconAlertTriangle("w-4 h-4")
+					</span>
+					<span x-show="!($store.drive.uploadStatusText && $store.drive.uploadStatusText.includes('Gagal')) && $store.drive.uploadProgress === 100" class="text-emerald-400 shrink-0">
 						@IconCheck("w-4 h-4")
 					</span>
-					<span x-show="$store.drive.uploadProgress !== 100" class="animate-spin text-[#F5CE0D]">
+					<span x-show="!($store.drive.uploadStatusText && $store.drive.uploadStatusText.includes('Gagal')) && $store.drive.uploadProgress !== 100" class="animate-spin text-[#F5CE0D] shrink-0">
 						@IconLoader("w-4 h-4")
 					</span>
 					<span class="truncate max-w-[150px]" x-text="$store.drive.uploadFileName">Mengunggah...</span>
 				</span>
-				<span class="text-[#F5CE0D] font-mono" x-text="$store.drive.uploadProgress + '%'">0%</span>
+				<div class="flex items-center gap-2 shrink-0">
+					<span class="text-[#F5CE0D] font-mono" x-text="$store.drive.uploadProgress + '%'">0%</span>
+					<button 
+						type="button" 
+						@click="$store.drive.isUploading = false"
+						class="text-[#86898B] hover:text-white p-0.5 cursor-pointer"
+						title="Tutup Notifikasi"
+					>
+						@IconX("w-3.5 h-3.5")
+					</button>
+				</div>
 			</div>
 			<div class="w-full h-2 bg-black/40 rounded-full overflow-hidden border border-[#3F4247]/50">
-				<div class="h-full bg-gradient-to-r from-[#F5CE0D] to-[#DDAC0D] transition-all duration-150" :style="`width: ${$store.drive.uploadProgress}%`"></div>
+				<div 
+					class="h-full transition-all duration-150" 
+					:class="($store.drive.uploadStatusText && $store.drive.uploadStatusText.includes('Gagal')) ? 'bg-gradient-to-r from-rose-500 to-amber-600' : 'bg-gradient-to-r from-[#F5CE0D] to-[#DDAC0D]'"
+					:style="`width: ${$store.drive.uploadProgress}%`"
+				></div>
 			</div>
 			<div class="text-[10px] text-[#86898B] font-mono flex justify-between">
 				<span>Enkripsi: AES-256-GCM</span>
-				<span x-text="$store.drive.uploadStatusText">Status: Processing</span>
+				<span class="truncate max-w-[180px]" :class="($store.drive.uploadStatusText && $store.drive.uploadStatusText.includes('Gagal')) ? 'text-rose-400 font-bold' : ''" x-text="$store.drive.uploadStatusText">Status: Processing</span>
 			</div>
 		</div>
 
@@ -1063,11 +1080,12 @@ templ Layout(title string) {
 				isDownloadLink(str) {
 					if (!str || typeof str !== 'string') return false;
 					const s = str.trim();
-					if (s.startsWith('http://') || s.startsWith('https://')) {
+					const lower = s.toLowerCase();
+					if (lower.startsWith('http://') || lower.startsWith('https://')) {
 						return s.length > 8 && !/\s/.test(s);
 					}
-					if (s.startsWith('magnet:?')) {
-						return s.includes('xt=urn:btih:');
+					if (lower.startsWith('magnet:?')) {
+						return lower.includes('xt=urn:btih:');
 					}
 					// Scheme-less domain address detection: e.g. "github.com/foo", "drive.google.com/...", "releases.ubuntu.com/..."
 					if (!/\s/.test(s) && ((s.includes('/') && /^[a-zA-Z0-9-]+\.[a-zA-Z]{2,}/.test(s)) || /^www\.[a-zA-Z0-9-]+\.[a-zA-Z]{2,}/i.test(s))) {
@@ -1245,26 +1263,65 @@ templ Layout(title string) {
 
 						const data = await res.json();
 						const tasks = data.tasks || [];
-						this.uploadStatusText = `Status: ${tasks.length} unduhan dimasukkan ke antrean`;
-						this.uploadProgress = 50;
+						if (tasks.length === 0) {
+							throw new Error("Tidak ada tugas unduhan yang dibuat");
+						}
 
-						await new Promise(r => setTimeout(r, 1200));
+						const taskIds = tasks.map(t => t.id);
+						let completedCount = 0;
+						let failedCount = 0;
+						let pollCount = 0;
+						const maxPolls = 600;
+
+						while (pollCount < maxPolls && (completedCount + failedCount) < taskIds.length) {
+							await new Promise(r => setTimeout(r, 600));
+							pollCount++;
+							completedCount = 0;
+							failedCount = 0;
+
+							for (const tId of taskIds) {
+								try {
+									const sRes = await fetch(`/api/downloads/${tId}`);
+									if (sRes.ok) {
+										const sData = await sRes.json();
+										if (sData.status === 'completed') completedCount++;
+										else if (sData.status === 'failed' || sData.status === 'cancelled') failedCount++;
+									}
+								} catch (e) {}
+							}
+
+							const done = completedCount + failedCount;
+							this.uploadProgress = Math.min(95, Math.max(15, Math.round((done / taskIds.length) * 100)));
+							this.uploadStatusText = `Status: ${completedCount}/${taskIds.length} selesai (${failedCount} gagal)`;
+							this.currentSpeedText = `${done}/${taskIds.length}`;
+						}
+
 						await this.fetchFiles();
 						await this.fetchFolders();
 						await this.fetchStorageStats();
-						this.uploadProgress = 100;
-						this.uploadStatusText = 'Status: Antrean Selesai';
+
+						if (failedCount === 0) {
+							this.uploadProgress = 100;
+							this.uploadStatusText = `Status: Semua ${taskIds.length} berkas selesai diunduh`;
+							this.currentSpeedText = 'Selesai';
+							await new Promise(r => setTimeout(r, 1200));
+						} else {
+							this.uploadStatusText = `Status: Selesai (${completedCount} berhasil, ${failedCount} gagal)`;
+							this.currentSpeedText = failedCount > 0 ? 'Gagal sebagian' : 'Selesai';
+							await new Promise(r => setTimeout(r, 4500));
+						}
 					} catch (err) {
 						console.error("Batch download error:", err);
-						alert("Gagal memulai unduhan batch: " + err.message);
+						this.uploadStatusText = 'Status: Gagal - ' + err.message;
+						this.currentSpeedText = 'Gagal';
+						this.uploadProgress = 0;
+						await new Promise(r => setTimeout(r, 4500));
 					} finally {
-						setTimeout(() => {
-							this.isUploading = false;
-							this.isTransferring = false;
-							this.currentSpeedText = 'Idle';
-							this.uploadProgress = 0;
-							this.uploadStatusText = 'Status: Processing';
-						}, 1000);
+						this.isUploading = false;
+						this.isTransferring = false;
+						this.currentSpeedText = 'Idle';
+						this.uploadProgress = 0;
+						this.uploadStatusText = 'Status: Processing';
 					}
 				},
 
@@ -1366,17 +1423,16 @@ templ Layout(title string) {
 									throw new Error(sData.error_message || 'Unduhan gagal atau dibatalkan');
 								}
 							} catch (pollErr) {
-								if (pollErr.message && pollErr.message.includes('Unduhan gagal')) {
-									throw pollErr;
-								}
+								throw pollErr;
 							}
 						}
 					} catch (err) {
 						console.error("Link download error:", err);
-						this.uploadStatusText = 'Status: Gagal';
+						this.uploadStatusText = 'Status: Gagal - ' + err.message;
 						this.currentSpeedText = 'Gagal';
 						this.uploadProgress = 0;
-						alert("Gagal mengunduh dari tautan: " + err.message);
+						// Retain failure status on overlay for user visibility before dismissing
+						await new Promise(r => setTimeout(r, 4500));
 					} finally {
 						this.isUploading = false;
 						this.isTransferring = false;

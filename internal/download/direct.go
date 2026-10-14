@@ -8,6 +8,7 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"net/http/cookiejar"
 	"net/url"
 	"path"
 	"strings"
@@ -27,12 +28,17 @@ type DirectDownloader struct {
 }
 
 func NewDirectDownloader() *DirectDownloader {
+	jar, _ := cookiejar.New(nil)
 	return &DirectDownloader{
 		HTTPClient: &http.Client{
+			Jar:     jar,
 			Timeout: 2 * time.Hour, // Allow large file streaming
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
 				if len(via) >= 15 {
 					return errors.New("stopped after 15 redirects")
+				}
+				if _, err := ValidateSafeURL(req.URL.String(), false); err != nil {
+					return fmt.Errorf("redirect blocked by security policy: %w", err)
 				}
 				return nil
 			},
@@ -161,13 +167,11 @@ func (dd *DirectDownloader) DownloadDirect(ctx context.Context, targetURL string
 			fullHTML := string(append(peekBuf[:peekN], restOfHTML...))
 
 			var recoveredURL string
-			// MediaFire HTML check
-			if strings.Contains(strings.ToLower(resp.Request.URL.Host), "mediafire.com") || strings.Contains(strings.ToLower(resolved.Domain), "mediafire") {
-				recoveredURL, _ = ExtractMediaFireDirectLinkFromHTML(fullHTML)
-			}
+			// 1. MediaFire / Generic download button check
+			recoveredURL, _ = ExtractMediaFireDirectLinkFromHTML(fullHTML)
 
-			// Google Drive HTML check
-			if recoveredURL == "" && (strings.Contains(strings.ToLower(resp.Request.URL.Host), "google.com") || strings.Contains(strings.ToLower(resolved.Domain), "google")) {
+			// 2. Google Drive confirm link check
+			if recoveredURL == "" {
 				recoveredURL = ExtractGoogleDriveConfirmLinkFromHTML(fullHTML)
 			}
 

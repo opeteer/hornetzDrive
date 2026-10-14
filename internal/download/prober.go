@@ -134,6 +134,9 @@ func ProbeLink(ctx context.Context, client *http.Client, rawURL string) (*ProbeR
 				if len(via) >= 15 {
 					return http.ErrUseLastResponse
 				}
+				if _, err := ValidateSafeURL(req.URL.String(), false); err != nil {
+					return fmt.Errorf("probe redirect blocked by security policy: %w", err)
+				}
 				return nil
 			},
 		}

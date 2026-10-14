@@ -98,7 +98,12 @@ func (dc *DownloadController) StartDownload(c *echo.Context) error {
 		vk = key
 	}
 
-	task, err := dc.Manager.StartDownloadWithFilename(c.Request().Context(), 1, folderID, normURL, req.Filename, isVault, vk)
+	userID := 1
+	if uid, ok := c.Get("user_id").(int); ok && uid > 0 {
+		userID = uid
+	}
+
+	task, err := dc.Manager.StartDownloadWithFilename(c.Request().Context(), userID, folderID, normURL, req.Filename, isVault, vk)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
@@ -134,6 +139,15 @@ func (dc *DownloadController) StartBatchDownload(c *echo.Context) error {
 	folderID := req.FolderID
 	if folderID == "root" {
 		folderID = ""
+	} else if folderID != "" && folderID != "f1" && folderID != "f2" && folderID != "f3" {
+		if dc.DB != nil && dc.DB.SQL != nil {
+			var count int
+			query := dc.DB.Rebind("SELECT COUNT(*) FROM folders WHERE id = ?")
+			_ = dc.DB.SQL.QueryRow(query, folderID).Scan(&count)
+			if count == 0 {
+				return echo.NewHTTPError(http.StatusBadRequest, "target folder not found")
+			}
+		}
 	}
 
 	isVault := dc.isVaultFolder(folderID)
@@ -146,7 +160,12 @@ func (dc *DownloadController) StartBatchDownload(c *echo.Context) error {
 		vk = key
 	}
 
-	tasks, err := dc.Manager.StartBatchDownload(c.Request().Context(), 1, folderID, urlsToProcess, isVault, vk)
+	userID := 1
+	if uid, ok := c.Get("user_id").(int); ok && uid > 0 {
+		userID = uid
+	}
+
+	tasks, err := dc.Manager.StartBatchDownload(c.Request().Context(), userID, folderID, urlsToProcess, isVault, vk)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
@@ -164,14 +183,24 @@ func (dc *DownloadController) GetDownloadStatus(c *echo.Context) error {
 	if !found {
 		return echo.NewHTTPError(http.StatusNotFound, "download task not found")
 	}
+	if uid, ok := c.Get("user_id").(int); ok && uid > 0 && task.OwnerID != 0 && task.OwnerID != uid {
+		return echo.NewHTTPError(http.StatusForbidden, "forbidden: cannot access another user's download task")
+	}
 	return c.JSON(http.StatusOK, task)
 }
 
 // CancelDownload cancels an in-progress download task.
 func (dc *DownloadController) CancelDownload(c *echo.Context) error {
 	id := c.Param("id")
-	if !dc.Manager.CancelTask(id) {
+	task, found := dc.Manager.GetTask(id)
+	if !found {
 		return echo.NewHTTPError(http.StatusNotFound, "download task not found")
+	}
+	if uid, ok := c.Get("user_id").(int); ok && uid > 0 && task.OwnerID != 0 && task.OwnerID != uid {
+		return echo.NewHTTPError(http.StatusForbidden, "forbidden: cannot cancel another user's download task")
+	}
+	if !dc.Manager.CancelTask(id) {
+		return echo.NewHTTPError(http.StatusBadRequest, "download task cannot be cancelled (may be already completed)")
 	}
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"status":  "cancelled",
