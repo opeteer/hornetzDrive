@@ -147,8 +147,11 @@ func ProbeLink(ctx context.Context, client *http.Client, rawURL string) (*ProbeR
 	if err != nil {
 		return nil, fmt.Errorf("invalid probe request: %w", err)
 	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) HornetzDrive/2.0")
+	req.Header.Set("User-Agent", DefaultBrowserUserAgent)
 	req.Header.Set("Accept", "*/*")
+	if resolved.Referer != "" {
+		req.Header.Set("Referer", resolved.Referer)
+	}
 	if resolved.AuthHeader != "" {
 		req.Header.Set("Authorization", resolved.AuthHeader)
 	}
@@ -163,7 +166,11 @@ func ProbeLink(ctx context.Context, client *http.Client, rawURL string) (*ProbeR
 
 		getReq, getErr := http.NewRequestWithContext(probeCtx, http.MethodGet, resolved.ResolvedURL, nil)
 		if getErr == nil {
-			getReq.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) HornetzDrive/2.0")
+			getReq.Header.Set("User-Agent", DefaultBrowserUserAgent)
+			getReq.Header.Set("Accept", "*/*")
+			if resolved.Referer != "" {
+				getReq.Header.Set("Referer", resolved.Referer)
+			}
 			getReq.Header.Set("Range", "bytes=0-0")
 			if resolved.AuthHeader != "" {
 				getReq.Header.Set("Authorization", resolved.AuthHeader)

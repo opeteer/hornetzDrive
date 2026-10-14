@@ -81,3 +81,55 @@ func TestSniffMagicBytes(t *testing.T) {
 		})
 	}
 }
+
+func TestIsHTMLPayload(t *testing.T) {
+	htmlSamples := [][]byte{
+		[]byte("<!DOCTYPE html><html><head><title>Test</title></head><body></body></html>"),
+		[]byte("  <!doctype html>\n<html>"),
+		[]byte("<html><head></head><body>Error page</body></html>"),
+		[]byte("<?xml version=\"1.0\"?><html xmlns=\"http://www.w3.org/1999/xhtml\">"),
+		[]byte("<head><meta http-equiv=\"refresh\" content=\"0\"></head>"),
+		[]byte("<script>window.location.href='https://example.com';</script>"),
+	}
+
+	for i, sample := range htmlSamples {
+		if !IsHTMLPayload(sample) {
+			t.Errorf("Sample #%d expected IsHTMLPayload = true, got false (%q)", i, string(sample[:20]))
+		}
+	}
+
+	binarySamples := [][]byte{
+		{0x50, 0x4b, 0x03, 0x04}, // PK zip
+		{0x1f, 0x8b, 0x08, 0x00}, // gzip
+		[]byte("%PDF-1.7"),
+		{0x89, 0x50, 0x4e, 0x47}, // PNG
+		[]byte("Plain text content without html tags"),
+	}
+
+	for i, sample := range binarySamples {
+		if IsHTMLPayload(sample) {
+			t.Errorf("Binary sample #%d expected IsHTMLPayload = false, got true", i)
+		}
+	}
+}
+
+func TestIsBinaryExtension(t *testing.T) {
+	binaryFiles := []string{
+		"game.zip", "data.rar", "archive.7z", "source.tar.gz", "setup.exe",
+		"disk.iso", "payload.bin", "report.pdf", "clip.mp4", "image.png",
+	}
+	for _, f := range binaryFiles {
+		if !IsBinaryExtension(f) {
+			t.Errorf("Expected IsBinaryExtension(%q) = true", f)
+		}
+	}
+
+	nonBinaryFiles := []string{
+		"index.html", "about.htm", "styles.css", "script.js", "notes.txt", "data.json",
+	}
+	for _, f := range nonBinaryFiles {
+		if IsBinaryExtension(f) {
+			t.Errorf("Expected IsBinaryExtension(%q) = false", f)
+		}
+	}
+}

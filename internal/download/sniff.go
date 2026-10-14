@@ -96,3 +96,33 @@ func SniffMagicBytes(buf []byte, proposedFilename string, proposedMime string) (
 
 	return finalFilename, finalMime
 }
+
+// IsHTMLPayload checks if the initial byte buffer looks like an HTML or XML web document.
+func IsHTMLPayload(buf []byte) bool {
+	trimmed := bytes.TrimSpace(buf)
+	if len(trimmed) == 0 {
+		return false
+	}
+	lower := bytes.ToLower(trimmed)
+	return bytes.HasPrefix(lower, []byte("<!doctype html")) ||
+		bytes.HasPrefix(lower, []byte("<html")) ||
+		bytes.HasPrefix(lower, []byte("<?xml")) ||
+		bytes.HasPrefix(lower, []byte("<head")) ||
+		bytes.HasPrefix(lower, []byte("<body")) ||
+		bytes.HasPrefix(lower, []byte("<script"))
+}
+
+// IsBinaryExtension returns true if the filename extension indicates a binary, archive, executable, or media format that should never be HTML.
+func IsBinaryExtension(filename string) bool {
+	ext := strings.ToLower(filepath.Ext(filename))
+	switch ext {
+	case ".zip", ".rar", ".7z", ".tar", ".gz", ".bz2", ".xz",
+		".iso", ".dmg", ".img", ".bin",
+		".exe", ".msi", ".apk", ".deb", ".rpm",
+		".pdf", ".docx", ".xlsx", ".pptx",
+		".mp4", ".mkv", ".mp3", ".flac", ".png", ".jpg", ".jpeg", ".gif", ".webp",
+		".wasm", ".sqlite", ".sqlite3":
+		return true
+	}
+	return false
+}
