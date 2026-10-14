@@ -671,6 +671,7 @@ templ Layout(title string) {
 				selectedFile: null,
 				filePreviewText: '',
 				filePreviewLoading: false,
+				previewCache: {},
 				folderHistory: [],
 				currentFolderId: '',
 				currentFolderName: '',
@@ -756,13 +757,20 @@ templ Layout(title string) {
 					this.filePreviewText = '';
 					this.filePreviewLoading = false;
 					if (file && this.isTextOrCodeFile(file)) {
+						if (this.previewCache && this.previewCache[file.id]) {
+							this.filePreviewText = this.previewCache[file.id];
+							return;
+						}
 						this.filePreviewLoading = true;
 						fetch(`/api/files/${file.id}/preview`, {
 							headers: { 'Range': 'bytes=0-10000' }
 						})
 						.then(res => res.text())
 						.then(txt => {
-							this.filePreviewText = txt || 'Berkas kosong';
+							const content = txt || 'Berkas kosong';
+							this.filePreviewText = content;
+							if (!this.previewCache) this.previewCache = {};
+							this.previewCache[file.id] = content;
 						})
 						.catch(() => {
 							this.filePreviewText = 'Tidak dapat memuat konten berkas.';

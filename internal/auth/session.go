@@ -2,6 +2,7 @@ package auth
 
 import (
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/hex"
 	"net/http"
 	"sync"
@@ -149,15 +150,19 @@ func LoginMock(c *echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request"})
 	}
 
-	// Validate the password using Argon2id constant-time comparison
-	if !crypto.VerifyPassword([]byte(req.Password), defaultVaultSalt, defaultVaultHash) {
+	if req.Password == "" {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Invalid master password"})
+	}
+
+	// High-performance single-pass Argon2id key derivation and constant-time comparison
+	vk := crypto.DeriveMEK([]byte(req.Password), defaultVaultSalt)
+	if subtle.ConstantTimeCompare(vk, defaultVaultHash) != 1 {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Invalid master password"})
 	}
 
 	sessBytes := make([]byte, 16)
 	_, _ = rand.Read(sessBytes)
 	sessionID := "sess_" + hex.EncodeToString(sessBytes)
-	vk := crypto.DeriveMEK([]byte(req.Password), defaultVaultSalt)
 
 	GlobalSessionStore.SetKey(sessionID, vk)
 

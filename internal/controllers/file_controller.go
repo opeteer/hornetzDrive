@@ -3,6 +3,7 @@ package controllers
 import (
 	"archive/zip"
 	"database/sql"
+	"errors"
 	"fmt"
 	"html"
 	"io"
@@ -16,6 +17,7 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v5"
+	"golang.org/x/sync/singleflight"
 
 	"ztatic-go-framework/data"
 	"ztatic-go-framework/internal/auth"
@@ -25,10 +27,16 @@ import (
 )
 
 type FileController struct {
-	DB         *data.DBEngine
-	CAS        *storage.CASEngine
-	QuotaBytes int64
-	seedOnce   sync.Once
+	DB              *data.DBEngine
+	CAS             *storage.CASEngine
+	QuotaBytes      int64
+	seedOnce        sync.Once
+	vaultMu         sync.RWMutex
+	vaultIDsMap     map[string]bool
+	vaultIDsList    []string
+	vaultCacheValid bool
+	thumbGroup      singleflight.Group
+	svgCache        sync.Map
 }
 
 type FileRecord struct {
@@ -131,50 +139,98 @@ func (fc *FileController) isVaultUnlocked(c *echo.Context) bool {
 	return true
 }
 
-func (fc *FileController) IsVaultFolder(folderID string) bool {
-	if folderID == "f2" {
-		return true
-	}
-	if folderID == "" || folderID == "f1" || folderID == "f3" || fc.DB == nil || fc.DB.SQL == nil {
-		return false
-	}
-	curr := folderID
-	for i := 0; i < 50; i++ {
-		var parentID sql.NullString
-		err := fc.DB.SQL.QueryRow(fc.DB.Rebind("SELECT parent_id FROM folders WHERE id = ?"), curr).Scan(&parentID)
-		if err != nil || !parentID.Valid || parentID.String == "" {
-			return false
-		}
-		if parentID.String == "f2" {
-			return true
-		}
-		curr = parentID.String
-	}
-	return false
+// InvalidateVaultCache marks the cached vault folders as stale.
+func (fc *FileController) InvalidateVaultCache() {
+	fc.vaultMu.Lock()
+	fc.vaultCacheValid = false
+	fc.vaultIDsMap = nil
+	fc.vaultIDsList = nil
+	fc.vaultMu.Unlock()
 }
 
-func (fc *FileController) GetAllVaultFolderIDs() []string {
-	vaultIDs := []string{"f2"}
-	if fc.DB == nil || fc.DB.SQL == nil {
-		return vaultIDs
+func (fc *FileController) loadVaultCacheLocked() {
+	if fc.vaultCacheValid {
+		return
 	}
+	fc.vaultIDsMap = map[string]bool{"f2": true}
+	fc.vaultIDsList = []string{"f2"}
+
+	if fc.DB == nil || fc.DB.SQL == nil {
+		fc.vaultCacheValid = true
+		return
+	}
+
+	// Fetch all folder hierarchies in a single query instead of recursive N+1 DB roundtrips
+	rows, err := fc.DB.SQL.Query("SELECT id, parent_id FROM folders WHERE parent_id IS NOT NULL AND parent_id != ''")
+	if err != nil {
+		fc.vaultCacheValid = true
+		return
+	}
+	defer rows.Close()
+
+	childrenMap := make(map[string][]string)
+	for rows.Next() {
+		var id, parentID string
+		if err := rows.Scan(&id, &parentID); err == nil {
+			childrenMap[parentID] = append(childrenMap[parentID], id)
+		}
+	}
+
+	// Fast BFS downstream from root vault 'f2'
 	queue := []string{"f2"}
 	for len(queue) > 0 {
 		curr := queue[0]
 		queue = queue[1:]
-		rows, err := fc.DB.SQL.Query(fc.DB.Rebind("SELECT id FROM folders WHERE parent_id = ?"), curr)
-		if err == nil {
-			for rows.Next() {
-				var id string
-				if err := rows.Scan(&id); err == nil {
-					vaultIDs = append(vaultIDs, id)
-					queue = append(queue, id)
-				}
+		for _, child := range childrenMap[curr] {
+			if !fc.vaultIDsMap[child] {
+				fc.vaultIDsMap[child] = true
+				fc.vaultIDsList = append(fc.vaultIDsList, child)
+				queue = append(queue, child)
 			}
-			rows.Close()
 		}
 	}
-	return vaultIDs
+	fc.vaultCacheValid = true
+}
+
+func (fc *FileController) IsVaultFolder(folderID string) bool {
+	if folderID == "f2" {
+		return true
+	}
+	if folderID == "" || folderID == "f1" || folderID == "f3" {
+		return false
+	}
+
+	fc.vaultMu.RLock()
+	if fc.vaultCacheValid {
+		isVault := fc.vaultIDsMap[folderID]
+		fc.vaultMu.RUnlock()
+		return isVault
+	}
+	fc.vaultMu.RUnlock()
+
+	fc.vaultMu.Lock()
+	fc.loadVaultCacheLocked()
+	isVault := fc.vaultIDsMap[folderID]
+	fc.vaultMu.Unlock()
+	return isVault
+}
+
+func (fc *FileController) GetAllVaultFolderIDs() []string {
+	fc.vaultMu.RLock()
+	if fc.vaultCacheValid {
+		res := make([]string, len(fc.vaultIDsList))
+		copy(res, fc.vaultIDsList)
+		fc.vaultMu.RUnlock()
+		return res
+	}
+	fc.vaultMu.RUnlock()
+
+	fc.vaultMu.Lock()
+	fc.loadVaultCacheLocked()
+	res := make([]string, len(fc.vaultIDsList))
+	copy(res, fc.vaultIDsList)
+	fc.vaultMu.Unlock()
+	return res
 }
 
 func (fc *FileController) vaultExcludeFilter() string {
@@ -768,41 +824,65 @@ func (fc *FileController) ThumbnailFile(c *echo.Context) error {
 				vk = crypto.DummyVK()
 			}
 
-			if file, err := os.Open(casPath); err == nil {
+			// Singleflight group to prevent thundering herd for PDF thumbnail rendering
+			_, _, _ = fc.thumbGroup.Do("pdf_"+f.CasHash, func() (interface{}, error) {
+				if _, err := os.Stat(cachedPath); err == nil {
+					return nil, nil
+				}
+				file, err := os.Open(casPath)
+				if err != nil {
+					return nil, err
+				}
 				defer file.Close()
 				decStream, err := crypto.NewDecryptStream(file, vk)
-				if err == nil {
-					tmpDir := "storage/tmp"
-					_ = os.MkdirAll(tmpDir, 0755)
-					tmpPdfPath := filepath.Join(tmpDir, fmt.Sprintf("thumb_pdf_%s_%d.pdf", f.CasHash[:8], time.Now().UnixNano()))
-					tmpOutPrefix := filepath.Join(tmpDir, fmt.Sprintf("thumb_out_%s_%d", f.CasHash[:8], time.Now().UnixNano()))
+				if err != nil {
+					return nil, err
+				}
+				tmpDir := "storage/tmp"
+				_ = os.MkdirAll(tmpDir, 0755)
+				tmpPdfPath := filepath.Join(tmpDir, fmt.Sprintf("thumb_pdf_%s_%d.pdf", f.CasHash[:8], time.Now().UnixNano()))
+				tmpOutPrefix := filepath.Join(tmpDir, fmt.Sprintf("thumb_out_%s_%d", f.CasHash[:8], time.Now().UnixNano()))
 
-					if tmpFile, err := os.Create(tmpPdfPath); err == nil {
-						_, _ = io.CopyN(tmpFile, decStream, 10*1024*1024)
-						_ = tmpFile.Close()
+				tmpFile, err := os.Create(tmpPdfPath)
+				if err != nil {
+					return nil, err
+				}
+				_, _ = io.CopyN(tmpFile, decStream, 10*1024*1024)
+				_ = tmpFile.Close()
 
-						cmd := exec.Command("pdftoppm", "-png", "-singlefile", "-scale-to", "256", tmpPdfPath, tmpOutPrefix)
-						if err := cmd.Run(); err == nil {
-							generatedPng := tmpOutPrefix + ".png"
-							if _, err := os.Stat(generatedPng); err == nil {
-								_ = os.Rename(generatedPng, cachedPath)
-								_ = os.Remove(tmpPdfPath)
-								c.Response().Header().Set("Cache-Control", "public, max-age=86400")
-								c.Response().Header().Set("Content-Type", "image/png")
-								return c.File(cachedPath)
-							}
-						}
+				cmd := exec.Command("pdftoppm", "-png", "-singlefile", "-scale-to", "256", tmpPdfPath, tmpOutPrefix)
+				if err := cmd.Run(); err == nil {
+					generatedPng := tmpOutPrefix + ".png"
+					if _, err := os.Stat(generatedPng); err == nil {
+						_ = os.Rename(generatedPng, cachedPath)
 						_ = os.Remove(tmpPdfPath)
-						_ = os.Remove(tmpOutPrefix + ".png")
+						return nil, nil
 					}
 				}
+				_ = os.Remove(tmpPdfPath)
+				_ = os.Remove(tmpOutPrefix + ".png")
+				return nil, errors.New("pdftoppm failed")
+			})
+
+			if _, err := os.Stat(cachedPath); err == nil {
+				c.Response().Header().Set("Cache-Control", "public, max-age=86400")
+				c.Response().Header().Set("Content-Type", "image/png")
+				return c.File(cachedPath)
 			}
 		}
 
-		svg := generatePdfSvgThumbnail(f.Name)
+		// Cached SVG fallback
+		svgKey := "pdf_" + f.CasHash
+		var svgBytes []byte
+		if val, ok := fc.svgCache.Load(svgKey); ok {
+			svgBytes = val.([]byte)
+		} else {
+			svgBytes = []byte(generatePdfSvgThumbnail(f.Name))
+			fc.svgCache.Store(svgKey, svgBytes)
+		}
 		c.Response().Header().Set("Cache-Control", "public, max-age=3600")
 		c.Response().Header().Set("Content-Type", "image/svg+xml")
-		return c.Blob(http.StatusOK, "image/svg+xml", []byte(svg))
+		return c.Blob(http.StatusOK, "image/svg+xml", svgBytes)
 	}
 
 	if isOffice {
@@ -830,37 +910,76 @@ func (fc *FileController) ThumbnailFile(c *echo.Context) error {
 				vk = crypto.DummyVK()
 			}
 
-			if file, err := os.Open(casPath); err == nil {
+			// Singleflight group to prevent duplicate concurrent office thumbnail extraction
+			_, _, _ = fc.thumbGroup.Do("off_"+f.CasHash, func() (interface{}, error) {
+				if _, err := os.Stat(cachedJpg); err == nil {
+					return nil, nil
+				}
+				if _, err := os.Stat(cachedPng); err == nil {
+					return nil, nil
+				}
+				file, err := os.Open(casPath)
+				if err != nil {
+					return nil, err
+				}
 				defer file.Close()
 				decStream, err := crypto.NewDecryptStream(file, vk)
-				if err == nil {
-					tmpDir := "storage/tmp"
-					_ = os.MkdirAll(tmpDir, 0755)
-					tmpZipPath := filepath.Join(tmpDir, fmt.Sprintf("thumb_office_%s_%d.zip", f.CasHash[:8], time.Now().UnixNano()))
-					if tmpFile, err := os.Create(tmpZipPath); err == nil {
-						written, _ := io.Copy(tmpFile, decStream)
-						_ = tmpFile.Close()
+				if err != nil {
+					return nil, err
+				}
+				tmpDir := "storage/tmp"
+				_ = os.MkdirAll(tmpDir, 0755)
+				tmpZipPath := filepath.Join(tmpDir, fmt.Sprintf("thumb_office_%s_%d.zip", f.CasHash[:8], time.Now().UnixNano()))
+				tmpFile, err := os.Create(tmpZipPath)
+				if err != nil {
+					return nil, err
+				}
+				written, _ := io.Copy(tmpFile, decStream)
+				_ = tmpFile.Close()
 
-						if tmpFileRead, err := os.Open(tmpZipPath); err == nil {
-							mime, ok := extractOfficeThumbnail(tmpFileRead, written, cachedJpg)
-							_ = tmpFileRead.Close()
-							_ = os.Remove(tmpZipPath)
-							if ok {
-								c.Response().Header().Set("Cache-Control", "public, max-age=86400")
-								c.Response().Header().Set("Content-Type", mime)
-								return c.File(cachedJpg)
-							}
-						}
-						_ = os.Remove(tmpZipPath)
+				if tmpFileRead, err := os.Open(tmpZipPath); err == nil {
+					_, ok := extractOfficeThumbnail(tmpFileRead, written, cachedJpg)
+					_ = tmpFileRead.Close()
+					_ = os.Remove(tmpZipPath)
+					if ok {
+						return nil, nil
 					}
 				}
+				_ = os.Remove(tmpZipPath)
+				return nil, errors.New("extractOfficeThumbnail failed")
+			})
+
+			if _, err := os.Stat(cachedJpg); err == nil {
+				c.Response().Header().Set("Cache-Control", "public, max-age=86400")
+				c.Response().Header().Set("Content-Type", "image/jpeg")
+				return c.File(cachedJpg)
+			}
+			if _, err := os.Stat(cachedPng); err == nil {
+				c.Response().Header().Set("Cache-Control", "public, max-age=86400")
+				c.Response().Header().Set("Content-Type", "image/png")
+				return c.File(cachedPng)
 			}
 		}
 
-		svg := generateOfficeSvgThumbnail(f.Name, ext)
+		// Cached SVG fallback
+		svgKey := "off_" + ext + "_" + f.CasHash
+		var svgBytes []byte
+		if val, ok := fc.svgCache.Load(svgKey); ok {
+			svgBytes = val.([]byte)
+		} else {
+			svgBytes = []byte(generateOfficeSvgThumbnail(f.Name, ext))
+			fc.svgCache.Store(svgKey, svgBytes)
+		}
 		c.Response().Header().Set("Cache-Control", "public, max-age=3600")
 		c.Response().Header().Set("Content-Type", "image/svg+xml")
-		return c.Blob(http.StatusOK, "image/svg+xml", []byte(svg))
+		return c.Blob(http.StatusOK, "image/svg+xml", svgBytes)
+	}
+
+	svgKey := "doc_" + ext + "_" + f.CasHash
+	if val, ok := fc.svgCache.Load(svgKey); ok {
+		c.Response().Header().Set("Cache-Control", "public, max-age=3600")
+		c.Response().Header().Set("Content-Type", "image/svg+xml")
+		return c.Blob(http.StatusOK, "image/svg+xml", val.([]byte))
 	}
 
 	snippet := ""
@@ -884,10 +1003,12 @@ func (fc *FileController) ThumbnailFile(c *echo.Context) error {
 		}
 	}
 
-	svg := generateDocumentSvgThumbnail(f.Name, ext, snippet)
+	svgBytes := []byte(generateDocumentSvgThumbnail(f.Name, ext, snippet))
+	fc.svgCache.Store(svgKey, svgBytes)
+
 	c.Response().Header().Set("Cache-Control", "public, max-age=3600")
 	c.Response().Header().Set("Content-Type", "image/svg+xml")
-	return c.Blob(http.StatusOK, "image/svg+xml", []byte(svg))
+	return c.Blob(http.StatusOK, "image/svg+xml", svgBytes)
 }
 
 func (fc *FileController) DeleteFile(c *echo.Context) error {
@@ -918,6 +1039,7 @@ func (fc *FileController) DeleteFile(c *echo.Context) error {
 			_ = fc.DB.SQL.QueryRow(fc.DB.Rebind("SELECT COUNT(*) FROM files WHERE cas_hash = ?"), casHash).Scan(&count)
 			if count == 0 && fc.CAS != nil {
 				_ = os.Remove(fc.CAS.Path(casHash))
+				fc.CAS.Invalidate(casHash)
 			}
 		}
 		return c.JSON(http.StatusOK, map[string]string{"status": "permanently_deleted"})
@@ -1025,6 +1147,7 @@ func (fc *FileController) EmptyTrash(c *echo.Context) error {
 				_ = fc.DB.SQL.QueryRow(fc.DB.Rebind("SELECT COUNT(*) FROM files WHERE cas_hash = ?"), h).Scan(&refCount)
 				if refCount == 0 {
 					_ = os.Remove(fc.CAS.Path(h))
+					fc.CAS.Invalidate(h)
 				}
 			}
 		}
@@ -1429,6 +1552,7 @@ func (fc *FileController) CreateFolder(c *echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to create folder: "+err.Error())
 	}
 
+	fc.InvalidateVaultCache()
 	return c.JSON(http.StatusCreated, map[string]string{
 		"id":   folderID,
 		"name": cleanName,
@@ -1501,6 +1625,7 @@ func (fc *FileController) DeleteFolder(c *echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to commit folder deletion: "+err.Error())
 	}
 
+	fc.InvalidateVaultCache()
 	return c.JSON(http.StatusOK, map[string]string{"status": "folder_deleted"})
 }
 
@@ -1558,6 +1683,7 @@ func (fc *FileController) RenameFolder(c *echo.Context) error {
 	if rows, _ := res.RowsAffected(); rows == 0 {
 		return echo.NewHTTPError(http.StatusNotFound, "Folder not found")
 	}
+	fc.InvalidateVaultCache()
 	return c.JSON(http.StatusOK, map[string]string{"status": "folder_renamed", "name": cleanName})
 }
 
