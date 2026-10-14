@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -262,6 +263,7 @@ func (uc *UploadController) InitSession(c *echo.Context) error {
 			existingSess.LastActiveAt = time.Now()
 			_ = uc.SessionMgr.PersistSession(existingSess)
 			c.Response().Header().Set("Location", "/upload/"+existingSess.ID)
+			slog.Info("upload session resumed", "session_id", existingSess.ID, "filename", cleanFilename, "uploaded", existingSess.UploadedSize, "expected", req.Size)
 			return c.JSON(http.StatusOK, map[string]interface{}{
 				"session_id": existingSess.ID,
 				"chunk_size": 1024 * 1024 * 2,
@@ -274,11 +276,13 @@ func (uc *UploadController) InitSession(c *echo.Context) error {
 
 	sess, err := uc.SessionMgr.CreateSession(1, folderID, cleanFilename, req.MimeType, req.Size)
 	if err != nil {
+		slog.Error("failed to initiate upload session", "error", err, "filename", cleanFilename)
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to initiate upload")
 	}
 	sess.PlaintextHash = req.CasHash
 
 	c.Response().Header().Set("Location", "/upload/"+sess.ID)
+	slog.Info("upload session initiated", "session_id", sess.ID, "filename", cleanFilename, "expected", req.Size, "folder_id", folderID)
 	return c.JSON(http.StatusCreated, map[string]interface{}{
 		"session_id": sess.ID,
 		"chunk_size": 1024 * 1024 * 2,
@@ -300,6 +304,7 @@ func (uc *UploadController) UploadChunk(c *echo.Context) error {
 	if crStart, crEnd, _, hasRange := parseContentRangeHeader(contentRange); hasRange {
 		// If client retried a chunk that was already completely written to disk:
 		if crEnd < sess.UploadedSize {
+			slog.Debug("upload chunk already processed", "session_id", sessionID, "range_end", crEnd, "uploaded", sess.UploadedSize)
 			return c.JSON(http.StatusOK, map[string]interface{}{
 				"status":   "incomplete",
 				"uploaded": sess.UploadedSize,
@@ -308,6 +313,7 @@ func (uc *UploadController) UploadChunk(c *echo.Context) error {
 		}
 		// If chunk offset does not match current server offset:
 		if crStart != sess.UploadedSize {
+			slog.Warn("upload chunk offset mismatch (HTTP 409)", "session_id", sessionID, "received_offset", crStart, "expected_offset", sess.UploadedSize, "filename", sess.Filename)
 			return c.JSON(http.StatusConflict, map[string]interface{}{
 				"error":           "offset mismatch",
 				"uploaded":        sess.UploadedSize,
@@ -398,6 +404,7 @@ func (uc *UploadController) UploadChunk(c *echo.Context) error {
 	sess.UploadedSize += written
 	sess.LastActiveAt = time.Now()
 	_ = uc.SessionMgr.PersistSession(sess)
+	slog.Info("upload chunk written", "session_id", sessionID, "chunk_bytes", written, "new_offset", sess.UploadedSize, "expected_size", sess.ExpectedSize)
 
 	// BUG-SYS-50: Explicitly flush and close temp file descriptor before completion and CAS move
 	_ = bufWriter.Flush()
@@ -414,6 +421,7 @@ func (uc *UploadController) UploadChunk(c *echo.Context) error {
 		// BUG-SYS-50: MoveToCASWithStatus computes hash in single pass and returns whether blob already existed
 		casHash, existedBefore, err := uc.CAS.MoveToCASWithStatus(sess.TempFilePath)
 		if err != nil {
+			slog.Error("cas storage failed", "session_id", sess.ID, "error", err)
 			return echo.NewHTTPError(http.StatusInternalServerError, "cas storage failed")
 		}
 		uc.completedSessions.Store(sess.ID, time.Now())
@@ -433,10 +441,12 @@ func (uc *UploadController) UploadChunk(c *echo.Context) error {
 					_ = os.Remove(uc.CAS.Path(casHash))
 					uc.CAS.Invalidate(casHash)
 				}
+				slog.Error("failed to record file in database", "session_id", sess.ID, "error", err)
 				return echo.NewHTTPError(http.StatusInternalServerError, "failed to record file metadata in database: "+err.Error())
 			}
 		}
 
+		slog.Info("upload session completed", "session_id", sess.ID, "filename", sess.Filename, "cas_hash", casHash, "size", sess.UploadedSize)
 		return c.JSON(http.StatusOK, map[string]interface{}{
 			"status":   "completed",
 			"cas_hash": casHash,

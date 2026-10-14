@@ -364,13 +364,25 @@ templ Layout(title string) {
 					<span>Beranda</span>
 				</a>
 
-				<div class="flex items-center gap-3 bg-[#2E3137]/30 border border-[#3F4247]/50 px-3 py-1.5 rounded-xl text-xs font-mono backdrop-blur-md">
+				<div class="flex items-center gap-2.5 bg-[#2E3137]/30 border border-[#3F4247]/50 px-3 py-1.5 rounded-xl text-xs font-mono backdrop-blur-md">
 					<span 
-						:class="$store.drive.isTransferring ? 'bg-emerald-400 animate-pulse' : 'bg-[#86898B]/60'" 
-						class="w-2 h-2 rounded-full transition-colors"
+						:class="$store.drive.transferDirection === 'upload' ? 'bg-emerald-400 animate-pulse' : ($store.drive.transferDirection === 'download' ? 'bg-sky-400 animate-pulse' : ($store.drive.isTransferring ? 'bg-[#F5CE0D] animate-pulse' : 'bg-[#86898B]/60'))" 
+						class="w-2 h-2 rounded-full transition-colors shrink-0"
 					></span>
-					<span class="text-[#86898B]">Kecepatan:</span>
-					<span class="text-[#F5CE0D] font-bold" x-text="$store.drive.currentSpeedText">Idle</span>
+					<span class="text-[#86898B] flex items-center gap-1">
+						<span x-show="$store.drive.transferDirection === 'upload'" class="text-emerald-400">
+							@IconUploadCloud("w-3.5 h-3.5")
+						</span>
+						<span x-show="$store.drive.transferDirection === 'download'" class="text-sky-400">
+							@IconDownload("w-3.5 h-3.5")
+						</span>
+						<span x-text="$store.drive.transferDirection === 'upload' ? 'Unggah:' : ($store.drive.transferDirection === 'download' ? 'Unduh:' : 'Kecepatan:')">Kecepatan:</span>
+					</span>
+					<span 
+						:class="$store.drive.transferDirection === 'upload' ? 'text-emerald-400' : ($store.drive.transferDirection === 'download' ? 'text-sky-400' : 'text-[#F5CE0D]')" 
+						class="font-bold transition-colors" 
+						x-text="$store.drive.currentSpeedText"
+					>Idle</span>
 				</div>
 
 				<div class="flex items-center gap-3 border-l border-[#3F4247]/50 pl-4">
@@ -541,29 +553,29 @@ templ Layout(title string) {
 			</main>
 		</div>
 
-		<!-- Global Upload Progress Notification Overlay (Controlled strictly by $store.drive.isUploading) -->
+		<!-- Global Upload/Download Progress Notification Overlay (Controlled strictly by $store.drive.isUploading) -->
 		<div 
 			x-show="$store.drive && $store.drive.isUploading" 
 			x-cloak
 			style="display: none;"
 			x-transition 
-			class="fixed bottom-6 right-6 bg-[#121519]/90 backdrop-blur-2xl border border-[#3F4247]/60 p-4 rounded-2xl shadow-2xl z-50 w-80 space-y-2"
+			class="fixed bottom-6 right-6 bg-[#121519]/95 backdrop-blur-2xl border border-[#3F4247]/60 p-4 rounded-2xl shadow-2xl z-50 w-88 sm:w-96 space-y-2.5"
 		>
 			<div class="flex justify-between items-center text-xs font-bold text-white">
 				<span class="flex items-center gap-2 min-w-0">
-					<span x-show="$store.drive.uploadStatusText && $store.drive.uploadStatusText.includes('Gagal')" class="text-rose-400 shrink-0">
+					<span x-show="$store.drive.uploadStatusText && ($store.drive.uploadStatusText.includes('Gagal') || $store.drive.uploadStatusText.includes('Gangguan'))" class="text-rose-400 shrink-0">
 						@IconAlertTriangle("w-4 h-4")
 					</span>
-					<span x-show="!($store.drive.uploadStatusText && $store.drive.uploadStatusText.includes('Gagal')) && $store.drive.uploadProgress === 100" class="text-emerald-400 shrink-0">
+					<span x-show="!($store.drive.uploadStatusText && ($store.drive.uploadStatusText.includes('Gagal') || $store.drive.uploadStatusText.includes('Gangguan'))) && $store.drive.uploadProgress === 100" class="text-emerald-400 shrink-0">
 						@IconCheck("w-4 h-4")
 					</span>
-					<span x-show="!($store.drive.uploadStatusText && $store.drive.uploadStatusText.includes('Gagal')) && $store.drive.uploadProgress !== 100" class="animate-spin text-[#F5CE0D] shrink-0">
+					<span x-show="!($store.drive.uploadStatusText && ($store.drive.uploadStatusText.includes('Gagal') || $store.drive.uploadStatusText.includes('Gangguan'))) && $store.drive.uploadProgress !== 100" class="animate-spin text-[#F5CE0D] shrink-0">
 						@IconLoader("w-4 h-4")
 					</span>
-					<span class="truncate max-w-[150px]" x-text="$store.drive.uploadFileName">Mengunggah...</span>
+					<span class="truncate max-w-[190px]" :title="$store.drive.uploadFileName" x-text="$store.drive.uploadFileName">Mengunggah...</span>
 				</span>
 				<div class="flex items-center gap-2 shrink-0">
-					<span class="text-[#F5CE0D] font-mono" x-text="$store.drive.uploadProgress + '%'">0%</span>
+					<span class="text-[#F5CE0D] font-mono font-bold" x-text="$store.drive.uploadProgress + '%'">0%</span>
 					<button 
 						type="button" 
 						@click="$store.drive.isUploading = false"
@@ -574,6 +586,16 @@ templ Layout(title string) {
 					</button>
 				</div>
 			</div>
+
+			<!-- Real-time Transfer Telemetry (Bytes, Chunks, ETA) -->
+			<div class="flex items-center justify-between text-[11px] font-mono text-[#86898B]">
+				<span x-show="$store.drive.transferBytesTotal > 0" x-text="$store.drive.formatBytes($store.drive.transferBytesLoaded) + ' / ' + $store.drive.formatBytes($store.drive.transferBytesTotal)">0 B / 0 B</span>
+				<div class="flex items-center gap-2">
+					<span x-show="$store.drive.transferDirection === 'upload' && $store.drive.transferChunkTotal > 1" class="px-1.5 py-0.2 rounded bg-[#2E3137]/80 text-[#F5CE0D] border border-[#3F4247]/50 text-[10px]" x-text="'Chunk ' + $store.drive.transferChunkCurrent + '/' + $store.drive.transferChunkTotal"></span>
+					<span x-show="$store.drive.transferEtaText && $store.drive.transferEtaText !== '-'" class="text-[#EDEBE8] text-[10px]" x-text="'ETA: ' + $store.drive.transferEtaText"></span>
+				</div>
+			</div>
+
 			<div class="w-full h-2 bg-black/40 rounded-full overflow-hidden border border-[#3F4247]/50">
 				<div 
 					class="h-full transition-all duration-150" 
@@ -581,9 +603,10 @@ templ Layout(title string) {
 					:style="`width: ${$store.drive.uploadProgress}%`"
 				></div>
 			</div>
-			<div class="text-[10px] text-[#86898B] font-mono flex justify-between">
-				<span>Enkripsi: AES-256-GCM</span>
-				<span class="truncate max-w-[180px]" :class="($store.drive.uploadStatusText && $store.drive.uploadStatusText.includes('Gagal')) ? 'text-rose-400 font-bold' : ''" x-text="$store.drive.uploadStatusText">Status: Processing</span>
+
+			<div class="text-[10px] text-[#86898B] font-mono flex items-start justify-between gap-2 pt-0.5">
+				<span class="shrink-0" x-text="$store.drive.transferDirection === 'download' ? 'Unduhan Jarak Jauh' : 'Enkripsi: AES-256-GCM'">Enkripsi: AES-256-GCM</span>
+				<span class="text-right break-words leading-tight" :class="($store.drive.uploadStatusText && ($store.drive.uploadStatusText.includes('Gagal') || $store.drive.uploadStatusText.includes('Gangguan') || $store.drive.uploadStatusText.includes('Mencoba'))) ? 'text-amber-400 font-bold' : ''" x-text="$store.drive.uploadStatusText">Status: Processing</span>
 			</div>
 		</div>
 
@@ -928,6 +951,78 @@ templ Layout(title string) {
 				storagePercent: 0,
 				currentSpeedText: 'Idle',
 				isTransferring: false,
+				transferDirection: 'idle',
+				transferBytesLoaded: 0,
+				transferBytesTotal: 0,
+				transferChunkCurrent: 0,
+				transferChunkTotal: 0,
+				transferEtaText: '-',
+				transferWatchdogTimer: null,
+				lastProgressTime: 0,
+
+				formatBytes(bytes) {
+					if (bytes === undefined || bytes === null || isNaN(bytes) || bytes <= 0) return '0 B';
+					const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+					const i = Math.floor(Math.log(bytes) / Math.log(1024));
+					const val = (bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1);
+					return `${val} ${units[i]}`;
+				},
+
+				formatSpeed(bytesPerSec) {
+					if (!bytesPerSec || isNaN(bytesPerSec) || bytesPerSec <= 0) return '0.0 KB/s';
+					if (bytesPerSec >= 1024 * 1024) {
+						return `${(bytesPerSec / (1024 * 1024)).toFixed(1)} MB/s`;
+					}
+					return `${(bytesPerSec / 1024).toFixed(1)} KB/s`;
+				},
+
+				updateTransferEta(remainingBytes, speedBps) {
+					if (!speedBps || speedBps <= 0 || remainingBytes <= 0) {
+						this.transferEtaText = '-';
+						return;
+					}
+					const sec = Math.round(remainingBytes / speedBps);
+					if (sec < 60) {
+						this.transferEtaText = `~${sec}s`;
+					} else if (sec < 3600) {
+						const mins = Math.floor(sec / 60);
+						const s = sec % 60;
+						this.transferEtaText = `~${mins}m ${s}s`;
+					} else {
+						const hrs = Math.floor(sec / 3600);
+						const mins = Math.floor((sec % 3600) / 60);
+						this.transferEtaText = `~${hrs}h ${mins}m`;
+					}
+				},
+
+				startTransferWatchdog() {
+					this.stopTransferWatchdog();
+					this.lastProgressTime = performance.now();
+					this.transferWatchdogTimer = setInterval(() => {
+						if (!this.isTransferring) {
+							this.stopTransferWatchdog();
+							return;
+						}
+						const now = performance.now();
+						const idleTime = now - this.lastProgressTime;
+						if (idleTime > 1200) {
+							if (this.transferDirection === 'upload') {
+								this.currentSpeedText = '0.0 KB/s';
+								this.transferEtaText = '-';
+								if (this.uploadStatusText && this.uploadStatusText.startsWith('Status: Mengunggah')) {
+									this.uploadStatusText = 'Status: Menunggu respons server...';
+								}
+							}
+						}
+					}, 500);
+				},
+
+				stopTransferWatchdog() {
+					if (this.transferWatchdogTimer) {
+						clearInterval(this.transferWatchdogTimer);
+						this.transferWatchdogTimer = null;
+					}
+				},
 
 				init() {
 					this.fetchFolders();
@@ -1241,6 +1336,7 @@ templ Layout(title string) {
 					this.uploadStatusText = 'Status: Menginisiasi antrean unduhan...';
 					this.isUploading = true;
 					this.isTransferring = true;
+					this.transferDirection = 'download';
 					this.currentSpeedText = 'Memproses...';
 
 					try {
@@ -1319,9 +1415,15 @@ templ Layout(title string) {
 					} finally {
 						this.isUploading = false;
 						this.isTransferring = false;
+						this.transferDirection = 'idle';
 						this.currentSpeedText = 'Idle';
 						this.uploadProgress = 0;
 						this.uploadStatusText = 'Status: Processing';
+						this.transferBytesLoaded = 0;
+						this.transferBytesTotal = 0;
+						this.transferChunkCurrent = 0;
+						this.transferChunkTotal = 0;
+						this.transferEtaText = '-';
 					}
 				},
 
@@ -1355,6 +1457,12 @@ templ Layout(title string) {
 					this.uploadStatusText = 'Status: Menginisiasi Unduhan...';
 					this.isUploading = true;
 					this.isTransferring = true;
+					this.transferDirection = 'download';
+					this.transferBytesLoaded = 0;
+					this.transferBytesTotal = 0;
+					this.transferChunkCurrent = 0;
+					this.transferChunkTotal = 0;
+					this.transferEtaText = '-';
 					this.currentSpeedText = 'Menghubungkan...';
 
 					try {
@@ -1401,6 +1509,12 @@ templ Layout(title string) {
 								if (typeof sData.progress === 'number') {
 									this.uploadProgress = Math.max(this.uploadProgress, sData.progress);
 								}
+								if (typeof sData.downloaded === 'number') {
+									this.transferBytesLoaded = sData.downloaded;
+								}
+								if (typeof sData.total === 'number') {
+									this.transferBytesTotal = sData.total;
+								}
 								if (sData.speed_text) {
 									this.currentSpeedText = sData.speed_text;
 								}
@@ -1436,9 +1550,15 @@ templ Layout(title string) {
 					} finally {
 						this.isUploading = false;
 						this.isTransferring = false;
+						this.transferDirection = 'idle';
 						this.currentSpeedText = 'Idle';
 						this.uploadProgress = 0;
 						this.uploadStatusText = 'Status: Processing';
+						this.transferBytesLoaded = 0;
+						this.transferBytesTotal = 0;
+						this.transferChunkCurrent = 0;
+						this.transferChunkTotal = 0;
+						this.transferEtaText = '-';
 					}
 				},
 
@@ -1794,11 +1914,18 @@ templ Layout(title string) {
 						}
 						await new Promise(r => setTimeout(r, 1000));
 					} finally {
+						this.stopTransferWatchdog();
+						this.transferDirection = 'idle';
 						this.isUploading = false;
 						this.isTransferring = false;
 						this.currentSpeedText = 'Idle';
 						this.uploadProgress = 0;
 						this.uploadStatusText = 'Status: Processing';
+						this.transferBytesLoaded = 0;
+						this.transferBytesTotal = 0;
+						this.transferChunkCurrent = 0;
+						this.transferChunkTotal = 0;
+						this.transferEtaText = '-';
 						this.isProcessingQueue = false;
 					}
 				},
@@ -1823,7 +1950,14 @@ templ Layout(title string) {
 					this.uploadProgress = 5;
 					this.uploadStatusText = 'Status: Inisiasi Sesi';
 					this.isTransferring = true;
+					this.transferDirection = 'upload';
+					this.transferBytesLoaded = 0;
+					this.transferBytesTotal = file.size;
+					this.transferChunkCurrent = 0;
+					this.transferChunkTotal = Math.max(1, Math.ceil(file.size / (2 * 1024 * 1024)));
+					this.transferEtaText = '-';
 					this.currentSpeedText = 'Menghubungkan...';
+					this.startTransferWatchdog();
 					const uploadStartTime = performance.now();
 
 					let clientCasHash = "";
@@ -1866,10 +2000,12 @@ templ Layout(title string) {
 						const initData = await initRes.json();
 
 						if (initData.status === "completed") {
+							this.stopTransferWatchdog();
 							await this.fetchFiles();
 							await this.fetchFolders();
 							await this.fetchStorageStats();
 							this.uploadProgress = 100;
+							this.transferBytesLoaded = file.size;
 							this.uploadStatusText = 'Status: Instan (CAS)';
 							this.currentSpeedText = 'Instan (CAS)';
 							await new Promise(r => setTimeout(r, 600));
@@ -1879,22 +2015,29 @@ templ Layout(title string) {
 						const sessionId = initData.session_id;
 						let offset = (typeof initData.uploaded === 'number') ? initData.uploaded : 0;
 						const totalSize = file.size;
+						this.transferBytesLoaded = offset;
+						this.transferBytesTotal = totalSize;
+
+						// Chunked upload: 2MB chunks to stay well below 50MB RouteLimit
+						const chunkSize = 2 * 1024 * 1024;
+						this.transferChunkTotal = Math.max(1, Math.ceil(totalSize / chunkSize));
 
 						if (offset > 0) {
 							const resumedPct = Math.min(Math.round((offset / Math.max(totalSize, 1)) * 90) + 5, 95);
 							this.uploadProgress = resumedPct;
+							this.transferChunkCurrent = Math.min(Math.floor(offset / chunkSize) + 1, this.transferChunkTotal);
 							this.uploadStatusText = `Status: Melanjutkan Unggahan (${Math.round((offset / Math.max(totalSize, 1)) * 100)}%)`;
 						} else {
 							this.uploadStatusText = 'Status: Mengunggah';
 						}
 
-						// Chunked upload: 2MB chunks to stay well below 50MB RouteLimit
-						const chunkSize = 2 * 1024 * 1024;
-
 						while (offset < totalSize || totalSize === 0) {
 							const end = Math.min(offset + chunkSize, totalSize);
 							const chunk = file.slice(offset, end);
 							const currentOffset = offset;
+							const currentChunkIndex = Math.min(Math.floor(offset / chunkSize) + 1, this.transferChunkTotal);
+							this.transferChunkCurrent = currentChunkIndex;
+							this.transferBytesLoaded = offset;
 
 							let chunkSuccess = false;
 							let retryCount = 0;
@@ -1918,15 +2061,19 @@ templ Layout(title string) {
 												const checkData = await checkRes.json();
 												if (checkData.status === 'completed') {
 													offset = totalSize;
+													this.transferBytesLoaded = totalSize;
 													chunkSuccess = true;
 													break;
 												}
 												if (typeof checkData.uploaded === 'number' && checkData.uploaded !== currentOffset) {
 													offset = checkData.uploaded;
+													this.transferBytesLoaded = offset;
 													break;
 												}
 											}
-										} catch(checkErr) {}
+										} catch(checkErr) {
+											console.warn("[Hornetz Upload] Gagal memeriksa status sesi upload:", checkErr);
+										}
 									}
 
 									await new Promise((resolve, reject) => {
@@ -1935,7 +2082,7 @@ templ Layout(title string) {
 										xhr.setRequestHeader("X-CSRF-Token", this.getCsrfToken());
 										xhr.setRequestHeader("Content-Type", "application/octet-stream");
 										xhr.setRequestHeader("Content-Range", `bytes ${currentOffset}-${end > 0 ? end - 1 : 0}/${totalSize}`);
-										xhr.timeout = 60000;
+										xhr.timeout = 25000;
 
 										let lastLoaded = 0;
 										let lastTime = performance.now();
@@ -1943,21 +2090,27 @@ templ Layout(title string) {
 										xhr.upload.onprogress = (event) => {
 											if (event.lengthComputable && event.total > 0) {
 												const now = performance.now();
+												this.lastProgressTime = now;
+												const loadedTotal = currentOffset + event.loaded;
+												this.transferBytesLoaded = Math.min(loadedTotal, totalSize);
+
 												const timeDiff = (now - lastTime) / 1000;
 												if (timeDiff >= 0.25) {
 													const bytesDiff = event.loaded - lastLoaded;
-													const speedMBps = ((bytesDiff / (1024 * 1024)) / timeDiff).toFixed(1);
-													this.currentSpeedText = `${speedMBps} MB/s`;
+													const speedBps = bytesDiff / timeDiff;
+													this.currentSpeedText = this.formatSpeed(speedBps);
+													const remainingBytes = Math.max(0, totalSize - loadedTotal);
+													this.updateTransferEta(remainingBytes, speedBps);
 													lastLoaded = event.loaded;
 													lastTime = now;
 												}
-												const loadedTotal = currentOffset + event.loaded;
 												const streamPercent = 5 + Math.round((loadedTotal / Math.max(totalSize, 1)) * 90);
 												this.uploadProgress = Math.max(this.uploadProgress, Math.min(streamPercent, 95));
 											}
 										};
 
 										xhr.onload = () => {
+											this.lastProgressTime = performance.now();
 											if (xhr.status >= 200 && xhr.status < 300) {
 												resolve(xhr.response);
 											} else if (xhr.status === 409) {
@@ -1965,6 +2118,7 @@ templ Layout(title string) {
 													const errJson = JSON.parse(xhr.responseText);
 													if (typeof errJson.expected_offset === 'number') {
 														offset = errJson.expected_offset;
+														this.transferBytesLoaded = offset;
 														resolve(xhr.response);
 														return;
 													}
@@ -1994,6 +2148,7 @@ templ Layout(title string) {
 									chunkSuccess = true;
 								} catch (chunkErr) {
 									retryCount++;
+									console.warn(`[Hornetz Upload] Chunk ${currentChunkIndex}/${this.transferChunkTotal} gagal, mencoba lagi (${retryCount}/${maxRetries}). Alasan:`, chunkErr.message);
 									if (retryCount >= maxRetries) {
 										throw new Error(`Koneksi terputus berulang kali setelah ${maxRetries} percobaan: ${chunkErr.message}`);
 									}
@@ -2005,13 +2160,17 @@ templ Layout(title string) {
 							}
 
 							offset = end;
+							this.transferBytesLoaded = offset;
 							if (totalSize === 0) break;
 						}
 
+						this.stopTransferWatchdog();
 						const elapsedSec = (performance.now() - uploadStartTime) / 1000;
-						const avgSpeedMBps = ((file.size / (1024 * 1024)) / Math.max(elapsedSec, 0.05)).toFixed(1);
-						this.currentSpeedText = `${avgSpeedMBps} MB/s`;
+						const avgSpeedBps = file.size / Math.max(elapsedSec, 0.05);
+						this.currentSpeedText = this.formatSpeed(avgSpeedBps);
 						this.uploadProgress = 100;
+						this.transferBytesLoaded = file.size;
+						this.transferEtaText = '0s';
 						this.uploadStatusText = 'Status: Selesai';
 
 						await this.fetchFiles();
@@ -2022,11 +2181,14 @@ templ Layout(title string) {
 
 					} catch (err) {
 						console.error("Upload error:", err);
+						this.stopTransferWatchdog();
 						this.isTransferring = false;
 						this.isUploading = false;
+						this.transferDirection = 'idle';
 						this.uploadProgress = 0;
 						this.currentSpeedText = 'Gagal';
 						this.uploadStatusText = 'Status: Gagal';
+						this.transferEtaText = '-';
 						alert("Gagal mengunggah berkas: " + err.message);
 					}
 				},
@@ -2106,6 +2268,7 @@ templ Layout(title string) {
 				downloadFile(file) {
 					if (!file) return;
 					this.isTransferring = true;
+					this.transferDirection = 'download';
 					this.currentSpeedText = 'Mengunduh...';
 					const a = document.createElement('a');
 					a.href = `/api/files/${file.id}/download`;
@@ -2116,6 +2279,7 @@ templ Layout(title string) {
 					this.selectedFile = null;
 					setTimeout(() => {
 						this.isTransferring = false;
+						this.transferDirection = 'idle';
 						this.currentSpeedText = 'Idle';
 					}, 2500);
 				},

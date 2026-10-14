@@ -3,6 +3,7 @@ package controllers
 import (
 	"bytes"
 	"database/sql"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -105,9 +106,11 @@ func (dc *DownloadController) StartDownload(c *echo.Context) error {
 
 	task, err := dc.Manager.StartDownloadWithFilename(c.Request().Context(), userID, folderID, normURL, req.Filename, isVault, vk)
 	if err != nil {
+		slog.Error("failed to start download task", "error", err, "url", normURL)
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 
+	slog.Info("download task started", "task_id", task.ID, "url", normURL, "filename", task.Filename, "folder_id", folderID)
 	return c.JSON(http.StatusAccepted, task)
 }
 
