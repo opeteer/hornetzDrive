@@ -58,6 +58,14 @@ type UploadController struct {
 	Broker            *realtime.MemoryBroker
 	DB                *data.DBEngine
 	completedSessions sync.Map
+	FileCtrl          *FileController
+}
+
+var uploadBufPool = sync.Pool{
+	New: func() interface{} {
+		b := make([]byte, 1024*1024)
+		return &b
+	},
 }
 
 func (uc *UploadController) PruneCompletedSessions(ttl time.Duration) {
@@ -108,7 +116,13 @@ func (uc *UploadController) isVaultFolder(folderID string) bool {
 	if folderID == "f2" {
 		return true
 	}
-	if folderID == "" || folderID == "f1" || folderID == "f3" || uc.DB == nil || uc.DB.SQL == nil {
+	if folderID == "" || folderID == "f1" || folderID == "f3" {
+		return false
+	}
+	if uc.FileCtrl != nil {
+		return uc.FileCtrl.IsVaultFolder(folderID)
+	}
+	if uc.DB == nil || uc.DB.SQL == nil {
 		return false
 	}
 	curr := folderID
@@ -365,8 +379,9 @@ func (uc *UploadController) UploadChunk(c *echo.Context) error {
 
 	bodyReader := io.LimitReader(c.Request().Body, remaining+1)
 
-	transferBuf := make([]byte, 1024*1024)
-	written, err := io.CopyBuffer(encStream, bodyReader, transferBuf)
+	bufPtr := uploadBufPool.Get().(*[]byte)
+	defer uploadBufPool.Put(bufPtr)
+	written, err := io.CopyBuffer(encStream, bodyReader, *bufPtr)
 	if err != nil {
 		_ = bufWriter.Flush()
 		_ = f.Truncate(initialDiskSize)
@@ -416,6 +431,7 @@ func (uc *UploadController) UploadChunk(c *echo.Context) error {
 				// BUG-SYS-43: Clean up orphaned CAS blob if database insertion fails
 				if !existedBefore {
 					_ = os.Remove(uc.CAS.Path(casHash))
+					uc.CAS.Invalidate(casHash)
 				}
 				return echo.NewHTTPError(http.StatusInternalServerError, "failed to record file metadata in database: "+err.Error())
 			}

@@ -54,7 +54,8 @@ func (sc *SecurityController) PanicPurge(c *echo.Context) error {
 	auth.GlobalSessionStore.Purge()
 	fmt.Println("CRITICAL: Stinger Panic Purge Triggered! RAM Keys obliterated.")
 
-	// 2. Overwrite all physical CAS files with random bytes
+	// 2. Overwrite all physical CAS files with random bytes using a single reusable buffer
+	chunk := make([]byte, 1024*1024) // 1MB reusable buffer
 	err := filepath.Walk(sc.CAS.BaseDir, func(path string, info fs.FileInfo, err error) error {
 		if err != nil {
 			return nil
@@ -68,7 +69,6 @@ func (sc *SecurityController) PanicPurge(c *echo.Context) error {
 		if err == nil {
 			size := info.Size()
 			// Basic overwrite (1 pass)
-			chunk := make([]byte, 1024*1024) // 1MB buffer
 			var written int64 = 0
 			for written < size {
 				toWrite := int64(len(chunk))
@@ -90,11 +90,29 @@ func (sc *SecurityController) PanicPurge(c *echo.Context) error {
 		return nil
 	})
 
+	// Reset CAS existence cache
+	if sc.CAS != nil {
+		sc.CAS.ClearCache()
+	}
+
 	// 3. Clear database records so database doesn't reference shredded files
 	if sc.DB != nil && sc.DB.SQL != nil {
 		_, _ = sc.DB.SQL.Exec("DELETE FROM files")
 		_, _ = sc.DB.SQL.Exec("DELETE FROM folders WHERE id NOT IN ('f1', 'f2', 'f3')")
 	}
+
+	// Invalidate Vault folder cache
+	if sc.UploadCtrl != nil && sc.UploadCtrl.FileCtrl != nil {
+		sc.UploadCtrl.FileCtrl.InvalidateVaultCache()
+	}
+
+	// Clean up cached thumbnail previews
+	_ = filepath.Walk("storage/thumbnails", func(p string, info fs.FileInfo, err error) error {
+		if err == nil && !info.IsDir() {
+			_ = os.Remove(p)
+		}
+		return nil
+	})
 
 	// 4. Overwrite and clean up temporary upload buffers
 	if sc.TmpDir != "" {

@@ -13,9 +13,10 @@ import (
 // EncryptStream wraps an io.Writer. Every Write() call encrypts the payload
 // as a discrete chunk in the Dynamo format: [4 bytes length][12 bytes nonce][ciphertext + tag]
 type EncryptStream struct {
-	w      io.Writer
-	aesgcm cipher.AEAD
-	key    []byte
+	w         io.Writer
+	aesgcm    cipher.AEAD
+	key       []byte
+	packetBuf []byte // Reusable packet buffer for [4 bytes len][12 bytes nonce][ciphertext + tag]
 }
 
 func NewEncryptStream(w io.Writer, key []byte) (*EncryptStream, error) {
@@ -43,21 +44,23 @@ func (s *EncryptStream) Write(p []byte) (n int, err error) {
 	mac.Write(p)
 	nonce := mac.Sum(nil)[:NonceSize]
 
-	ciphertext := s.aesgcm.Seal(nil, nonce, p, nil)
-
-	// Format: [4 bytes chunk_size][12 bytes nonce][ciphertext]
-	// Note: Dynamo uses 4 bytes to store the length of (ciphertext)
-	chunkLen := uint32(len(ciphertext))
-	lenBuf := make([]byte, 4)
-	binary.BigEndian.PutUint32(lenBuf, chunkLen)
-
-	if _, err := s.w.Write(lenBuf); err != nil {
-		return 0, err
+	// Format: [4 bytes chunk_size][12 bytes nonce][ciphertext + tag]
+	neededCap := 4 + NonceSize + len(p) + TagSize
+	if cap(s.packetBuf) < neededCap {
+		s.packetBuf = make([]byte, neededCap)
+	} else {
+		s.packetBuf = s.packetBuf[:neededCap]
 	}
-	if _, err := s.w.Write(nonce); err != nil {
-		return 0, err
-	}
-	if _, err := s.w.Write(ciphertext); err != nil {
+
+	chunkLen := uint32(len(p) + TagSize)
+	binary.BigEndian.PutUint32(s.packetBuf[0:4], chunkLen)
+	copy(s.packetBuf[4:16], nonce)
+
+	// Encrypt directly into the pre-allocated slice without extra heap allocations
+	s.aesgcm.Seal(s.packetBuf[16:16], nonce, p, nil)
+
+	// Framed single-pass I/O write (1 syscall instead of 3)
+	if _, err := s.w.Write(s.packetBuf[:neededCap]); err != nil {
 		return 0, err
 	}
 
@@ -66,9 +69,13 @@ func (s *EncryptStream) Write(p []byte) (n int, err error) {
 
 // DecryptStream wraps an io.Reader assuming it's in the Dynamo format.
 type DecryptStream struct {
-	r      io.Reader
-	aesgcm cipher.AEAD
-	buf    []byte // Buffer for decrypted chunks not yet consumed by caller
+	r         io.Reader
+	aesgcm    cipher.AEAD
+	buf       []byte // Buffer for decrypted chunks not yet consumed by caller
+	lenBuf    [4]byte
+	nonceBuf  [NonceSize]byte
+	cipherBuf []byte
+	plainBuf  []byte
 }
 
 func NewDecryptStream(r io.Reader, key []byte) (*DecryptStream, error) {
@@ -95,31 +102,37 @@ func (s *DecryptStream) Read(p []byte) (n int, err error) {
 		return n, nil
 	}
 
-	// 2. Read length of next chunk (4 bytes)
-	lenBuf := make([]byte, 4)
-	if _, err := io.ReadFull(s.r, lenBuf); err != nil {
+	// 2. Read length of next chunk (4 bytes) using non-allocating embedded buffer
+	if _, err := io.ReadFull(s.r, s.lenBuf[:]); err != nil {
 		return 0, err
 	}
-	chunkLen := binary.BigEndian.Uint32(lenBuf)
+	chunkLen := binary.BigEndian.Uint32(s.lenBuf[:])
 	const MaxChunkSize = 50 * 1024 * 1024 // 50 MB upper limit to protect against OOM
 	if chunkLen < TagSize || chunkLen > MaxChunkSize {
 		return 0, errors.New("invalid or excessive chunk length")
 	}
 
-	// 3. Read nonce (12 bytes)
-	nonce := make([]byte, NonceSize)
-	if _, err := io.ReadFull(s.r, nonce); err != nil {
+	// 3. Read nonce (12 bytes) using non-allocating embedded buffer
+	if _, err := io.ReadFull(s.r, s.nonceBuf[:]); err != nil {
 		return 0, err
 	}
 
-	// 4. Read ciphertext
-	ciphertext := make([]byte, chunkLen)
-	if _, err := io.ReadFull(s.r, ciphertext); err != nil {
+	// 4. Read ciphertext into reusable buffer
+	if cap(s.cipherBuf) < int(chunkLen) {
+		s.cipherBuf = make([]byte, chunkLen)
+	} else {
+		s.cipherBuf = s.cipherBuf[:chunkLen]
+	}
+	if _, err := io.ReadFull(s.r, s.cipherBuf); err != nil {
 		return 0, err
 	}
 
-	// 5. Decrypt and authenticate
-	plaintext, err := s.aesgcm.Open(nil, nonce, ciphertext, nil)
+	// 5. Decrypt and authenticate reusing plainBuf capacity
+	plainCap := int(chunkLen - TagSize)
+	if cap(s.plainBuf) < plainCap {
+		s.plainBuf = make([]byte, 0, plainCap)
+	}
+	plaintext, err := s.aesgcm.Open(s.plainBuf[:0], s.nonceBuf[:], s.cipherBuf, nil)
 	if err != nil {
 		return 0, errors.New("authentication failed")
 	}
@@ -162,11 +175,10 @@ func (s *DecryptStream) SeekTo(offset int64) error {
 
 	currentOffset := int64(0)
 	for currentOffset < offset {
-		lenBuf := make([]byte, 4)
-		if _, err := io.ReadFull(s.r, lenBuf); err != nil {
+		if _, err := io.ReadFull(s.r, s.lenBuf[:]); err != nil {
 			return err
 		}
-		chunkLen := binary.BigEndian.Uint32(lenBuf)
+		chunkLen := binary.BigEndian.Uint32(s.lenBuf[:])
 		if chunkLen < TagSize || chunkLen > 50*1024*1024 {
 			return errors.New("invalid or excessive chunk length")
 		}
@@ -179,15 +191,22 @@ func (s *DecryptStream) SeekTo(offset int64) error {
 			currentOffset += plainLen
 		} else {
 			// The requested offset begins inside this chunk. Decrypt this chunk:
-			nonce := make([]byte, NonceSize)
-			if _, err := io.ReadFull(s.r, nonce); err != nil {
+			if _, err := io.ReadFull(s.r, s.nonceBuf[:]); err != nil {
 				return err
 			}
-			ciphertext := make([]byte, chunkLen)
-			if _, err := io.ReadFull(s.r, ciphertext); err != nil {
+			if cap(s.cipherBuf) < int(chunkLen) {
+				s.cipherBuf = make([]byte, chunkLen)
+			} else {
+				s.cipherBuf = s.cipherBuf[:chunkLen]
+			}
+			if _, err := io.ReadFull(s.r, s.cipherBuf); err != nil {
 				return err
 			}
-			plaintext, err := s.aesgcm.Open(nil, nonce, ciphertext, nil)
+			plainCap := int(chunkLen - TagSize)
+			if cap(s.plainBuf) < plainCap {
+				s.plainBuf = make([]byte, 0, plainCap)
+			}
+			plaintext, err := s.aesgcm.Open(s.plainBuf[:0], s.nonceBuf[:], s.cipherBuf, nil)
 			if err != nil {
 				return errors.New("authentication failed")
 			}

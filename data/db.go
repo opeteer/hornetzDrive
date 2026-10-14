@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/Masterminds/squirrel"
 )
@@ -24,6 +25,25 @@ func NewDBEngine(driverName, dataSourceName string) (*DBEngine, error) {
 	if err != nil {
 		return nil, fmt.Errorf("ztatic/data: failed to open db: %w", err)
 	}
+
+	// High concurrency connection pool tuning
+	db.SetMaxOpenConns(25)
+	db.SetMaxIdleConns(10)
+	db.SetConnMaxLifetime(15 * time.Minute)
+	db.SetConnMaxIdleTime(5 * time.Minute)
+
+	driverLower := strings.ToLower(driverName)
+	if strings.Contains(driverLower, "sqlite") {
+		// High-performance SQLite runtime tuning
+		_, _ = db.Exec(`
+			PRAGMA journal_mode = WAL;
+			PRAGMA synchronous = NORMAL;
+			PRAGMA cache_size = -64000;
+			PRAGMA mmap_size = 268435456;
+			PRAGMA temp_store = MEMORY;
+			PRAGMA busy_timeout = 5000;
+		`)
+	}
 	
 	// Ensure the connection is actually valid
 	if err := db.Ping(); err != nil {
@@ -31,7 +51,6 @@ func NewDBEngine(driverName, dataSourceName string) (*DBEngine, error) {
 	}
 
 	var builder squirrel.StatementBuilderType
-	driverLower := strings.ToLower(driverName)
 	if strings.Contains(driverLower, "postgres") || strings.Contains(driverLower, "pgx") {
 		builder = squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar).RunWith(db)
 	} else {

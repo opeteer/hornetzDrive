@@ -6,12 +6,15 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 )
 
 // CASEngine manages the physical Content-Addressable Storage.
 // Files are stored based on their SHA-256 hash, enabling 0-second deduplication.
 type CASEngine struct {
-	BaseDir string
+	BaseDir    string
+	existCache sync.Map
 }
 
 func NewCASEngine(baseDir string) (*CASEngine, error) {
@@ -39,8 +42,29 @@ func (c *CASEngine) Exists(hash string) bool {
 	if !IsValidHash(hash) {
 		return false
 	}
+	// Fast in-memory cache lookup (<20ns)
+	if _, ok := c.existCache.Load(hash); ok {
+		return true
+	}
 	_, err := os.Stat(c.Path(hash))
-	return err == nil
+	if err == nil {
+		c.existCache.Store(hash, struct{}{})
+		return true
+	}
+	return false
+}
+
+// Invalidate removes a hash from the in-memory existence cache.
+func (c *CASEngine) Invalidate(hash string) {
+	c.existCache.Delete(hash)
+}
+
+// ClearCache completely resets the in-memory existence cache.
+func (c *CASEngine) ClearCache() {
+	c.existCache.Range(func(key, _ interface{}) bool {
+		c.existCache.Delete(key)
+		return true
+	})
 }
 
 func (c *CASEngine) Path(hash string) string {
@@ -48,8 +72,20 @@ func (c *CASEngine) Path(hash string) string {
 		// Prevent path traversal outside BaseDir
 		return filepath.Join(c.BaseDir, "invalid_hash")
 	}
-	// Path Shuffling / Obfuscation (e.g., ab/cd/abcdef...)
-	return filepath.Join(c.BaseDir, hash[0:2], hash[2:4], hash)
+	// Zero-allocation high-performance path builder: BaseDir/ab/cd/hash
+	baseLen := len(c.BaseDir)
+	var b strings.Builder
+	b.Grow(baseLen + 1 + 2 + 1 + 2 + 1 + 64)
+	b.WriteString(c.BaseDir)
+	if baseLen > 0 && c.BaseDir[baseLen-1] != '/' && c.BaseDir[baseLen-1] != filepath.Separator {
+		b.WriteByte(filepath.Separator)
+	}
+	b.WriteString(hash[0:2])
+	b.WriteByte(filepath.Separator)
+	b.WriteString(hash[2:4])
+	b.WriteByte(filepath.Separator)
+	b.WriteString(hash)
+	return b.String()
 }
 
 // ComputeHash computes the SHA-256 hash of a file on disk
@@ -109,6 +145,7 @@ func (c *CASEngine) MoveToCASWithStatus(tempPath string) (hash string, existedBe
 		_ = dstFile.Close()
 		_ = os.Remove(tempPath)
 	}
+	c.existCache.Store(hash, struct{}{})
 	return hash, false, nil
 }
 

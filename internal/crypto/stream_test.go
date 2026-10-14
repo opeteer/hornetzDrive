@@ -264,3 +264,48 @@ func TestDecryptStream_SeekRewindAndMultiSeek(t *testing.T) {
 	}
 }
 
+func BenchmarkStreamEncrypt(b *testing.B) {
+	vk := DummyVK()
+	chunk := make([]byte, 64*1024) // 64 KB chunk
+	encStream, err := NewEncryptStream(io.Discard, vk)
+	if err != nil {
+		b.Fatalf("NewEncryptStream failed: %v", err)
+	}
+
+	b.SetBytes(int64(len(chunk)))
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := encStream.Write(chunk); err != nil {
+			b.Fatalf("Write failed: %v", err)
+		}
+	}
+}
+
+func BenchmarkStreamDecrypt(b *testing.B) {
+	vk := DummyVK()
+	chunk := make([]byte, 64*1024) // 64 KB chunk
+	var encBuf bytes.Buffer
+	encStream, err := NewEncryptStream(&encBuf, vk)
+	if err != nil {
+		b.Fatalf("NewEncryptStream failed: %v", err)
+	}
+	if _, err := encStream.Write(chunk); err != nil {
+		b.Fatalf("Write failed: %v", err)
+	}
+	encryptedBytes := encBuf.Bytes()
+
+	readBuf := make([]byte, 64*1024)
+	b.SetBytes(int64(len(chunk)))
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		reader := bytes.NewReader(encryptedBytes)
+		decStream, err := NewDecryptStream(reader, vk)
+		if err != nil {
+			b.Fatalf("NewDecryptStream failed: %v", err)
+		}
+		if _, err := io.ReadFull(decStream, readBuf); err != nil {
+			b.Fatalf("ReadFull failed: %v", err)
+		}
+	}
+}
+

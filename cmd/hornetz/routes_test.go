@@ -131,3 +131,21 @@ func TestRoutes_DashboardApp(t *testing.T) {
 	}
 }
 
+func TestRoutes_GzipCompression(t *testing.T) {
+	app := setupTestApp()
+	app.Use(echo.WrapMiddleware(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			next.ServeHTTP(w, r)
+		})
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/app", nil)
+	req.Header.Set("Accept-Encoding", "gzip")
+	rec := httptest.NewRecorder()
+	app.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK for '/app', got %d", rec.Code)
+	}
+}
+

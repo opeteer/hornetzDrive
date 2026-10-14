@@ -3,9 +3,11 @@ package main
 import (
 	"context"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/labstack/echo/v5"
+	"github.com/labstack/echo/v5/middleware"
 	_ "github.com/lib/pq"
 	_ "github.com/mattn/go-sqlite3"
 
@@ -59,6 +61,20 @@ func main() {
 
 	app := ztatic.NewWithConfig(cfg)
 	app.Echo.IPExtractor = echo.ExtractIPFromXFFHeader(echo.TrustLoopback(true), echo.TrustLinkLocal(true))
+
+	// High-performance HTTP response compression (Gzip) with intelligent binary stream bypass
+	app.Echo.Use(middleware.GzipWithConfig(middleware.GzipConfig{
+		Level:     5,
+		MinLength: 1024,
+		Skipper: func(c *echo.Context) bool {
+			p := c.Request().URL.Path
+			// Skip streaming file downloads, chunk uploads, and SSE streams
+			if strings.HasSuffix(p, "/download") || strings.HasPrefix(p, "/upload") || p == "/sse" {
+				return true
+			}
+			return false
+		},
+	}))
 
 	dbEngine, err := data.NewDBEngine(appCfg.DBDriver, appCfg.DBDSN)
 	if err != nil {
@@ -145,6 +161,7 @@ func main() {
 		CAS:        casEngine,
 		Broker:     broker,
 		DB:         dbEngine,
+		FileCtrl:   fileCtrl,
 	}
 
 	// Phase 3: Security & Shuffler
