@@ -401,6 +401,11 @@ func ResolveLink(rawInput string) (*ResolvedLink, error) {
 	return res, nil
 }
 
+var (
+	genericDownloadBtnRegex  = regexp.MustCompile(`(?i)(?:id=["']downloadButton["']|aria-label=["']Download[^"']*["'])[^>]*href=["']([^"']+)["']`)
+	genericDownloadHrefRegex = regexp.MustCompile(`(?i)href=["']([^"']+)["'][^>]*(?:id=["']downloadButton["']|aria-label=["']Download[^"']*["'])`)
+)
+
 // ExtractMediaFireDirectLinkFromHTML scans an HTML page for direct MediaFire download links and filename.
 func ExtractMediaFireDirectLinkFromHTML(htmlContent string) (string, string) {
 	directURL := ""
@@ -408,6 +413,10 @@ func ExtractMediaFireDirectLinkFromHTML(htmlContent string) (string, string) {
 		directURL = match[1]
 	} else if match := mediafireRawCdnRegex.FindString(htmlContent); match != "" {
 		directURL = match
+	} else if match := genericDownloadBtnRegex.FindStringSubmatch(htmlContent); len(match) == 2 {
+		directURL = match[1]
+	} else if match := genericDownloadHrefRegex.FindStringSubmatch(htmlContent); len(match) == 2 {
+		directURL = match[1]
 	}
 
 	filename := ""

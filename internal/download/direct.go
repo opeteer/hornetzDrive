@@ -161,13 +161,11 @@ func (dd *DirectDownloader) DownloadDirect(ctx context.Context, targetURL string
 			fullHTML := string(append(peekBuf[:peekN], restOfHTML...))
 
 			var recoveredURL string
-			// MediaFire HTML check
-			if strings.Contains(strings.ToLower(resp.Request.URL.Host), "mediafire.com") || strings.Contains(strings.ToLower(resolved.Domain), "mediafire") {
-				recoveredURL, _ = ExtractMediaFireDirectLinkFromHTML(fullHTML)
-			}
+			// 1. MediaFire / Generic download button check
+			recoveredURL, _ = ExtractMediaFireDirectLinkFromHTML(fullHTML)
 
-			// Google Drive HTML check
-			if recoveredURL == "" && (strings.Contains(strings.ToLower(resp.Request.URL.Host), "google.com") || strings.Contains(strings.ToLower(resolved.Domain), "google")) {
+			// 2. Google Drive confirm link check
+			if recoveredURL == "" {
 				recoveredURL = ExtractGoogleDriveConfirmLinkFromHTML(fullHTML)
 			}
 
