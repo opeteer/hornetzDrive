@@ -19,7 +19,7 @@ templ DashboardContent() {
 	<div id="dashboard-content" class="h-full flex flex-col" x-data>
 		
 		<!-- ACTION BAR & BREADCRUMBS -->
-		<div class="h-14 border-b border-white/[0.08] px-6 flex items-center justify-between hornetz-glass shrink-0 relative z-10">
+		<div class="h-14 border-b border-white/[0.08] px-6 flex items-center justify-between hornetz-glass shrink-0 relative z-20">
 			<!-- Breadcrumbs Path -->
 			<div class="flex items-center gap-2 text-xs font-mono">
 				<span class="text-[#F5CE0D] font-bold cursor-pointer hover:underline" @click="$store.drive.setTab('storage')">Penyimpanan Saya</span>
@@ -69,12 +69,12 @@ templ DashboardContent() {
 				</button>
 				
 				<!-- Sort Controls -->
-				<div class="relative" x-data="{ sortOpen: false }">
+				<div class="relative z-30" x-data="{ sortOpen: false }">
 					<button @click="sortOpen = !sortOpen" class="text-xs bg-[#2E3137]/30 border border-[#3F4247]/50 hover:border-[#3F4247] text-[#86898B] hover:text-white px-3 py-1.5 rounded-xl flex items-center gap-1.5 font-mono backdrop-blur-md transition-all">
 						@IconArrowUpDown("w-3.5 h-3.5")
 						<span>Urutkan</span>
 					</button>
-					<div x-show="sortOpen" @click.away="sortOpen = false" x-cloak style="display: none;" class="absolute right-0 mt-2 w-48 bg-[#121519]/90 backdrop-blur-2xl border border-[#3F4247]/60 rounded-2xl shadow-2xl py-2 z-30 font-mono text-xs divide-y divide-[#3F4247]/30">
+					<div x-show="sortOpen" @click.away="sortOpen = false" x-cloak style="display: none;" class="absolute right-0 mt-2 w-48 bg-[#121519]/90 backdrop-blur-2xl border border-[#3F4247]/60 rounded-2xl shadow-2xl py-2 z-50 font-mono text-xs divide-y divide-[#3F4247]/30">
 						<button @click="$store.drive.setSort('name', 'asc'); sortOpen = false" class="w-full text-left px-3.5 py-2 hover:bg-[#2E3137]/60 text-[#86898B] hover:text-[#F5CE0D] transition-colors">Nama (A-Z)</button>
 						<button @click="$store.drive.setSort('name', 'desc'); sortOpen = false" class="w-full text-left px-3.5 py-2 hover:bg-[#2E3137]/60 text-[#86898B] hover:text-[#F5CE0D] transition-colors">Nama (Z-A)</button>
 						<button @click="$store.drive.setSort('size', 'desc'); sortOpen = false" class="w-full text-left px-3.5 py-2 hover:bg-[#2E3137]/60 text-[#86898B] hover:text-[#F5CE0D] transition-colors">Ukuran (Terbesar)</button>

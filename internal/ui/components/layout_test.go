@@ -116,3 +116,25 @@ func TestDashboard_LucideIcons(t *testing.T) {
 		}
 	}
 }
+
+func TestDashboard_SortDropdownZIndex(t *testing.T) {
+	comp := DashboardContent()
+	var buf bytes.Buffer
+	err := comp.Render(context.Background(), &buf)
+	if err != nil {
+		t.Fatalf("Failed to render DashboardContent: %v", err)
+	}
+
+	html := buf.String()
+
+	// Verify action bar has higher z-index (z-20) to stay above workspace content (z-10)
+	if !strings.Contains(html, "hornetz-glass shrink-0 relative z-20") {
+		t.Errorf("Dashboard Action Bar does not have relative z-20")
+	}
+
+	// Verify sort dropdown menu has z-50 to float above any elements
+	if !strings.Contains(html, "z-50") {
+		t.Errorf("Dashboard sort dropdown does not have z-50")
+	}
+}
+
