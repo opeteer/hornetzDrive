@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"archive/zip"
 	"database/sql"
 	"fmt"
 	"html"
@@ -678,6 +679,7 @@ func (fc *FileController) ThumbnailFile(c *echo.Context) error {
 	ext := strings.ToLower(getFileExt(f.Name))
 	isPDF := (ext == "pdf" || f.MimeType == "application/pdf")
 	isImg := strings.HasPrefix(f.MimeType, "image/") || (ext == "png" || ext == "jpg" || ext == "jpeg" || ext == "gif" || ext == "webp" || ext == "svg")
+	isOffice := (ext == "pptx" || ext == "ppt" || ext == "docx" || ext == "doc" || ext == "xlsx" || ext == "xls" || ext == "odp" || ext == "odt" || ext == "ods")
 
 	if isImg {
 		return fc.PreviewFile(c)
@@ -737,6 +739,64 @@ func (fc *FileController) ThumbnailFile(c *echo.Context) error {
 		}
 
 		svg := generatePdfSvgThumbnail(f.Name)
+		c.Response().Header().Set("Cache-Control", "public, max-age=3600")
+		c.Response().Header().Set("Content-Type", "image/svg+xml")
+		return c.Blob(http.StatusOK, "image/svg+xml", []byte(svg))
+	}
+
+	if isOffice {
+		cachedJpg := filepath.Join(thumbDir, f.CasHash+".jpg")
+		if _, err := os.Stat(cachedJpg); err == nil {
+			c.Response().Header().Set("Cache-Control", "public, max-age=86400")
+			c.Response().Header().Set("Content-Type", "image/jpeg")
+			return c.File(cachedJpg)
+		}
+		cachedPng := filepath.Join(thumbDir, f.CasHash+".png")
+		if _, err := os.Stat(cachedPng); err == nil {
+			c.Response().Header().Set("Cache-Control", "public, max-age=86400")
+			c.Response().Header().Set("Content-Type", "image/png")
+			return c.File(cachedPng)
+		}
+
+		if fc.CAS != nil && fc.CAS.Exists(f.CasHash) {
+			casPath := fc.CAS.Path(f.CasHash)
+			var vk []byte
+			if fc.IsVaultFolder(f.FolderID) {
+				if cookie, err := c.Cookie("swarm_session"); err == nil && cookie != nil {
+					vk, _ = auth.GlobalSessionStore.GetKey(cookie.Value)
+				}
+			} else {
+				vk = crypto.DummyVK()
+			}
+
+			if file, err := os.Open(casPath); err == nil {
+				defer file.Close()
+				decStream, err := crypto.NewDecryptStream(file, vk)
+				if err == nil {
+					tmpDir := "storage/tmp"
+					_ = os.MkdirAll(tmpDir, 0755)
+					tmpZipPath := filepath.Join(tmpDir, fmt.Sprintf("thumb_office_%s_%d.zip", f.CasHash[:8], time.Now().UnixNano()))
+					if tmpFile, err := os.Create(tmpZipPath); err == nil {
+						written, _ := io.Copy(tmpFile, decStream)
+						_ = tmpFile.Close()
+
+						if tmpFileRead, err := os.Open(tmpZipPath); err == nil {
+							mime, ok := extractOfficeThumbnail(tmpFileRead, written, cachedJpg)
+							_ = tmpFileRead.Close()
+							_ = os.Remove(tmpZipPath)
+							if ok {
+								c.Response().Header().Set("Cache-Control", "public, max-age=86400")
+								c.Response().Header().Set("Content-Type", mime)
+								return c.File(cachedJpg)
+							}
+						}
+						_ = os.Remove(tmpZipPath)
+					}
+				}
+			}
+		}
+
+		svg := generateOfficeSvgThumbnail(f.Name, ext)
 		c.Response().Header().Set("Cache-Control", "public, max-age=3600")
 		c.Response().Header().Set("Content-Type", "image/svg+xml")
 		return c.Blob(http.StatusOK, "image/svg+xml", []byte(svg))
@@ -1150,6 +1210,100 @@ func generateDocumentSvgThumbnail(name, ext, snippet string) string {
   <text x="22" y="66" fill="#1F2937" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" font-weight="600">%s</text>
   %s
 </svg>`, badgeColor, upperExt, escapedName, linesSvg)
+}
+
+func extractOfficeThumbnail(readerAt io.ReaderAt, size int64, targetPath string) (string, bool) {
+	zr, err := zip.NewReader(readerAt, size)
+	if err != nil {
+		return "", false
+	}
+	var targetFile *zip.File
+	var mimeType string
+	for _, f := range zr.File {
+		lower := strings.ToLower(f.Name)
+		if lower == "docprops/thumbnail.jpeg" || lower == "docprops/thumbnail.jpg" {
+			targetFile = f
+			mimeType = "image/jpeg"
+			break
+		} else if lower == "docprops/thumbnail.png" {
+			targetFile = f
+			mimeType = "image/png"
+			break
+		}
+	}
+	if targetFile == nil {
+		return "", false
+	}
+
+	rc, err := targetFile.Open()
+	if err != nil {
+		return "", false
+	}
+	defer rc.Close()
+
+	out, err := os.Create(targetPath)
+	if err != nil {
+		return "", false
+	}
+	defer out.Close()
+
+	_, err = io.Copy(out, rc)
+	if err != nil {
+		return "", false
+	}
+	return mimeType, true
+}
+
+func generateOfficeSvgThumbnail(name, ext string) string {
+	escapedName := html.EscapeString(name)
+	if len(escapedName) > 22 {
+		escapedName = escapedName[:19] + "..."
+	}
+	upperExt := strings.ToUpper(ext)
+
+	if ext == "pptx" || ext == "ppt" || ext == "odp" {
+		// Presentation slide 16:9 ratio
+		return fmt.Sprintf(`<svg width="240" height="150" viewBox="0 0 240 150" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect x="6" y="6" width="228" height="138" rx="8" fill="#FFFFFF" stroke="#E5E7EB" stroke-width="2"/>
+  <rect x="6" y="6" width="228" height="34" rx="8" fill="#D24726"/>
+  <rect x="6" y="24" width="228" height="16" fill="#D24726"/>
+  <rect x="18" y="14" width="46" height="18" rx="3" fill="#FFFFFF"/>
+  <text x="41" y="27" fill="#D24726" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="10" font-weight="bold" text-anchor="middle">PPTX</text>
+  <text x="74" y="27" fill="#FFFFFF" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" font-weight="600">%s</text>
+  <!-- Presentation Slide Mock Graphic / Bullet Points -->
+  <circle cx="26" cy="62" r="3" fill="#D24726"/>
+  <rect x="36" y="59" width="130" height="6" rx="3" fill="#D1D5DB"/>
+  <circle cx="26" cy="80" r="3" fill="#D24726"/>
+  <rect x="36" y="77" width="150" height="6" rx="3" fill="#D1D5DB"/>
+  <circle cx="26" cy="98" r="3" fill="#D24726"/>
+  <rect x="36" y="95" width="110" height="6" rx="3" fill="#D1D5DB"/>
+  <!-- Mini slide card / illustration -->
+  <rect x="180" y="56" width="44" height="46" rx="4" fill="#F3F4F6" stroke="#E5E7EB"/>
+  <rect x="186" y="72" width="10" height="24" rx="2" fill="#D24726" opacity="0.6"/>
+  <rect x="200" y="64" width="10" height="32" rx="2" fill="#D24726"/>
+  <text x="218" y="132" fill="#9CA3AF" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="9" text-anchor="end">Slide 1</text>
+</svg>`, escapedName)
+	}
+
+	badgeColor := "#2B579A" // Word blue
+	if ext == "xlsx" || ext == "xls" || ext == "ods" {
+		badgeColor = "#217346" // Excel green
+	}
+
+	return fmt.Sprintf(`<svg width="200" height="260" viewBox="0 0 200 260" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect x="8" y="8" width="184" height="244" rx="8" fill="#FFFFFF" stroke="#E5E7EB" stroke-width="2"/>
+  <rect x="22" y="24" width="48" height="20" rx="4" fill="%s"/>
+  <text x="46" y="38" fill="#FFFFFF" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="10" font-weight="bold" text-anchor="middle">%s</text>
+  <text x="22" y="66" fill="#1F2937" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" font-weight="600">%s</text>
+  <rect x="22" y="82" width="156" height="6" rx="3" fill="#E5E7EB"/>
+  <rect x="22" y="96" width="138" height="6" rx="3" fill="#E5E7EB"/>
+  <rect x="22" y="110" width="148" height="6" rx="3" fill="#E5E7EB"/>
+  <rect x="22" y="124" width="115" height="6" rx="3" fill="#E5E7EB"/>
+  <rect x="22" y="146" width="156" height="6" rx="3" fill="#E5E7EB"/>
+  <rect x="22" y="160" width="142" height="6" rx="3" fill="#E5E7EB"/>
+  <rect x="22" y="174" width="130" height="6" rx="3" fill="#E5E7EB"/>
+  <rect x="22" y="188" width="85" height="6" rx="3" fill="#E5E7EB"/>
+</svg>`, badgeColor, upperExt, escapedName)
 }
 
 type CreateFolderRequest struct {

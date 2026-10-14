@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"archive/zip"
 	"bytes"
 	"encoding/json"
 	"net/http"
@@ -1112,7 +1113,47 @@ func TestFileController_PreviewAndThumbnail(t *testing.T) {
 	if recThumbZip.Code != http.StatusNoContent {
 		t.Fatalf("Expected 204 No Content for zip thumbnail, got %d", recThumbZip.Code)
 	}
+
+	// 5. Test ThumbnailFile for PPTX
+	_, _ = dbEngine.SQL.Exec("INSERT INTO files (id, owner_id, folder_id, name, mime_type, size, cas_hash) VALUES ('pptx_1', 1, NULL, 'DesignThinking.pptx', 'application/vnd.openxmlformats-officedocument.presentationml.presentation', 1048576, 'cas_pptx_1')")
+	reqThumbPptx := httptest.NewRequest(http.MethodGet, "/api/files/pptx_1/thumbnail", nil)
+	recThumbPptx := httptest.NewRecorder()
+	e.ServeHTTP(recThumbPptx, reqThumbPptx)
+	if recThumbPptx.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK for pptx thumbnail, got %d", recThumbPptx.Code)
+	}
+	pptxContentType := recThumbPptx.Header().Get("Content-Type")
+	if !strings.Contains(pptxContentType, "svg") && !strings.Contains(pptxContentType, "jpeg") && !strings.Contains(pptxContentType, "png") {
+		t.Errorf("Expected image/svg+xml or image/jpeg for PPTX thumbnail, got %s", pptxContentType)
+	}
 }
+
+func TestExtractOfficeThumbnail(t *testing.T) {
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	fw, err := zw.Create("docProps/thumbnail.jpeg")
+	if err != nil {
+		t.Fatalf("Failed to create zip entry: %v", err)
+	}
+	mockJpeg := []byte("\xFF\xD8\xFFmock_jpeg_data")
+	_, _ = fw.Write(mockJpeg)
+	_ = zw.Close()
+
+	reader := bytes.NewReader(buf.Bytes())
+	outPath := filepath.Join(t.TempDir(), "extracted_thumb.jpg")
+	mime, ok := extractOfficeThumbnail(reader, int64(buf.Len()), outPath)
+	if !ok {
+		t.Fatalf("Expected extractOfficeThumbnail to succeed")
+	}
+	if mime != "image/jpeg" {
+		t.Errorf("Expected mime image/jpeg, got %s", mime)
+	}
+	data, err := os.ReadFile(outPath)
+	if err != nil || !bytes.Equal(data, mockJpeg) {
+		t.Errorf("Extracted data did not match expected mock JPEG data")
+	}
+}
+
 
 
 

@@ -372,8 +372,19 @@ templ DashboardContent() {
 							</div>
 						</template>
 
+						<!-- Office Document / Presentation Preview -->
+						<template x-if="$store.drive.selectedFile && $store.drive.isOfficeFile($store.drive.selectedFile)">
+							<div class="w-full flex items-center justify-center p-4 bg-black/40">
+								<img 
+									:src="'/api/files/' + $store.drive.selectedFile.id + '/thumbnail'" 
+									class="max-h-80 w-auto object-contain rounded-lg shadow-xl" 
+									alt="Presentation Preview" 
+								/>
+							</div>
+						</template>
+
 						<!-- Text / Code Preview -->
-						<template x-if="$store.drive.selectedFile && $store.drive.selectedFile.has_preview && !$store.drive.selectedFile.mime_type.startsWith('image/') && $store.drive.selectedFile.ext !== 'pdf' && $store.drive.selectedFile.mime_type !== 'application/pdf' && !$store.drive.selectedFile.mime_type.startsWith('video/') && !$store.drive.selectedFile.mime_type.startsWith('audio/')">
+						<template x-if="$store.drive.selectedFile && $store.drive.isTextOrCodeFile($store.drive.selectedFile)">
 							<div class="w-full p-4 font-mono text-xs text-[#EDEBE8]/90 max-h-72 overflow-y-auto whitespace-pre-wrap select-text leading-relaxed bg-[#121519]/60">
 								<template x-if="$store.drive.filePreviewLoading">
 									<div class="flex items-center justify-center py-8 text-[#86898B]">

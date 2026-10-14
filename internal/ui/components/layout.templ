@@ -622,11 +622,33 @@ templ Layout(title string) {
 					this.isMobileMenuOpen = false;
 				},
 
+				isOfficeFile(file) {
+					if (!file) return false;
+					const ext = (file.ext || '').toLowerCase();
+					const officeExts = ['pptx', 'ppt', 'docx', 'doc', 'xlsx', 'xls', 'odp', 'odt', 'ods'];
+					return officeExts.includes(ext) || (file.mime_type && (file.mime_type.includes('presentation') || file.mime_type.includes('wordprocessing') || file.mime_type.includes('spreadsheet') || file.mime_type.includes('msword') || file.mime_type.includes('ms-excel') || file.mime_type.includes('ms-powerpoint')));
+				},
+
+				isTextOrCodeFile(file) {
+					if (!file || !file.has_preview) return false;
+					if (this.isOfficeFile(file)) return false;
+					const ext = (file.ext || '').toLowerCase();
+					if (ext === 'pdf' || file.mime_type === 'application/pdf') return false;
+					if (file.mime_type && (file.mime_type.startsWith('image/') || file.mime_type.startsWith('video/') || file.mime_type.startsWith('audio/'))) return false;
+					const textExts = [
+						'txt', 'md', 'markdown', 'json', 'xml', 'csv', 'tsv', 'log',
+						'html', 'htm', 'css', 'js', 'ts', 'go', 'py', 'sh', 'yaml', 'yml',
+						'sql', 'env', 'ini', 'conf', 'toml', 'drawio', 'bkp', 'rs', 'cpp',
+						'c', 'h', 'java', 'kt', 'php', 'rb', 'dart', 'vue', 'svelte'
+					];
+					return textExts.includes(ext) || (file.mime_type && file.mime_type.startsWith('text/'));
+				},
+
 				selectFile(file) {
 					this.selectedFile = file;
 					this.filePreviewText = '';
 					this.filePreviewLoading = false;
-					if (file && file.has_preview && !file.mime_type?.startsWith('image/') && file.ext !== 'pdf' && file.mime_type !== 'application/pdf' && !file.mime_type?.startsWith('video/') && !file.mime_type?.startsWith('audio/')) {
+					if (file && this.isTextOrCodeFile(file)) {
 						this.filePreviewLoading = true;
 						fetch(`/api/files/${file.id}/preview`, {
 							headers: { 'Range': 'bytes=0-10000' }
