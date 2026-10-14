@@ -6,14 +6,19 @@ import (
 	"strings"
 )
 
-// IsDownloadLink returns true if the input string looks like a valid download URL or magnet link.
+// IsDownloadLink returns true if the input string looks like a valid download URL, domain address, or magnet link.
 func IsDownloadLink(link string) bool {
 	trimmed := strings.TrimSpace(link)
-	if strings.HasPrefix(trimmed, "http://") || strings.HasPrefix(trimmed, "https://") {
-		return len(trimmed) > 8 && !strings.ContainsAny(trimmed, " \t\r\n")
+	if trimmed == "" {
+		return false
 	}
-	if strings.HasPrefix(trimmed, "magnet:?") {
-		return len(trimmed) > 8 && strings.Contains(trimmed, "xt=urn:btih:")
+
+	norm := NormalizeLink(trimmed)
+	if strings.HasPrefix(norm, "http://") || strings.HasPrefix(norm, "https://") {
+		return len(norm) > 8 && !strings.ContainsAny(norm, " \t\r\n")
+	}
+	if strings.HasPrefix(norm, "magnet:?") {
+		return len(norm) > 8 && strings.Contains(norm, "xt=urn:btih:")
 	}
 	return false
 }
@@ -21,10 +26,15 @@ func IsDownloadLink(link string) bool {
 // DetectLinkType inspects the URI and returns whether it is a direct download or a magnet link.
 func DetectLinkType(link string) (DownloadType, error) {
 	trimmed := strings.TrimSpace(link)
-	if strings.HasPrefix(trimmed, "http://") || strings.HasPrefix(trimmed, "https://") {
+	if trimmed == "" {
+		return "", errors.New("empty download link")
+	}
+
+	norm := NormalizeLink(trimmed)
+	if strings.HasPrefix(norm, "http://") || strings.HasPrefix(norm, "https://") {
 		return DownloadTypeDirect, nil
 	}
-	if strings.HasPrefix(trimmed, "magnet:?") {
+	if strings.HasPrefix(norm, "magnet:?") {
 		return DownloadTypeMagnet, nil
 	}
 	return "", errors.New("unsupported download link protocol: must start with http://, https://, or magnet:?")

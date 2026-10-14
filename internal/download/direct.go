@@ -1,6 +1,7 @@
 package download
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -13,14 +14,14 @@ import (
 	"time"
 )
 
-// DirectFileInfo contains metadata extracted from the HTTP response headers.
+// DirectFileInfo contains metadata extracted from the HTTP response headers and stream.
 type DirectFileInfo struct {
 	Filename   string
 	MimeType   string
 	TotalBytes int64
 }
 
-// DirectDownloader handles direct HTTP/HTTPS downloads.
+// DirectDownloader handles direct HTTP/HTTPS downloads with domain resolution and smart sniffing.
 type DirectDownloader struct {
 	HTTPClient *http.Client
 }
@@ -30,8 +31,8 @@ func NewDirectDownloader() *DirectDownloader {
 		HTTPClient: &http.Client{
 			Timeout: 2 * time.Hour, // Allow large file streaming
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
-				if len(via) >= 10 {
-					return errors.New("stopped after 10 redirects")
+				if len(via) >= 15 {
+					return errors.New("stopped after 15 redirects")
 				}
 				return nil
 			},
@@ -39,15 +40,12 @@ func NewDirectDownloader() *DirectDownloader {
 	}
 }
 
-// ParseFilenameFromHeaders extracts filename from Content-Disposition or URL path.
+// ParseFilenameFromHeaders extracts filename from Content-Disposition, query params, or URL path.
 func ParseFilenameFromHeaders(header string, rawURL string) string {
 	if header != "" {
 		if _, params, err := mime.ParseMediaType(header); err == nil {
-			if filename, ok := params["filename"]; ok && filename != "" {
-				return CleanFilename(filename, "")
-			}
 			if filename, ok := params["filename*"]; ok && filename != "" {
-				// Format: UTF-8''encoded_name
+				// Format: UTF-8''encoded_name or ISO-8859-1''encoded_name
 				parts := strings.SplitN(filename, "''", 2)
 				if len(parts) == 2 {
 					if unescaped, err := url.PathUnescape(parts[1]); err == nil {
@@ -56,11 +54,29 @@ func ParseFilenameFromHeaders(header string, rawURL string) string {
 				}
 				return CleanFilename(filename, "")
 			}
+			if filename, ok := params["filename"]; ok && filename != "" {
+				return CleanFilename(filename, "")
+			}
 		}
 	}
 
-	// Fallback to URL path basename
+	// Fallback to URL query parameter heuristics (e.g. S3 presigned response-content-disposition or ?filename=...)
 	if u, err := url.Parse(rawURL); err == nil {
+		q := u.Query()
+		if f := q.Get("filename"); f != "" {
+			return CleanFilename(f, "")
+		}
+		if f := q.Get("file"); f != "" {
+			return CleanFilename(f, "")
+		}
+		if rcd := q.Get("response-content-disposition"); rcd != "" {
+			if _, params, err := mime.ParseMediaType(rcd); err == nil {
+				if filename, ok := params["filename"]; ok && filename != "" {
+					return CleanFilename(filename, "")
+				}
+			}
+		}
+
 		cleanPath := path.Base(u.Path)
 		if unescaped, err := url.PathUnescape(cleanPath); err == nil && unescaped != "" && unescaped != "/" && unescaped != "." {
 			return CleanFilename(unescaped, "")
@@ -70,13 +86,27 @@ func ParseFilenameFromHeaders(header string, rawURL string) string {
 	return fmt.Sprintf("download_%d", time.Now().Unix())
 }
 
-// DownloadDirect streams the remote HTTP payload into destWriter while reporting progress.
+// DownloadDirect streams the remote HTTP payload into destWriter with domain resolution and magic byte sniffing.
 func (dd *DirectDownloader) DownloadDirect(ctx context.Context, targetURL string, destWriter io.Writer, onProgress func(downloaded int64, total int64, speed string)) (*DirectFileInfo, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, targetURL, nil)
+	resolved, err := ResolveLink(targetURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed resolving download link: %w", err)
+	}
+
+	execURL := resolved.ResolvedURL
+	if _, err := ValidateSafeURL(execURL, false); err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, execURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("invalid download request: %w", err)
 	}
-	req.Header.Set("User-Agent", "HornetzDrive/2.0")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) HornetzDrive/2.0")
+	req.Header.Set("Accept", "*/*")
+	if resolved.AuthHeader != "" {
+		req.Header.Set("Authorization", resolved.AuthHeader)
+	}
 
 	resp, err := dd.HTTPClient.Do(req)
 	if err != nil {
@@ -88,17 +118,38 @@ func (dd *DirectDownloader) DownloadDirect(ctx context.Context, targetURL string
 		return nil, fmt.Errorf("remote server returned HTTP %d %s", resp.StatusCode, resp.Status)
 	}
 
-	filename := ParseFilenameFromHeaders(resp.Header.Get("Content-Disposition"), targetURL)
+	finalURL := resp.Request.URL.String()
+	filename := ParseFilenameFromHeaders(resp.Header.Get("Content-Disposition"), finalURL)
+	if filename == "" || strings.HasPrefix(filename, "download_") {
+		if resolved.Filename != "" && !strings.HasPrefix(resolved.Filename, "download_") {
+			filename = resolved.Filename
+		}
+	}
+
 	mimeType := resp.Header.Get("Content-Type")
 	if mimeType == "" {
 		mimeType = "application/octet-stream"
 	}
-	// Strip parameters like charset from mime type
 	if mediaType, _, err := mime.ParseMediaType(mimeType); err == nil {
 		mimeType = mediaType
 	}
 
 	totalBytes := resp.ContentLength
+
+	// Magic byte sniffing on first 512 bytes
+	peekBuf := make([]byte, 512)
+	peekN, readErr := io.ReadFull(resp.Body, peekBuf)
+	if readErr != nil && readErr != io.ErrUnexpectedEOF && readErr != io.EOF {
+		return nil, fmt.Errorf("failed reading initial response payload: %w", readErr)
+	}
+
+	var streamSrc io.Reader
+	if peekN > 0 {
+		filename, mimeType = SniffMagicBytes(peekBuf[:peekN], filename, mimeType)
+		streamSrc = io.MultiReader(bytes.NewReader(peekBuf[:peekN]), resp.Body)
+	} else {
+		streamSrc = resp.Body
+	}
 
 	fileInfo := &DirectFileInfo{
 		Filename:   filename,
@@ -106,7 +157,7 @@ func (dd *DirectDownloader) DownloadDirect(ctx context.Context, targetURL string
 		TotalBytes: totalBytes,
 	}
 
-	if err := streamWithProgress(ctx, resp.Body, destWriter, totalBytes, onProgress); err != nil {
+	if err := streamWithProgress(ctx, streamSrc, destWriter, totalBytes, onProgress); err != nil {
 		return nil, err
 	}
 

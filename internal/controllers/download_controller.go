@@ -62,14 +62,15 @@ func (dc *DownloadController) StartDownload(c *echo.Context) error {
 	var req struct {
 		URL      string `json:"url"`
 		FolderID string `json:"folder_id"`
+		Filename string `json:"filename,omitempty"`
 	}
 
 	if err := c.Bind(&req); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
 	}
 
-	req.URL = strings.TrimSpace(req.URL)
-	if !download.IsDownloadLink(req.URL) {
+	normURL := download.NormalizeLink(req.URL)
+	if !download.IsDownloadLink(normURL) {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid download link: must start with http://, https://, or magnet:?")
 	}
 
@@ -97,12 +98,63 @@ func (dc *DownloadController) StartDownload(c *echo.Context) error {
 		vk = key
 	}
 
-	task, err := dc.Manager.StartDownload(c.Request().Context(), 1, folderID, req.URL, isVault, vk)
+	task, err := dc.Manager.StartDownloadWithFilename(c.Request().Context(), 1, folderID, normURL, req.Filename, isVault, vk)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 
 	return c.JSON(http.StatusAccepted, task)
+}
+
+// StartBatchDownload initiates multiple downloads concurrently from a list of URLs or pattern string.
+func (dc *DownloadController) StartBatchDownload(c *echo.Context) error {
+	var req struct {
+		Input    string   `json:"input,omitempty"`
+		URLs     []string `json:"urls,omitempty"`
+		FolderID string   `json:"folder_id"`
+	}
+
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
+	}
+
+	urlsToProcess := req.URLs
+	if len(urlsToProcess) == 0 && req.Input != "" {
+		expanded, err := download.ExpandBatchLinks(req.Input)
+		if err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+		}
+		urlsToProcess = expanded
+	}
+
+	if len(urlsToProcess) == 0 {
+		return echo.NewHTTPError(http.StatusBadRequest, "no URLs provided for batch download")
+	}
+
+	folderID := req.FolderID
+	if folderID == "root" {
+		folderID = ""
+	}
+
+	isVault := dc.isVaultFolder(folderID)
+	var vk []byte
+	if isVault {
+		key, unlocked := dc.getVaultKey(c)
+		if !unlocked {
+			return echo.NewHTTPError(http.StatusUnauthorized, "Vault locked. Master password required to download to vault.")
+		}
+		vk = key
+	}
+
+	tasks, err := dc.Manager.StartBatchDownload(c.Request().Context(), 1, folderID, urlsToProcess, isVault, vk)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+
+	return c.JSON(http.StatusAccepted, map[string]interface{}{
+		"tasks": tasks,
+		"count": len(tasks),
+	})
 }
 
 // GetDownloadStatus returns the progress and status of an ongoing or completed download.
@@ -127,7 +179,7 @@ func (dc *DownloadController) CancelDownload(c *echo.Context) error {
 	})
 }
 
-// ParseLink analyzes a link and returns preview metadata (type, filename, info hash).
+// ParseLink analyzes a link and returns preview metadata (type, filename, info hash, preflight probe).
 func (dc *DownloadController) ParseLink(c *echo.Context) error {
 	var req struct {
 		URL string `json:"url"`
@@ -136,20 +188,75 @@ func (dc *DownloadController) ParseLink(c *echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
 	}
 
-	req.URL = strings.TrimSpace(req.URL)
-	linkType, err := download.DetectLinkType(req.URL)
+	rawInput := strings.TrimSpace(req.URL)
+	if rawInput == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, "empty download URL")
+	}
+
+	normURL := download.NormalizeLink(rawInput)
+	linkType, err := download.DetectLinkType(normURL)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+
+	// Try preflight probing first
+	probeRes, probeErr := download.ProbeLink(c.Request().Context(), nil, normURL)
+	if probeErr == nil && probeRes != nil {
+		resp := map[string]interface{}{
+			"valid":          true,
+			"type":           probeRes.Type,
+			"url":            rawInput,
+			"resolved_url":   probeRes.ResolvedURL,
+			"final_url":      probeRes.FinalURL,
+			"provider":       probeRes.Provider,
+			"provider_icon":  probeRes.ProviderIcon,
+			"name":           probeRes.Filename,
+			"file_size":      probeRes.FileSize,
+			"formatted_size": probeRes.FormattedSize,
+			"mime_type":      probeRes.MimeType,
+			"category":       probeRes.Category,
+			"resumable":      probeRes.Resumable,
+			"status_code":    probeRes.StatusCode,
+			"is_torrent":     probeRes.IsTorrent,
+			"is_batch":       probeRes.IsBatch,
+			"batch_count":    probeRes.BatchCount,
+			"batch_items":    probeRes.BatchItems,
+		}
+
+		if probeRes.Type == download.DownloadTypeMagnet {
+			if mag, err := download.ParseMagnetURI(normURL); err == nil {
+				resp["info_hash"] = mag.HexHash
+				resp["trackers_count"] = len(mag.Trackers)
+				resp["web_seeds_count"] = len(mag.WebSeeds)
+				if mag.ExactLength > 0 {
+					resp["exact_length"] = mag.ExactLength
+				}
+			}
+		}
+		return c.JSON(http.StatusOK, resp)
+	}
+
+	// Fallback to static resolution if probe connection failed (e.g. offline / mock test)
+	resolved, err := download.ResolveLink(normURL)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 
 	resp := map[string]interface{}{
-		"valid": true,
-		"type":  linkType,
-		"url":   req.URL,
+		"valid":          true,
+		"type":           linkType,
+		"url":            rawInput,
+		"resolved_url":   resolved.ResolvedURL,
+		"domain":         resolved.Domain,
+		"provider":       resolved.Provider,
+		"provider_icon":  resolved.ProviderIcon,
+		"name":           resolved.Filename,
+		"formatted_size": "-",
+		"category":       download.ClassifyCategory(resolved.Filename, ""),
 	}
 
 	if linkType == download.DownloadTypeMagnet {
-		mag, err := download.ParseMagnetURI(req.URL)
+		mag, err := download.ParseMagnetURI(normURL)
 		if err != nil {
 			return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 		}
@@ -161,7 +268,9 @@ func (dc *DownloadController) ParseLink(c *echo.Context) error {
 			resp["exact_length"] = mag.ExactLength
 		}
 	} else if linkType == download.DownloadTypeDirect {
-		resp["name"] = download.ParseFilenameFromHeaders("", req.URL)
+		if resp["name"] == "" {
+			resp["name"] = download.ParseFilenameFromHeaders("", resolved.ResolvedURL)
+		}
 	}
 
 	return c.JSON(http.StatusOK, resp)

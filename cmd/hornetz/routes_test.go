@@ -129,6 +129,18 @@ func TestRoutes_DashboardApp(t *testing.T) {
 	if !strings.Contains(body, "Torrent Magnet") {
 		t.Errorf("Expected 'Torrent Magnet' badge in live search dropdown")
 	}
+	if !strings.Contains(body, "openAddDownloadModal") {
+		t.Errorf("Expected 'openAddDownloadModal' action in /app dashboard")
+	}
+	if !strings.Contains(body, "showAddDownloadModal") {
+		t.Errorf("Expected 'showAddDownloadModal' modal in /app dashboard")
+	}
+	if !strings.Contains(body, "getLinkProvider") {
+		t.Errorf("Expected 'getLinkProvider' method in /app dashboard store")
+	}
+	if !strings.Contains(body, "Unduh dari Tautan") {
+		t.Errorf("Expected 'Unduh dari Tautan' button in /app dashboard")
+	}
 }
 
 func TestRoutes_GzipCompression(t *testing.T) {

@@ -152,6 +152,7 @@ func main() {
 	}
 
 	app.POST("/api/downloads", downloadCtrl.StartDownload)
+	app.POST("/api/downloads/batch", downloadCtrl.StartBatchDownload)
 	app.GET("/api/downloads/:id", downloadCtrl.GetDownloadStatus)
 	app.DELETE("/api/downloads/:id", downloadCtrl.CancelDownload)
 	app.POST("/api/downloads/parse", downloadCtrl.ParseLink)

@@ -121,13 +121,23 @@ templ DashboardContent() {
 						</template>
 						<span x-text="$store.drive.currentFolderId ? 'SUBFOLDER' : ($store.drive.activeTab === 'vault' ? 'VAULT CELLS TERENKRIPSI' : 'FOLDER UTAMA')"></span>
 					</h3>
-					<button 
-						@click="$store.drive.showCreateFolderModal = true" 
-						class="text-xs bg-[#2E3137]/30 hover:bg-[#2E3137]/60 text-[#F5CE0D] border border-[#F5CE0D]/30 px-3.5 py-1.5 rounded-xl font-bold flex items-center gap-1.5 transition-all backdrop-blur-md shadow-sm"
-					>
-						@IconPlus("w-3.5 h-3.5")
-						<span>Buat Folder Baru</span>
-					</button>
+					<div class="flex items-center gap-2">
+						<button 
+							@click="$store.drive.openAddDownloadModal()" 
+							class="text-xs bg-[#F5CE0D]/10 hover:bg-[#F5CE0D]/20 text-[#F5CE0D] border border-[#F5CE0D]/30 px-3.5 py-1.5 rounded-xl font-bold flex items-center gap-1.5 transition-all backdrop-blur-md shadow-sm cursor-pointer"
+							title="Unduh berkas dari tautan web atau magnet"
+						>
+							@IconDownload("w-3.5 h-3.5")
+							<span>Unduh dari Tautan</span>
+						</button>
+						<button 
+							@click="$store.drive.showCreateFolderModal = true" 
+							class="text-xs bg-[#2E3137]/30 hover:bg-[#2E3137]/60 text-[#F5CE0D] border border-[#F5CE0D]/30 px-3.5 py-1.5 rounded-xl font-bold flex items-center gap-1.5 transition-all backdrop-blur-md shadow-sm cursor-pointer"
+						>
+							@IconPlus("w-3.5 h-3.5")
+							<span>Buat Folder Baru</span>
+						</button>
+					</div>
 				</div>
 				<div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
 					<template x-for="folder in $store.drive.folders" :key="folder.id">
