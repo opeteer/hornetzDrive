@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -55,7 +56,9 @@ func setupDownloadControllerTest(t *testing.T) (*echo.Echo, *DownloadController,
 		CAS:     casEngine,
 	}
 
+	download.AllowPrivateNetworks = true
 	e.POST("/api/downloads", ctrl.StartDownload)
+	e.POST("/api/downloads/batch", ctrl.StartBatchDownload)
 	e.GET("/api/downloads/:id", ctrl.GetDownloadStatus)
 	e.DELETE("/api/downloads/:id", ctrl.CancelDownload)
 	e.POST("/api/downloads/parse", ctrl.ParseLink)
@@ -229,5 +232,121 @@ func TestDownloadController_CancelAndParse(t *testing.T) {
 
 	if cancelRec.Code != http.StatusNotFound {
 		t.Errorf("Expected 404 for cancelling non-existent task, got %d", cancelRec.Code)
+	}
+}
+
+func TestDownloadController_StartDownload_WithFilenameOverride(t *testing.T) {
+	e, ctrl, fs := setupDownloadControllerTest(t)
+	defer fs.Close()
+
+	payload := map[string]string{
+		"url":       fs.URL + "/remote_file.bin",
+		"folder_id": "f1",
+		"filename":  "custom_document.pdf",
+	}
+	body, _ := json.Marshal(payload)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/downloads", bytes.NewReader(body))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("Expected HTTP 202, got %d", rec.Code)
+	}
+
+	var res download.DownloadTask
+	json.Unmarshal(rec.Body.Bytes(), &res)
+	if res.Filename != "custom_document.pdf" {
+		t.Errorf("Expected initial filename 'custom_document.pdf', got %q", res.Filename)
+	}
+
+	// Wait for completion
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		tSnap, found := ctrl.Manager.GetTask(res.ID)
+		if found && tSnap.Status == download.StatusCompleted {
+			if tSnap.Filename != "custom_document.pdf" {
+				t.Errorf("Expected completed filename 'custom_document.pdf', got %q", tSnap.Filename)
+			}
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+func TestDownloadController_StartBatchDownload(t *testing.T) {
+	e, _, fs := setupDownloadControllerTest(t)
+	defer fs.Close()
+
+	payload := map[string]interface{}{
+		"input":     fs.URL + "/file_[1-2].bin",
+		"folder_id": "f1",
+	}
+	body, _ := json.Marshal(payload)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/downloads/batch", bytes.NewReader(body))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("Expected HTTP 202, got %d. Body: %s", rec.Code, rec.Body.String())
+	}
+
+	var res struct {
+		Count int                      `json:"count"`
+		Tasks []*download.DownloadTask `json:"tasks"`
+	}
+	json.Unmarshal(rec.Body.Bytes(), &res)
+
+	if res.Count != 2 || len(res.Tasks) != 2 {
+		t.Errorf("Expected 2 batch tasks, got count=%d, len=%d", res.Count, len(res.Tasks))
+	}
+}
+
+func TestDownloadController_ParseLink_DeepProbeAndGoogleDrive(t *testing.T) {
+	e, _, fs := setupDownloadControllerTest(t)
+	defer fs.Close()
+
+	// 1. Test Deep Probe with mock server
+	parseBody, _ := json.Marshal(map[string]string{"url": fs.URL + "/remote_file.bin"})
+	req := httptest.NewRequest(http.MethodPost, "/api/downloads/parse", bytes.NewReader(parseBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK for deep probe, got %d", rec.Code)
+	}
+
+	var res map[string]interface{}
+	json.Unmarshal(rec.Body.Bytes(), &res)
+	if res["name"] != "remote_file.bin" {
+		t.Errorf("Expected name 'remote_file.bin', got %v", res["name"])
+	}
+	if res["file_size"] == nil || res["formatted_size"] == nil {
+		t.Errorf("Expected file_size and formatted_size to be present")
+	}
+
+	// 2. Test Google Drive URL resolution
+	gdriveBody, _ := json.Marshal(map[string]string{"url": "https://drive.google.com/file/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs/view?usp=sharing"})
+	reqGD := httptest.NewRequest(http.MethodPost, "/api/downloads/parse", bytes.NewReader(gdriveBody))
+	reqGD.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	recGD := httptest.NewRecorder()
+	e.ServeHTTP(recGD, reqGD)
+
+	if recGD.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK for Google Drive parse, got %d", recGD.Code)
+	}
+
+	var resGD map[string]interface{}
+	json.Unmarshal(recGD.Body.Bytes(), &resGD)
+	if resGD["provider"] != "Google Drive" {
+		t.Errorf("Expected provider 'Google Drive', got %v", resGD["provider"])
+	}
+	resolvedURL, _ := resGD["resolved_url"].(string)
+	if !strings.Contains(resolvedURL, "export=download") || !strings.Contains(resolvedURL, "id=1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs") {
+		t.Errorf("Expected Google Drive direct download URL, got %q", resolvedURL)
 	}
 }

@@ -15,6 +15,10 @@ import (
 	"ztatic-go-framework/realtime"
 )
 
+func init() {
+	AllowPrivateNetworks = true
+}
+
 func TestParseFilenameFromHeaders(t *testing.T) {
 	tests := []struct {
 		header   string

@@ -65,11 +65,22 @@ func NewDownloadManager(cas *storage.CASEngine, db *data.DBEngine, broker *realt
 
 // StartDownload creates and starts an asynchronous download job.
 func (dm *DownloadManager) StartDownload(ctx context.Context, ownerID int, folderID string, link string, isVault bool, vaultKey []byte) (*DownloadTask, error) {
-	link = strings.TrimSpace(link)
-	linkType, err := DetectLinkType(link)
+	return dm.StartDownloadWithFilename(ctx, ownerID, folderID, link, "", isVault, vaultKey)
+}
+
+// StartDownloadWithFilename creates and starts an asynchronous download job with optional custom filename override.
+func (dm *DownloadManager) StartDownloadWithFilename(ctx context.Context, ownerID int, folderID string, link string, filenameOverride string, isVault bool, vaultKey []byte) (*DownloadTask, error) {
+	norm := NormalizeLink(link)
+	if norm == "" {
+		return nil, errors.New("empty download link")
+	}
+
+	linkType, err := DetectLinkType(norm)
 	if err != nil {
 		return nil, err
 	}
+
+	resolved, _ := ResolveLink(norm)
 
 	// Generate task ID
 	randBytes := make([]byte, 4)
@@ -78,14 +89,18 @@ func (dm *DownloadManager) StartDownload(ctx context.Context, ownerID int, folde
 
 	// Determine initial filename
 	initialName := "downloading_file"
-	if linkType == DownloadTypeMagnet {
-		if mag, err := ParseMagnetURI(link); err == nil && mag.DisplayName != "" {
+	if filenameOverride != "" {
+		initialName = CleanFilename(filenameOverride, "downloaded_file")
+	} else if resolved != nil && resolved.Filename != "" && !strings.HasPrefix(resolved.Filename, "download_") {
+		initialName = resolved.Filename
+	} else if linkType == DownloadTypeMagnet {
+		if mag, err := ParseMagnetURI(norm); err == nil && mag.DisplayName != "" {
 			initialName = mag.DisplayName
 		} else {
 			initialName = "torrent_download.bin"
 		}
 	} else if linkType == DownloadTypeDirect {
-		initialName = ParseFilenameFromHeaders("", link)
+		initialName = ParseFilenameFromHeaders("", norm)
 	}
 
 	taskCtx, cancel := context.WithCancel(context.Background())
@@ -94,7 +109,7 @@ func (dm *DownloadManager) StartDownload(ctx context.Context, ownerID int, folde
 		ID:         taskID,
 		OwnerID:    ownerID,
 		FolderID:   folderID,
-		URL:        link,
+		URL:        norm,
 		Type:       linkType,
 		Filename:   initialName,
 		Status:     StatusDownloading,
@@ -108,12 +123,28 @@ func (dm *DownloadManager) StartDownload(ctx context.Context, ownerID int, folde
 	dm.tasks.Store(taskID, task)
 
 	// Execute download in background goroutine
-	go dm.executeDownload(taskCtx, task, isVault, vaultKey)
+	hasCustomName := filenameOverride != ""
+	go dm.executeDownload(taskCtx, task, isVault, vaultKey, hasCustomName)
 
 	return task.Snapshot(), nil
 }
 
-func (dm *DownloadManager) executeDownload(ctx context.Context, task *DownloadTask, isVault bool, vaultKey []byte) {
+// StartBatchDownload creates and starts multiple download jobs.
+func (dm *DownloadManager) StartBatchDownload(ctx context.Context, ownerID int, folderID string, links []string, isVault bool, vaultKey []byte) ([]*DownloadTask, error) {
+	var created []*DownloadTask
+	for _, l := range links {
+		t, err := dm.StartDownload(ctx, ownerID, folderID, l, isVault, vaultKey)
+		if err == nil {
+			created = append(created, t)
+		}
+	}
+	if len(created) == 0 {
+		return nil, errors.New("no download tasks could be started")
+	}
+	return created, nil
+}
+
+func (dm *DownloadManager) executeDownload(ctx context.Context, task *DownloadTask, isVault bool, vaultKey []byte, hasCustomName bool) {
 	tempPath := filepath.Join(dm.TmpDir, fmt.Sprintf("hornetz_dl_%s.tmp", task.ID))
 	defer func() {
 		// Clean up partial temp file on failure or exit
@@ -197,7 +228,11 @@ func (dm *DownloadManager) executeDownload(ctx context.Context, task *DownloadTa
 			}
 			return
 		}
-		finalFilename = fileInfo.Filename
+		if hasCustomName && task.Filename != "" {
+			finalFilename = task.Filename
+		} else {
+			finalFilename = fileInfo.Filename
+		}
 		detectedMime = fileInfo.MimeType
 		task.Mu.Lock()
 		task.TotalBytes = fileInfo.TotalBytes
