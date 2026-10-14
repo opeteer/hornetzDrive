@@ -3,9 +3,11 @@ package controllers
 import (
 	"database/sql"
 	"fmt"
+	"html"
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -29,19 +31,22 @@ type FileController struct {
 }
 
 type FileRecord struct {
-	ID        string `json:"id"`
-	OwnerID   int64  `json:"owner_id"`
-	FolderID  string `json:"folder_id"`
-	Name      string `json:"name"`
-	MimeType  string `json:"mime_type"`
-	Size      int64  `json:"size"`
-	CasHash   string `json:"cas_hash"`
-	Icon      string `json:"icon"`
-	Ext       string `json:"ext"`
-	IsStarred bool   `json:"is_starred"`
-	IsDeleted bool   `json:"is_deleted"`
-	IsVault   bool   `json:"is_vault"`
-	CreatedAt string `json:"created_at"`
+	ID         string `json:"id"`
+	OwnerID    int64  `json:"owner_id"`
+	FolderID   string `json:"folder_id"`
+	Name       string `json:"name"`
+	MimeType   string `json:"mime_type"`
+	Size       int64  `json:"size"`
+	CasHash    string `json:"cas_hash"`
+	Icon       string `json:"icon"`
+	Ext        string `json:"ext"`
+	IsStarred  bool   `json:"is_starred"`
+	IsDeleted  bool   `json:"is_deleted"`
+	IsVault    bool   `json:"is_vault"`
+	CreatedAt  string `json:"created_at"`
+	HasPreview bool   `json:"has_preview"`
+	PreviewURL string `json:"preview_url,omitempty"`
+	ThumbURL   string `json:"thumb_url,omitempty"`
 }
 
 type FolderRecord struct {
@@ -293,6 +298,11 @@ func (fc *FileController) GetFiles(c *echo.Context) error {
 			f.Icon = getFileIcon(f.Name, f.MimeType)
 			f.Ext = getFileExt(f.Name)
 			f.IsVault = fc.IsVaultFolder(f.FolderID)
+			f.HasPreview = IsPreviewable(f.Name, f.MimeType)
+			if f.HasPreview {
+				f.PreviewURL = fmt.Sprintf("/api/files/%s/preview", f.ID)
+				f.ThumbURL = fmt.Sprintf("/api/files/%s/thumbnail", f.ID)
+			}
 			files = append(files, f)
 		}
 	}
@@ -540,6 +550,223 @@ func (fc *FileController) DownloadFile(c *echo.Context) error {
 	c.Response().Header().Set("Content-Length", strconv.FormatInt(f.Size, 10))
 	_, err = io.Copy(c.Response(), decStream)
 	return err
+}
+
+func (fc *FileController) PreviewFile(c *echo.Context) error {
+	id := c.Param("id")
+	var f FileRecord
+	query := fc.DB.Rebind("SELECT id, COALESCE(folder_id, ''), name, mime_type, size, cas_hash FROM files WHERE id = ? AND owner_id = ? AND is_deleted = FALSE")
+	err := fc.DB.SQL.QueryRow(query, id, 1).Scan(&f.ID, &f.FolderID, &f.Name, &f.MimeType, &f.Size, &f.CasHash)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusNotFound, "File not found")
+	}
+
+	if fc.IsVaultFolder(f.FolderID) {
+		if !fc.isVaultUnlocked(c) {
+			return echo.NewHTTPError(http.StatusUnauthorized, "Vault locked. Master password required to preview this file.")
+		}
+	}
+
+	safeName := strings.ReplaceAll(f.Name, `"`, `_`)
+	safeName = strings.ReplaceAll(safeName, `\`, `_`)
+	safeName = strings.ReplaceAll(safeName, "\r", "")
+	safeName = strings.ReplaceAll(safeName, "\n", "")
+
+	c.Response().Header().Set("Accept-Ranges", "bytes")
+	c.Response().Header().Set("Cache-Control", "private, max-age=3600")
+
+	var file *os.File
+	if fc.CAS != nil {
+		path := fc.CAS.Path(f.CasHash)
+		file, err = os.Open(path)
+	} else {
+		err = os.ErrNotExist
+	}
+	if err != nil {
+		mockBody := []byte("Content of " + f.Name)
+		totalSize := int64(len(mockBody))
+		c.Response().Header().Set("Content-Type", f.MimeType)
+		c.Response().Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", safeName))
+
+		if rangeHeader := c.Request().Header.Get("Range"); rangeHeader != "" {
+			start, end, satisfiable, isRange := parseRangeHeader(rangeHeader, totalSize)
+			if isRange {
+				if !satisfiable {
+					c.Response().Header().Set("Content-Range", fmt.Sprintf("bytes */%d", totalSize))
+					return c.NoContent(http.StatusRequestedRangeNotSatisfiable)
+				}
+				chunkLen := end - start + 1
+				c.Response().Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, totalSize))
+				c.Response().Header().Set("Content-Length", strconv.FormatInt(chunkLen, 10))
+				c.Response().WriteHeader(http.StatusPartialContent)
+				_, err = c.Response().Write(mockBody[start : end+1])
+				return err
+			}
+		}
+		c.Response().Header().Set("Content-Length", strconv.Itoa(len(mockBody)))
+		return c.Blob(http.StatusOK, f.MimeType, mockBody)
+	}
+	defer file.Close()
+
+	var vk []byte
+	if fc.IsVaultFolder(f.FolderID) {
+		if cookie, err := c.Cookie("swarm_session"); err == nil && cookie != nil {
+			if key, exists := auth.GlobalSessionStore.GetKey(cookie.Value); exists {
+				vk = key
+			}
+		}
+		if len(vk) == 0 {
+			return echo.NewHTTPError(http.StatusUnauthorized, "Vault locked. Master password required to preview this file.")
+		}
+	} else {
+		vk = crypto.DummyVK()
+	}
+
+	decStream, err := crypto.NewDecryptStream(file, vk)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "Decryption error")
+	}
+
+	c.Response().Header().Set("Content-Type", f.MimeType)
+	c.Response().Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", safeName))
+
+	if rangeHeader := c.Request().Header.Get("Range"); rangeHeader != "" {
+		start, end, satisfiable, isRange := parseRangeHeader(rangeHeader, f.Size)
+		if isRange {
+			if !satisfiable {
+				c.Response().Header().Set("Content-Range", fmt.Sprintf("bytes */%d", f.Size))
+				return c.NoContent(http.StatusRequestedRangeNotSatisfiable)
+			}
+			if start > 0 {
+				if err := decStream.SeekTo(start); err != nil {
+					return echo.NewHTTPError(http.StatusInternalServerError, "failed to seek in encrypted stream")
+				}
+			}
+			chunkLen := end - start + 1
+			c.Response().Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, f.Size))
+			c.Response().Header().Set("Content-Length", strconv.FormatInt(chunkLen, 10))
+			c.Response().WriteHeader(http.StatusPartialContent)
+			_, err = io.CopyN(c.Response(), decStream, chunkLen)
+			return err
+		}
+	}
+
+	c.Response().Header().Set("Content-Length", strconv.FormatInt(f.Size, 10))
+	_, err = io.Copy(c.Response(), decStream)
+	return err
+}
+
+func (fc *FileController) ThumbnailFile(c *echo.Context) error {
+	id := c.Param("id")
+	var f FileRecord
+	query := fc.DB.Rebind("SELECT id, COALESCE(folder_id, ''), name, mime_type, size, cas_hash FROM files WHERE id = ? AND owner_id = ? AND is_deleted = FALSE")
+	err := fc.DB.SQL.QueryRow(query, id, 1).Scan(&f.ID, &f.FolderID, &f.Name, &f.MimeType, &f.Size, &f.CasHash)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusNotFound, "File not found")
+	}
+
+	if fc.IsVaultFolder(f.FolderID) {
+		if !fc.isVaultUnlocked(c) {
+			return echo.NewHTTPError(http.StatusUnauthorized, "Vault locked.")
+		}
+	}
+
+	if !IsPreviewable(f.Name, f.MimeType) {
+		return c.NoContent(http.StatusNoContent)
+	}
+
+	ext := strings.ToLower(getFileExt(f.Name))
+	isPDF := (ext == "pdf" || f.MimeType == "application/pdf")
+	isImg := strings.HasPrefix(f.MimeType, "image/") || (ext == "png" || ext == "jpg" || ext == "jpeg" || ext == "gif" || ext == "webp" || ext == "svg")
+
+	if isImg {
+		return fc.PreviewFile(c)
+	}
+
+	thumbDir := "storage/thumbnails"
+	_ = os.MkdirAll(thumbDir, 0755)
+	cachedPath := filepath.Join(thumbDir, f.CasHash+".png")
+
+	if isPDF {
+		if _, err := os.Stat(cachedPath); err == nil {
+			c.Response().Header().Set("Cache-Control", "public, max-age=86400")
+			c.Response().Header().Set("Content-Type", "image/png")
+			return c.File(cachedPath)
+		}
+
+		if fc.CAS != nil && fc.CAS.Exists(f.CasHash) {
+			casPath := fc.CAS.Path(f.CasHash)
+			var vk []byte
+			if fc.IsVaultFolder(f.FolderID) {
+				if cookie, err := c.Cookie("swarm_session"); err == nil && cookie != nil {
+					vk, _ = auth.GlobalSessionStore.GetKey(cookie.Value)
+				}
+			} else {
+				vk = crypto.DummyVK()
+			}
+
+			if file, err := os.Open(casPath); err == nil {
+				defer file.Close()
+				decStream, err := crypto.NewDecryptStream(file, vk)
+				if err == nil {
+					tmpDir := "storage/tmp"
+					_ = os.MkdirAll(tmpDir, 0755)
+					tmpPdfPath := filepath.Join(tmpDir, fmt.Sprintf("thumb_pdf_%s_%d.pdf", f.CasHash[:8], time.Now().UnixNano()))
+					tmpOutPrefix := filepath.Join(tmpDir, fmt.Sprintf("thumb_out_%s_%d", f.CasHash[:8], time.Now().UnixNano()))
+
+					if tmpFile, err := os.Create(tmpPdfPath); err == nil {
+						_, _ = io.CopyN(tmpFile, decStream, 10*1024*1024)
+						_ = tmpFile.Close()
+
+						cmd := exec.Command("pdftoppm", "-png", "-singlefile", "-scale-to", "256", tmpPdfPath, tmpOutPrefix)
+						if err := cmd.Run(); err == nil {
+							generatedPng := tmpOutPrefix + ".png"
+							if _, err := os.Stat(generatedPng); err == nil {
+								_ = os.Rename(generatedPng, cachedPath)
+								_ = os.Remove(tmpPdfPath)
+								c.Response().Header().Set("Cache-Control", "public, max-age=86400")
+								c.Response().Header().Set("Content-Type", "image/png")
+								return c.File(cachedPath)
+							}
+						}
+						_ = os.Remove(tmpPdfPath)
+						_ = os.Remove(tmpOutPrefix + ".png")
+					}
+				}
+			}
+		}
+
+		svg := generatePdfSvgThumbnail(f.Name)
+		c.Response().Header().Set("Cache-Control", "public, max-age=3600")
+		c.Response().Header().Set("Content-Type", "image/svg+xml")
+		return c.Blob(http.StatusOK, "image/svg+xml", []byte(svg))
+	}
+
+	snippet := ""
+	if fc.CAS != nil && fc.CAS.Exists(f.CasHash) {
+		casPath := fc.CAS.Path(f.CasHash)
+		var vk []byte
+		if fc.IsVaultFolder(f.FolderID) {
+			if cookie, err := c.Cookie("swarm_session"); err == nil && cookie != nil {
+				vk, _ = auth.GlobalSessionStore.GetKey(cookie.Value)
+			}
+		} else {
+			vk = crypto.DummyVK()
+		}
+		if file, err := os.Open(casPath); err == nil {
+			defer file.Close()
+			if decStream, err := crypto.NewDecryptStream(file, vk); err == nil {
+				buf := make([]byte, 1024)
+				n, _ := decStream.Read(buf)
+				snippet = string(buf[:n])
+			}
+		}
+	}
+
+	svg := generateDocumentSvgThumbnail(f.Name, ext, snippet)
+	c.Response().Header().Set("Cache-Control", "public, max-age=3600")
+	c.Response().Header().Set("Content-Type", "image/svg+xml")
+	return c.Blob(http.StatusOK, "image/svg+xml", []byte(svg))
 }
 
 func (fc *FileController) DeleteFile(c *echo.Context) error {
@@ -801,6 +1028,128 @@ func getFileExt(name string) string {
 		}
 	}
 	return "FILE"
+}
+
+func IsPreviewable(name, mime string) bool {
+	ext := strings.ToLower(getFileExt(name))
+	nonPreviewExts := map[string]bool{
+		"zip": true, "iso": true, "rar": true, "7z": true, "tar": true, "gz": true, "tar.gz": true,
+		"tgz": true, "bz2": true, "xz": true, "cab": true, "bin": true, "exe": true, "msi": true,
+		"apk": true, "dmg": true, "pkg": true, "deb": true, "rpm": true, "dll": true, "so": true,
+		"dylib": true, "o": true, "a": true, "key": true, "pem": true, "crt": true, "cer": true,
+		"p12": true, "pfx": true, "class": true, "pyc": true, "dat": true,
+	}
+	if nonPreviewExts[ext] {
+		return false
+	}
+	if strings.Contains(mime, "zip") || strings.Contains(mime, "tar") || (strings.Contains(mime, "octet-stream") && (nonPreviewExts[ext] || ext == "file")) {
+		return false
+	}
+
+	if ext == "pdf" || mime == "application/pdf" {
+		return true
+	}
+	if strings.HasPrefix(mime, "image/") || strings.HasPrefix(mime, "video/") || strings.HasPrefix(mime, "audio/") || strings.HasPrefix(mime, "text/") {
+		return true
+	}
+	previewExts := map[string]bool{
+		"png": true, "jpg": true, "jpeg": true, "gif": true, "webp": true, "svg": true, "bmp": true, "ico": true,
+		"txt": true, "md": true, "markdown": true, "json": true, "xml": true, "csv": true, "tsv": true, "log": true,
+		"html": true, "htm": true, "css": true, "js": true, "ts": true, "go": true, "py": true, "sh": true,
+		"yaml": true, "yml": true, "sql": true, "env": true, "ini": true, "conf": true, "toml": true,
+		"drawio": true, "bkp": true, "rs": true, "cpp": true, "c": true, "h": true, "java": true, "kt": true,
+		"doc": true, "docx": true, "xls": true, "xlsx": true, "ppt": true, "pptx": true,
+		"mp4": true, "webm": true, "mp3": true, "wav": true, "ogg": true,
+	}
+	return previewExts[ext]
+}
+
+func generatePdfSvgThumbnail(name string) string {
+	escapedName := html.EscapeString(name)
+	if len(escapedName) > 22 {
+		escapedName = escapedName[:19] + "..."
+	}
+	return fmt.Sprintf(`<svg width="200" height="260" viewBox="0 0 200 260" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect x="8" y="8" width="184" height="244" rx="8" fill="#FFFFFF" stroke="#E5E7EB" stroke-width="2"/>
+  <rect x="22" y="24" width="44" height="20" rx="4" fill="#EF4444"/>
+  <text x="44" y="38" fill="#FFFFFF" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" font-weight="bold" text-anchor="middle">PDF</text>
+  <text x="22" y="66" fill="#1F2937" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" font-weight="600">%s</text>
+  <rect x="22" y="82" width="156" height="6" rx="3" fill="#E5E7EB"/>
+  <rect x="22" y="96" width="138" height="6" rx="3" fill="#E5E7EB"/>
+  <rect x="22" y="110" width="148" height="6" rx="3" fill="#E5E7EB"/>
+  <rect x="22" y="124" width="115" height="6" rx="3" fill="#E5E7EB"/>
+  <rect x="22" y="146" width="156" height="6" rx="3" fill="#E5E7EB"/>
+  <rect x="22" y="160" width="142" height="6" rx="3" fill="#E5E7EB"/>
+  <rect x="22" y="174" width="130" height="6" rx="3" fill="#E5E7EB"/>
+  <rect x="22" y="188" width="85" height="6" rx="3" fill="#E5E7EB"/>
+  <rect x="22" y="206" width="156" height="34" rx="4" fill="#F9FAFB" stroke="#E5E7EB" stroke-width="1.2"/>
+  <line x1="22" y1="223" x2="178" y2="223" stroke="#E5E7EB" stroke-width="1.2"/>
+  <line x1="74" y1="206" x2="74" y2="240" stroke="#E5E7EB" stroke-width="1.2"/>
+  <line x1="126" y1="206" x2="126" y2="240" stroke="#E5E7EB" stroke-width="1.2"/>
+</svg>`, escapedName)
+}
+
+func generateDocumentSvgThumbnail(name, ext, snippet string) string {
+	escapedName := html.EscapeString(name)
+	if len(escapedName) > 22 {
+		escapedName = escapedName[:19] + "..."
+	}
+	upperExt := strings.ToUpper(ext)
+	if len(upperExt) > 5 {
+		upperExt = upperExt[:5]
+	}
+	badgeColor := "#3B82F6"
+	switch ext {
+	case "xls", "xlsx", "csv":
+		badgeColor = "#10B981"
+	case "drawio", "bkp", "svg":
+		badgeColor = "#F59E0B"
+	case "json", "js", "ts", "go", "py", "sh", "sql", "html", "css":
+		badgeColor = "#8B5CF6"
+	case "md", "txt":
+		badgeColor = "#06B6D4"
+	}
+
+	linesSvg := ""
+	if strings.TrimSpace(snippet) != "" {
+		rawLines := strings.Split(snippet, "\n")
+		y := 86
+		count := 0
+		for _, line := range rawLines {
+			trimmed := strings.TrimRight(line, "\r")
+			if len(trimmed) > 28 {
+				trimmed = trimmed[:25] + "..."
+			}
+			escapedLine := html.EscapeString(trimmed)
+			if escapedLine == "" {
+				escapedLine = " "
+			}
+			linesSvg += fmt.Sprintf(`<text x="22" y="%d" fill="#4B5563" font-family="'JetBrains Mono', monospace" font-size="9">%s</text>`, y, escapedLine)
+			y += 16
+			count++
+			if count >= 9 || y > 230 {
+				break
+			}
+		}
+	} else {
+		linesSvg = `
+  <rect x="22" y="82" width="156" height="6" rx="3" fill="#E5E7EB"/>
+  <rect x="22" y="96" width="138" height="6" rx="3" fill="#E5E7EB"/>
+  <rect x="22" y="110" width="148" height="6" rx="3" fill="#E5E7EB"/>
+  <rect x="22" y="124" width="115" height="6" rx="3" fill="#E5E7EB"/>
+  <rect x="22" y="146" width="156" height="6" rx="3" fill="#E5E7EB"/>
+  <rect x="22" y="160" width="142" height="6" rx="3" fill="#E5E7EB"/>
+  <rect x="22" y="174" width="130" height="6" rx="3" fill="#E5E7EB"/>
+  <rect x="22" y="188" width="85" height="6" rx="3" fill="#E5E7EB"/>`
+	}
+
+	return fmt.Sprintf(`<svg width="200" height="260" viewBox="0 0 200 260" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect x="8" y="8" width="184" height="244" rx="8" fill="#FFFFFF" stroke="#E5E7EB" stroke-width="2"/>
+  <rect x="22" y="24" width="48" height="20" rx="4" fill="%s"/>
+  <text x="46" y="38" fill="#FFFFFF" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="10" font-weight="bold" text-anchor="middle">%s</text>
+  <text x="22" y="66" fill="#1F2937" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" font-weight="600">%s</text>
+  %s
+</svg>`, badgeColor, upperExt, escapedName, linesSvg)
 }
 
 type CreateFolderRequest struct {

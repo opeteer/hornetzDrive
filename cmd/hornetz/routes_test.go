@@ -93,5 +93,14 @@ func TestRoutes_DashboardApp(t *testing.T) {
 	if !strings.Contains(body, "Beranda") {
 		t.Errorf("Expected 'Beranda' home link in /app dashboard header")
 	}
+	if !strings.Contains(body, "file.has_preview") {
+		t.Errorf("Expected 'file.has_preview' condition in /app dashboard HTML")
+	}
+	if !strings.Contains(body, "/thumbnail") {
+		t.Errorf("Expected '/thumbnail' endpoint references in /app dashboard HTML")
+	}
+	if !strings.Contains(body, "selectFile") {
+		t.Errorf("Expected 'selectFile' method in /app dashboard HTML")
+	}
 }
 

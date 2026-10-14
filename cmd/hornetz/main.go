@@ -114,6 +114,8 @@ func main() {
 	app.PATCH("/api/folders/:id", fileCtrl.RenameFolder)
 	app.GET("/api/storage/stats", fileCtrl.GetStorageStats)
 	app.GET("/api/files/:id/download", fileCtrl.DownloadFile)
+	app.GET("/api/files/:id/preview", fileCtrl.PreviewFile)
+	app.GET("/api/files/:id/thumbnail", fileCtrl.ThumbnailFile)
 	app.DELETE("/api/files/trash/empty", fileCtrl.EmptyTrash)
 	app.DELETE("/api/files/:id", fileCtrl.DeleteFile)
 	app.POST("/api/files/:id/restore", fileCtrl.RestoreFile)

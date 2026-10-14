@@ -237,12 +237,40 @@ templ DashboardContent() {
 				<div x-show="$store.drive.viewMode === 'grid' && $store.drive.files.length > 0" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
 					<template x-for="file in $store.drive.files" :key="file.id">
 						<div 
-							@click="$store.drive.selectedFile = file" 
+							@click="$store.drive.selectFile(file)" 
 							class="bg-[#2E3137]/30 hover:bg-[#2E3137]/50 border border-[#3F4247]/60 hover:border-[#F5CE0D]/50 p-3 rounded-2xl cursor-pointer group transition-all flex flex-col justify-between h-52 shadow-sm hover:shadow-xl hover:-translate-y-0.5 relative backdrop-blur-md"
 						>
 							<div class="h-28 bg-[#121519]/70 border border-[#3F4247]/40 rounded-xl flex items-center justify-center text-[#F5CE0D] relative overflow-hidden group-hover:border-[#F5CE0D]/30 transition-all backdrop-blur-sm">
-								<div x-html="$store.drive.getFileIconSvg(file.icon, 'w-10 h-10')"></div>
-								<div class="absolute bottom-1.5 right-1.5 text-[9px] bg-gradient-to-r from-[#F5CE0D] to-[#DDAC0D] text-[#121519] font-mono px-2 py-0.5 rounded-md font-bold uppercase truncate max-w-[55px] shadow-sm" x-text="(file.ext || 'FILE').slice(0, 4)"></div>
+								<!-- Preview for readable files (PDFs, images, documents, text) -->
+								<template x-if="file.has_preview">
+									<div class="w-full h-full flex items-center justify-center relative overflow-hidden bg-[#0F1215]/80 p-1.5">
+										<template x-if="file.mime_type && file.mime_type.startsWith('image/')">
+											<img 
+												:src="'/api/files/' + file.id + '/thumbnail'" 
+												class="w-full h-full object-cover rounded-lg" 
+												alt="" 
+												loading="lazy" 
+											/>
+										</template>
+										<template x-if="!file.mime_type || !file.mime_type.startsWith('image/')">
+											<img 
+												:src="'/api/files/' + file.id + '/thumbnail'" 
+												class="h-[96px] w-auto max-w-[85%] object-contain rounded shadow-lg transition-transform group-hover:scale-105" 
+												alt="Preview" 
+												loading="lazy" 
+											/>
+										</template>
+										<div class="absolute bottom-1.5 right-1.5 text-[9px] bg-[#121519]/90 border border-[#3F4247]/60 text-[#EDEBE8] font-mono px-1.5 py-0.5 rounded-md font-bold uppercase truncate max-w-[55px] shadow-sm backdrop-blur-sm" x-text="(file.ext || 'FILE').slice(0, 4)"></div>
+									</div>
+								</template>
+
+								<!-- No preview for archives / binaries (.zip, .iso, etc.) as in Google Drive -->
+								<template x-if="!file.has_preview">
+									<div class="w-full h-full flex items-center justify-center relative">
+										<div x-html="$store.drive.getFileIconSvg(file.icon, 'w-10 h-10')"></div>
+										<div class="absolute bottom-1.5 right-1.5 text-[9px] bg-gradient-to-r from-[#F5CE0D] to-[#DDAC0D] text-[#121519] font-mono px-2 py-0.5 rounded-md font-bold uppercase truncate max-w-[55px] shadow-sm" x-text="(file.ext || 'FILE').slice(0, 4)"></div>
+									</div>
+								</template>
 							</div>
 							<div class="mt-2">
 								<div class="font-semibold text-xs text-white truncate group-hover:text-[#F5CE0D] transition-colors" x-text="file.name"></div>
@@ -266,7 +294,7 @@ templ DashboardContent() {
 				>
 					<template x-for="file in $store.drive.files" :key="file.id">
 						<div 
-							@click="$store.drive.selectedFile = file" 
+							@click="$store.drive.selectFile(file)" 
 							class="flex items-center justify-between px-4 py-3 hover:bg-[#2E3137]/40 cursor-pointer transition-colors group"
 						>
 							<div class="flex items-center gap-3">
@@ -298,51 +326,133 @@ templ DashboardContent() {
 			x-cloak
 			style="display: none;"
 			x-transition 
-			class="fixed inset-0 bg-black/75 backdrop-blur-xl flex items-center justify-center z-50 p-4"
+			class="fixed inset-0 bg-black/80 backdrop-blur-xl flex items-center justify-center z-50 p-4"
 		>
 			<div 
-				@click.away="$store.drive.selectedFile = null" 
-				class="bg-[#121519]/95 backdrop-blur-2xl border border-[#3F4247]/60 w-full max-w-lg rounded-2xl p-6 shadow-2xl space-y-5"
+				@click.away="$store.drive.closeFileModal()" 
+				class="bg-[#121519]/95 backdrop-blur-2xl border border-[#3F4247]/60 w-full max-w-2xl max-h-[90vh] flex flex-col rounded-2xl p-6 shadow-2xl space-y-4 overflow-hidden"
 			>
-				<div class="flex justify-between items-start border-b border-[#3F4247]/60 pb-4">
-					<div class="flex items-center gap-3">
-						<div class="w-12 h-12 rounded-xl bg-[#2E3137] border border-[#F5CE0D]/40 flex items-center justify-center text-[#F5CE0D]" x-html="$store.drive.selectedFile ? $store.drive.getFileIconSvg($store.drive.selectedFile.icon, 'w-6 h-6') : ''">
+				<div class="flex justify-between items-start border-b border-[#3F4247]/60 pb-3 shrink-0">
+					<div class="flex items-center gap-3 min-w-0">
+						<div class="w-10 h-10 rounded-xl bg-[#2E3137] border border-[#F5CE0D]/40 flex items-center justify-center text-[#F5CE0D] shrink-0" x-html="$store.drive.selectedFile ? $store.drive.getFileIconSvg($store.drive.selectedFile.icon, 'w-5 h-5') : ''">
 						</div>
-						<div>
-							<h3 class="font-bold text-base text-white" x-text="$store.drive.selectedFile ? $store.drive.selectedFile.name : ''"></h3>
+						<div class="min-w-0">
+							<h3 class="font-bold text-sm sm:text-base text-white truncate" x-text="$store.drive.selectedFile ? $store.drive.selectedFile.name : ''"></h3>
 							<p class="text-xs text-[#86898B] font-mono" x-text="$store.drive.selectedFile ? 'Ukuran: ' + ($store.drive.selectedFile.size >= 1073741824 ? ($store.drive.selectedFile.size / 1073741824).toFixed(2) + ' GB' : $store.drive.selectedFile.size >= 1048576 ? ($store.drive.selectedFile.size / 1048576).toFixed(1) + ' MB' : $store.drive.selectedFile.size >= 1024 ? ($store.drive.selectedFile.size / 1024).toFixed(1) + ' KB' : $store.drive.selectedFile.size + ' B') : ''"></p>
 						</div>
 					</div>
-					<button @click="$store.drive.selectedFile = null" class="text-[#86898B] hover:text-white transition-colors">
+					<button @click="$store.drive.closeFileModal()" class="text-[#86898B] hover:text-white transition-colors shrink-0 ml-2">
 						@IconX("w-5 h-5")
 					</button>
 				</div>
 
-				<!-- Security & Cryptographic Details -->
-				<div class="bg-[#2E3137]/30 border border-[#3F4247]/60 rounded-xl p-4 space-y-2 font-mono text-xs backdrop-blur-md">
-					<div class="flex justify-between text-[#86898B]">
-						<span>Status Enkripsi:</span>
-						<strong 
-							:class="($store.drive.selectedFile && $store.drive.selectedFile.is_vault) ? 'text-emerald-400' : 'text-[#F5CE0D]'"
-							x-text="($store.drive.selectedFile && $store.drive.selectedFile.is_vault) ? 'AES-256-GCM (Swarm Vault)' : 'Penyimpanan Standar'"
-						></strong>
+				<!-- SCROLLABLE BODY (Preview + Cryptographic Details) -->
+				<div class="flex-1 overflow-y-auto space-y-4 pr-1">
+					<!-- FILE PREVIEW CONTAINER -->
+					<div class="w-full bg-[#0D0F12] border border-[#3F4247]/50 rounded-xl overflow-hidden flex flex-col items-center justify-center relative min-h-[160px]">
+						<!-- Image Preview -->
+						<template x-if="$store.drive.selectedFile && $store.drive.selectedFile.mime_type && $store.drive.selectedFile.mime_type.startsWith('image/')">
+							<div class="w-full flex items-center justify-center p-3">
+								<img 
+									:src="'/api/files/' + $store.drive.selectedFile.id + '/preview'" 
+									class="max-h-80 w-auto object-contain rounded-lg shadow-lg" 
+									alt="Image Preview" 
+								/>
+							</div>
+						</template>
+
+						<!-- PDF Preview (Embedded Viewer) -->
+						<template x-if="$store.drive.selectedFile && ($store.drive.selectedFile.ext === 'pdf' || $store.drive.selectedFile.mime_type === 'application/pdf')">
+							<div class="w-full h-80 flex flex-col bg-white">
+								<iframe 
+									:src="'/api/files/' + $store.drive.selectedFile.id + '/preview#toolbar=0'" 
+									class="w-full h-full border-0"
+									title="PDF Viewer"
+								></iframe>
+							</div>
+						</template>
+
+						<!-- Text / Code Preview -->
+						<template x-if="$store.drive.selectedFile && $store.drive.selectedFile.has_preview && !$store.drive.selectedFile.mime_type.startsWith('image/') && $store.drive.selectedFile.ext !== 'pdf' && $store.drive.selectedFile.mime_type !== 'application/pdf' && !$store.drive.selectedFile.mime_type.startsWith('video/') && !$store.drive.selectedFile.mime_type.startsWith('audio/')">
+							<div class="w-full p-4 font-mono text-xs text-[#EDEBE8]/90 max-h-72 overflow-y-auto whitespace-pre-wrap select-text leading-relaxed bg-[#121519]/60">
+								<template x-if="$store.drive.filePreviewLoading">
+									<div class="flex items-center justify-center py-8 text-[#86898B]">
+										<span class="animate-pulse">Memuat pratinjau berkas...</span>
+									</div>
+								</template>
+								<template x-if="!$store.drive.filePreviewLoading">
+									<div x-text="$store.drive.filePreviewText"></div>
+								</template>
+							</div>
+						</template>
+
+						<!-- Video Preview -->
+						<template x-if="$store.drive.selectedFile && $store.drive.selectedFile.mime_type && $store.drive.selectedFile.mime_type.startsWith('video/')">
+							<video 
+								controls 
+								class="max-h-80 w-full rounded-lg" 
+								:src="'/api/files/' + $store.drive.selectedFile.id + '/preview'"
+							></video>
+						</template>
+
+						<!-- Audio Preview -->
+						<template x-if="$store.drive.selectedFile && $store.drive.selectedFile.mime_type && $store.drive.selectedFile.mime_type.startsWith('audio/')">
+							<div class="p-6 w-full flex justify-center">
+								<audio 
+									controls 
+									class="w-full max-w-md" 
+									:src="'/api/files/' + $store.drive.selectedFile.id + '/preview'"
+								></audio>
+							</div>
+						</template>
+
+						<!-- Non-previewable Notice (For .zip, .iso, .rar, binaries, etc.) -->
+						<template x-if="$store.drive.selectedFile && !$store.drive.selectedFile.has_preview">
+							<div class="py-10 px-4 flex flex-col items-center justify-center text-center space-y-2.5">
+								<div class="w-14 h-14 rounded-2xl bg-[#2E3137]/80 border border-[#3F4247]/60 flex items-center justify-center text-[#86898B] shadow-inner">
+									<div x-html="$store.drive.getFileIconSvg($store.drive.selectedFile.icon, 'w-7 h-7')"></div>
+								</div>
+								<div>
+									<h4 class="text-xs font-bold text-white font-mono uppercase tracking-wider">Pratinjau Tidak Tersedia</h4>
+									<p class="text-[11px] text-[#86898B] mt-1 max-w-sm">Berkas jenis ini tidak dapat dipratinjau langsung di peramban. Silakan unduh berkas untuk membukanya.</p>
+								</div>
+								<button 
+									@click="$store.drive.downloadFile($store.drive.selectedFile)" 
+									class="hornetz-btn py-1.5 px-4 rounded-xl text-xs font-bold flex items-center gap-1.5 mt-2"
+								>
+									@IconDownload("w-3.5 h-3.5")
+									<span>Unduh Sekarang</span>
+								</button>
+							</div>
+						</template>
 					</div>
-					<div class="flex justify-between text-[#86898B]">
-						<span>Content Address (CAS):</span>
-						<strong class="text-[#F5CE0D] truncate max-w-[200px]" x-text="$store.drive.selectedFile ? $store.drive.selectedFile.cas_hash : ''"></strong>
-					</div>
-					<div class="flex justify-between text-[#86898B]">
-						<span>MIME Type:</span>
-						<strong class="text-white" x-text="$store.drive.selectedFile ? $store.drive.selectedFile.mime_type : ''"></strong>
-					</div>
-					<div class="flex justify-between text-[#86898B]">
-						<span>Waktu Dibuat:</span>
-						<strong class="text-white" x-text="$store.drive.selectedFile && $store.drive.selectedFile.created_at ? new Date($store.drive.selectedFile.created_at).toLocaleString('id-ID') : '-'"></strong>
+
+					<!-- Security & Cryptographic Details -->
+					<div class="bg-[#2E3137]/30 border border-[#3F4247]/60 rounded-xl p-3.5 space-y-2 font-mono text-xs backdrop-blur-md">
+						<div class="flex justify-between text-[#86898B]">
+							<span>Status Enkripsi:</span>
+							<strong 
+								:class="($store.drive.selectedFile && $store.drive.selectedFile.is_vault) ? 'text-emerald-400' : 'text-[#F5CE0D]'"
+								x-text="($store.drive.selectedFile && $store.drive.selectedFile.is_vault) ? 'AES-256-GCM (Swarm Vault)' : 'Penyimpanan Standar'"
+							></strong>
+						</div>
+						<div class="flex justify-between text-[#86898B]">
+							<span>Content Address (CAS):</span>
+							<strong class="text-[#F5CE0D] truncate max-w-[200px]" x-text="$store.drive.selectedFile ? $store.drive.selectedFile.cas_hash : ''"></strong>
+						</div>
+						<div class="flex justify-between text-[#86898B]">
+							<span>MIME Type:</span>
+							<strong class="text-white" x-text="$store.drive.selectedFile ? $store.drive.selectedFile.mime_type : ''"></strong>
+						</div>
+						<div class="flex justify-between text-[#86898B]">
+							<span>Waktu Dibuat:</span>
+							<strong class="text-white" x-text="$store.drive.selectedFile && $store.drive.selectedFile.created_at ? new Date($store.drive.selectedFile.created_at).toLocaleString('id-ID') : '-'"></strong>
+						</div>
 					</div>
 				</div>
 
 				<!-- Action Buttons -->
-				<div class="flex gap-3 pt-2">
+				<div class="flex gap-3 pt-2 border-t border-[#3F4247]/60 shrink-0">
 					<template x-if="$store.drive.activeTab === 'trash'">
 						<div class="flex gap-3 w-full">
 							<button 

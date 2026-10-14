@@ -957,5 +957,163 @@ func TestFileController_CreateFolder_RootParent(t *testing.T) {
 	}
 }
 
+func TestIsPreviewable(t *testing.T) {
+	// Readable / previewable files
+	previewable := []struct {
+		name string
+		mime string
+	}{
+		{"document.pdf", "application/pdf"},
+		{"photo.png", "image/png"},
+		{"image.jpg", "image/jpeg"},
+		{"drawing.svg", "image/svg+xml"},
+		{"notes.txt", "text/plain"},
+		{"README.md", "text/markdown"},
+		{"data.csv", "text/csv"},
+		{"config.json", "application/json"},
+		{"main.go", "text/x-go"},
+		{"script.py", "text/x-python"},
+		{"styles.css", "text/css"},
+		{"index.html", "text/html"},
+		{"diagram.drawio", "application/xml"},
+		{"diagram.drawio.bkp", "application/octet-stream"},
+		{"sheet.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"},
+	}
+
+	for _, p := range previewable {
+		if !IsPreviewable(p.name, p.mime) {
+			t.Errorf("Expected IsPreviewable to be true for %s (%s)", p.name, p.mime)
+		}
+	}
+
+	// Non-previewable files (archives, binaries, keys, etc.)
+	nonPreviewable := []struct {
+		name string
+		mime string
+	}{
+		{"archive.zip", "application/zip"},
+		{"image.iso", "application/x-iso9660-image"},
+		{"backup.rar", "application/x-rar-compressed"},
+		{"compressed.7z", "application/x-7z-compressed"},
+		{"archive.tar.gz", "application/gzip"},
+		{"program.exe", "application/x-msdownload"},
+		{"binary.bin", "application/octet-stream"},
+		{"installer.dmg", "application/x-apple-diskimage"},
+		{"app.apk", "application/vnd.android.package-archive"},
+		{"private.key", "application/octet-stream"},
+	}
+
+	for _, np := range nonPreviewable {
+		if IsPreviewable(np.name, np.mime) {
+			t.Errorf("Expected IsPreviewable to be false for %s (%s)", np.name, np.mime)
+		}
+	}
+}
+
+func TestFileController_PreviewAndThumbnail(t *testing.T) {
+	e := echo.New()
+
+	dbEngine, err := data.NewDBEngine("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to create memory DB: %v", err)
+	}
+	defer dbEngine.Close()
+
+	_, err = dbEngine.SQL.Exec(`
+		CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, salt BLOB NOT NULL, encrypted_vault_key BLOB NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+		CREATE TABLE folders (id TEXT PRIMARY KEY, owner_id INTEGER NOT NULL, parent_id TEXT, name TEXT NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+		CREATE TABLE files (id TEXT PRIMARY KEY, owner_id INTEGER NOT NULL, folder_id TEXT, name TEXT NOT NULL, mime_type TEXT NOT NULL, size BIGINT NOT NULL, cas_hash TEXT NOT NULL, is_starred BOOLEAN DEFAULT FALSE, is_deleted BOOLEAN DEFAULT FALSE, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+	`)
+	if err != nil {
+		t.Fatalf("Migration failed: %v", err)
+	}
+
+	casDir := t.TempDir()
+	casEngine, err := storage.NewCASEngine(casDir)
+	if err != nil {
+		t.Fatalf("Failed to create CAS: %v", err)
+	}
+
+	fileCtrl := &FileController{
+		DB:  dbEngine,
+		CAS: casEngine,
+	}
+
+	// Insert test files: 1 PDF, 1 Text, 1 ZIP
+	_, _ = dbEngine.SQL.Exec("INSERT INTO files (id, owner_id, folder_id, name, mime_type, size, cas_hash) VALUES ('pdf_1', 1, NULL, 'document.pdf', 'application/pdf', 100, 'cas_pdf_1')")
+	_, _ = dbEngine.SQL.Exec("INSERT INTO files (id, owner_id, folder_id, name, mime_type, size, cas_hash) VALUES ('txt_1', 1, NULL, 'notes.txt', 'text/plain', 50, 'cas_txt_1')")
+	_, _ = dbEngine.SQL.Exec("INSERT INTO files (id, owner_id, folder_id, name, mime_type, size, cas_hash) VALUES ('zip_1', 1, NULL, 'data.zip', 'application/zip', 500, 'cas_zip_1')")
+
+	// 1. Test GetFiles returns HasPreview appropriately
+	reqFiles := httptest.NewRequest(http.MethodGet, "/api/files", nil)
+	recFiles := httptest.NewRecorder()
+	cFiles := e.NewContext(reqFiles, recFiles)
+	if err := fileCtrl.GetFiles(cFiles); err != nil {
+		t.Fatalf("GetFiles error: %v", err)
+	}
+	var files []FileRecord
+	_ = json.Unmarshal(recFiles.Body.Bytes(), &files)
+	if len(files) < 3 {
+		t.Fatalf("Expected at least 3 files, got %d", len(files))
+	}
+	fileMap := make(map[string]FileRecord)
+	for _, f := range files {
+		fileMap[f.ID] = f
+	}
+
+	if f, ok := fileMap["pdf_1"]; !ok || !f.HasPreview || f.ThumbURL == "" || f.PreviewURL == "" {
+		t.Errorf("Expected pdf_1 to have preview, got %+v", f)
+	}
+	if f, ok := fileMap["txt_1"]; !ok || !f.HasPreview || f.ThumbURL == "" || f.PreviewURL == "" {
+		t.Errorf("Expected txt_1 to have preview, got %+v", f)
+	}
+	if f, ok := fileMap["zip_1"]; !ok || f.HasPreview {
+		t.Errorf("Expected zip_1 to NOT have preview, got %+v", f)
+	}
+	// Verify seeded files as well
+	if f, ok := fileMap["file_1"]; ok && !f.HasPreview {
+		t.Errorf("Expected seeded file_1 (.pdf) to have preview, got %+v", f)
+	}
+	if f, ok := fileMap["file_4"]; ok && f.HasPreview {
+		t.Errorf("Expected seeded file_4 (.tar.gz) to NOT have preview, got %+v", f)
+	}
+
+	// 2. Test PreviewFile for txt_1 (returns inline content)
+	e.GET("/api/files/:id/preview", fileCtrl.PreviewFile)
+	e.GET("/api/files/:id/thumbnail", fileCtrl.ThumbnailFile)
+
+	reqPrev := httptest.NewRequest(http.MethodGet, "/api/files/txt_1/preview", nil)
+	recPrev := httptest.NewRecorder()
+	e.ServeHTTP(recPrev, reqPrev)
+	if recPrev.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK for PreviewFile, got %d", recPrev.Code)
+	}
+	disp := recPrev.Header().Get("Content-Disposition")
+	if !strings.HasPrefix(disp, "inline") {
+		t.Errorf("Expected Content-Disposition to start with 'inline', got %s", disp)
+	}
+
+	// 3. Test ThumbnailFile for pdf_1 (returns SVG thumbnail fallback for mock file)
+	reqThumbPdf := httptest.NewRequest(http.MethodGet, "/api/files/pdf_1/thumbnail", nil)
+	recThumbPdf := httptest.NewRecorder()
+	e.ServeHTTP(recThumbPdf, reqThumbPdf)
+	if recThumbPdf.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK for pdf thumbnail, got %d", recThumbPdf.Code)
+	}
+	contentType := recThumbPdf.Header().Get("Content-Type")
+	if !strings.Contains(contentType, "svg") && !strings.Contains(contentType, "png") {
+		t.Errorf("Expected image/svg+xml or image/png for PDF thumbnail, got %s", contentType)
+	}
+
+	// 4. Test ThumbnailFile for non-previewable zip_1 (returns 204 No Content)
+	reqThumbZip := httptest.NewRequest(http.MethodGet, "/api/files/zip_1/thumbnail", nil)
+	recThumbZip := httptest.NewRecorder()
+	e.ServeHTTP(recThumbZip, reqThumbZip)
+	if recThumbZip.Code != http.StatusNoContent {
+		t.Fatalf("Expected 204 No Content for zip thumbnail, got %d", recThumbZip.Code)
+	}
+}
+
+
 
 

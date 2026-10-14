@@ -562,6 +562,8 @@ templ Layout(title string) {
 				files: [],
 				folders: [],
 				selectedFile: null,
+				filePreviewText: '',
+				filePreviewLoading: false,
 				folderHistory: [],
 				currentFolderId: '',
 				currentFolderName: '',
@@ -616,8 +618,36 @@ templ Layout(title string) {
 					this.showVaultPasswordModal = false;
 					this.showCreateFolderModal = false;
 					this.showPurgeConfirmModal = false;
-					this.selectedFile = null;
+					this.closeFileModal();
 					this.isMobileMenuOpen = false;
+				},
+
+				selectFile(file) {
+					this.selectedFile = file;
+					this.filePreviewText = '';
+					this.filePreviewLoading = false;
+					if (file && file.has_preview && !file.mime_type?.startsWith('image/') && file.ext !== 'pdf' && file.mime_type !== 'application/pdf' && !file.mime_type?.startsWith('video/') && !file.mime_type?.startsWith('audio/')) {
+						this.filePreviewLoading = true;
+						fetch(`/api/files/${file.id}/preview`, {
+							headers: { 'Range': 'bytes=0-10000' }
+						})
+						.then(res => res.text())
+						.then(txt => {
+							this.filePreviewText = txt || 'Berkas kosong';
+						})
+						.catch(() => {
+							this.filePreviewText = 'Tidak dapat memuat konten berkas.';
+						})
+						.finally(() => {
+							this.filePreviewLoading = false;
+						});
+					}
+				},
+
+				closeFileModal() {
+					this.selectedFile = null;
+					this.filePreviewText = '';
+					this.filePreviewLoading = false;
 				},
 
 				setTab(tab) {
