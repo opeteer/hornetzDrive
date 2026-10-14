@@ -1154,6 +1154,127 @@ func TestExtractOfficeThumbnail(t *testing.T) {
 	}
 }
 
+func TestSearch_CaseInsensitiveAndMultiWord(t *testing.T) {
+	e := echo.New()
+	dbEngine, err := data.NewDBEngine("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to create memory DB: %v", err)
+	}
+	defer dbEngine.Close()
+
+	_, _ = dbEngine.SQL.Exec(`
+		CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, salt BLOB NOT NULL, encrypted_vault_key BLOB NOT NULL);
+		CREATE TABLE folders (id TEXT PRIMARY KEY, owner_id INTEGER NOT NULL, parent_id TEXT, name TEXT NOT NULL);
+		CREATE TABLE files (id TEXT PRIMARY KEY, owner_id INTEGER NOT NULL, folder_id TEXT, name TEXT NOT NULL, mime_type TEXT NOT NULL, size BIGINT NOT NULL, cas_hash TEXT NOT NULL, is_starred BOOLEAN DEFAULT FALSE, is_deleted BOOLEAN DEFAULT FALSE, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+		INSERT INTO users (id, email, password_hash, salt, encrypted_vault_key) VALUES (1, 'u', 'p', 's', 'k');
+		INSERT INTO folders (id, owner_id, parent_id, name) VALUES ('f1', 1, NULL, 'Buku & Ensiklopedia');
+		INSERT INTO files (id, owner_id, folder_id, name, mime_type, size, cas_hash, is_starred, is_deleted) VALUES 
+			('f_vis', 1, 'f1', 'The Visual Dictionary of Everyday Things by George Ross (z-lib.org).pdf', 'application/pdf', 7549747, 'a8f3b2c91d4e5f67', FALSE, FALSE),
+			('f_sec', 1, 'f1', 'System Security Manual.pdf', 'application/pdf', 2048, 'b5c4d3e2f1a09876', FALSE, FALSE);
+	`)
+
+	fileCtrl := &FileController{DB: dbEngine}
+	e.GET("/api/files", fileCtrl.GetFiles)
+
+	// 1. Search lowercase "the visu"
+	req1 := httptest.NewRequest(http.MethodGet, "/api/files?q=the+visu", nil)
+	rec1 := httptest.NewRecorder()
+	e.ServeHTTP(rec1, req1)
+	if rec1.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK, got %d", rec1.Code)
+	}
+	var res1 []FileRecord
+	json.Unmarshal(rec1.Body.Bytes(), &res1)
+	if len(res1) != 1 || res1[0].ID != "f_vis" {
+		t.Fatalf("Expected 1 result for 'the visu', got %d: %+v", len(res1), res1)
+	}
+
+	// 2. Search multi-word out of order "george dictionary"
+	req2 := httptest.NewRequest(http.MethodGet, "/api/files?q=george+dictionary", nil)
+	rec2 := httptest.NewRecorder()
+	e.ServeHTTP(rec2, req2)
+	var res2 []FileRecord
+	json.Unmarshal(rec2.Body.Bytes(), &res2)
+	if len(res2) != 1 || res2[0].ID != "f_vis" {
+		t.Fatalf("Expected 1 result for 'george dictionary', got %d: %+v", len(res2), res2)
+	}
+
+	// 3. Search uppercase "EVERYDAY"
+	req3 := httptest.NewRequest(http.MethodGet, "/api/files?q=EVERYDAY", nil)
+	rec3 := httptest.NewRecorder()
+	e.ServeHTTP(rec3, req3)
+	var res3 []FileRecord
+	json.Unmarshal(rec3.Body.Bytes(), &res3)
+	if len(res3) != 1 || res3[0].ID != "f_vis" {
+		t.Fatalf("Expected 1 result for 'EVERYDAY', got %d: %+v", len(res3), res3)
+	}
+}
+
+func TestSearch_GlobalAcrossFolders(t *testing.T) {
+	e := echo.New()
+	dbEngine, err := data.NewDBEngine("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to create memory DB: %v", err)
+	}
+	defer dbEngine.Close()
+
+	_, _ = dbEngine.SQL.Exec(`
+		CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, salt BLOB NOT NULL, encrypted_vault_key BLOB NOT NULL);
+		CREATE TABLE folders (id TEXT PRIMARY KEY, owner_id INTEGER NOT NULL, parent_id TEXT, name TEXT NOT NULL);
+		CREATE TABLE files (id TEXT PRIMARY KEY, owner_id INTEGER NOT NULL, folder_id TEXT, name TEXT NOT NULL, mime_type TEXT NOT NULL, size BIGINT NOT NULL, cas_hash TEXT NOT NULL, is_starred BOOLEAN DEFAULT FALSE, is_deleted BOOLEAN DEFAULT FALSE, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+		INSERT INTO users (id, email, password_hash, salt, encrypted_vault_key) VALUES (1, 'u', 'p', 's', 'k');
+		INSERT INTO folders (id, owner_id, parent_id, name) VALUES ('f_finance', 1, NULL, 'Keuangan'), ('f_tech', 1, NULL, 'Teknologi');
+		INSERT INTO files (id, owner_id, folder_id, name, mime_type, size, cas_hash) VALUES 
+			('f_in_tech', 1, 'f_tech', 'The Visual Dictionary of Everyday Things by George Ross.pdf', 'application/pdf', 1000, 'hash1');
+	`)
+
+	fileCtrl := &FileController{DB: dbEngine}
+	e.GET("/api/files", fileCtrl.GetFiles)
+
+	// User is currently browsing 'f_finance', but searches for 'visual'
+	req := httptest.NewRequest(http.MethodGet, "/api/files?q=visual&folder_id=f_finance", nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+	var res []FileRecord
+	json.Unmarshal(rec.Body.Bytes(), &res)
+	if len(res) != 1 || res[0].ID != "f_in_tech" {
+		t.Fatalf("Expected global search to find file in f_tech even when folder_id=f_finance was passed, got: %+v", res)
+	}
+}
+
+func TestSearch_VaultIsolation(t *testing.T) {
+	e := echo.New()
+	dbEngine, err := data.NewDBEngine("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to create memory DB: %v", err)
+	}
+	defer dbEngine.Close()
+
+	_, _ = dbEngine.SQL.Exec(`
+		CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, salt BLOB NOT NULL, encrypted_vault_key BLOB NOT NULL);
+		CREATE TABLE folders (id TEXT PRIMARY KEY, owner_id INTEGER NOT NULL, parent_id TEXT, name TEXT NOT NULL);
+		CREATE TABLE files (id TEXT PRIMARY KEY, owner_id INTEGER NOT NULL, folder_id TEXT, name TEXT NOT NULL, mime_type TEXT NOT NULL, size BIGINT NOT NULL, cas_hash TEXT NOT NULL, is_starred BOOLEAN DEFAULT FALSE, is_deleted BOOLEAN DEFAULT FALSE, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+		INSERT INTO users (id, email, password_hash, salt, encrypted_vault_key) VALUES (1, 'u', 'p', 's', 'k');
+		INSERT INTO folders (id, owner_id, parent_id, name) VALUES ('f2', 1, NULL, 'Vault Root');
+		INSERT INTO files (id, owner_id, folder_id, name, mime_type, size, cas_hash) VALUES 
+			('f_vault', 1, 'f2', 'secret_visual_keys.pdf', 'application/pdf', 1000, 'hash_v'),
+			('f_public', 1, 'f1', 'public_visual_guide.pdf', 'application/pdf', 1000, 'hash_p');
+	`)
+
+	fileCtrl := &FileController{DB: dbEngine}
+	e.GET("/api/files", fileCtrl.GetFiles)
+
+	// Unauthenticated search for 'visual' must NOT leak vault files
+	req := httptest.NewRequest(http.MethodGet, "/api/files?q=visual", nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+	var res []FileRecord
+	json.Unmarshal(rec.Body.Bytes(), &res)
+	if len(res) != 1 || res[0].ID != "f_public" {
+		t.Fatalf("Expected only public file returned, got %d files: %+v", len(res), res)
+	}
+}
+
 
 
 

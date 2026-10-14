@@ -193,13 +193,28 @@ templ DashboardContent() {
 						<template x-if="$store.drive.activeTab === 'storage'">
 							@IconHardDrive("w-4 h-4 text-[#F5CE0D]")
 						</template>
-						<span x-text="$store.drive.activeTab === 'vault' ? 'DAFTAR BERKAS TERENKRIPSI VAULT' : ($store.drive.activeTab === 'trash' ? 'DAFTAR BERKAS DI SAMPAH' : ($store.drive.activeTab === 'starred' ? 'DAFTAR BERKAS BERBINTANG' : ($store.drive.activeTab === 'recent' ? 'DAFTAR BERKAS TERBARU' : 'DAFTAR BERKAS TERSINKRON')))"></span>
+						<span x-text="$store.drive.searchQuery ? `HASIL PENCARIAN BERKAS (${$store.drive.files.length})` : ($store.drive.activeTab === 'vault' ? 'DAFTAR BERKAS TERENKRIPSI VAULT' : ($store.drive.activeTab === 'trash' ? 'DAFTAR BERKAS DI SAMPAH' : ($store.drive.activeTab === 'starred' ? 'DAFTAR BERKAS BERBINTANG' : ($store.drive.activeTab === 'recent' ? 'DAFTAR BERKAS TERBARU' : 'DAFTAR BERKAS TERSINKRON'))))"></span>
 					</h3>
 					<span class="text-xs text-[#86898B]/70 font-mono" x-text="`Menampilkan ${$store.drive.files.length} berkas`"></span>
 				</div>
 
 				<div x-show="$store.drive.files.length === 0" class="text-center py-16 border border-dashed border-[#3F4247]/60 rounded-2xl text-[#86898B] font-mono text-sm bg-[#2E3137]/20 backdrop-blur-md flex flex-col items-center justify-center space-y-3">
-					<template x-if="$store.drive.activeTab === 'trash'">
+					<template x-if="$store.drive.searchQuery && $store.drive.searchQuery.trim().length > 0">
+						<div class="flex flex-col items-center space-y-2">
+							<div class="w-12 h-12 rounded-full bg-[#2E3137] text-[#86898B] flex items-center justify-center border border-[#3F4247]/40">
+								@IconSearch("w-6 h-6")
+							</div>
+							<span class="text-white">Tidak ditemukan berkas yang cocok dengan <span class="text-[#F5CE0D] font-bold" x-text="'“' + $store.drive.searchQuery + '”'"></span></span>
+							<button 
+								type="button" 
+								@click="$store.drive.clearSearch()" 
+								class="text-xs text-[#F5CE0D] hover:underline font-mono mt-1"
+							>
+								Bersihkan Pencarian
+							</button>
+						</div>
+					</template>
+					<template x-if="!$store.drive.searchQuery && $store.drive.activeTab === 'trash'">
 						<div class="flex flex-col items-center space-y-2">
 							<div class="w-12 h-12 rounded-full bg-red-500/10 text-red-400 flex items-center justify-center">
 								@IconTrash("w-6 h-6")
@@ -207,7 +222,7 @@ templ DashboardContent() {
 							<span>Tempat sampah kosong. Tidak ada berkas yang dihapus.</span>
 						</div>
 					</template>
-					<template x-if="$store.drive.activeTab === 'starred'">
+					<template x-if="!$store.drive.searchQuery && $store.drive.activeTab === 'starred'">
 						<div class="flex flex-col items-center space-y-2">
 							<div class="w-12 h-12 rounded-full bg-[#F5CE0D]/10 text-[#F5CE0D] flex items-center justify-center">
 								@IconStar("w-6 h-6", false)
@@ -215,7 +230,7 @@ templ DashboardContent() {
 							<span>Belum ada berkas berbintang. Tandai berkas favorit Anda dengan bintang.</span>
 						</div>
 					</template>
-					<template x-if="$store.drive.activeTab === 'recent'">
+					<template x-if="!$store.drive.searchQuery && $store.drive.activeTab === 'recent'">
 						<div class="flex flex-col items-center space-y-2">
 							<div class="w-12 h-12 rounded-full bg-blue-500/10 text-blue-400 flex items-center justify-center">
 								@IconClock("w-6 h-6")
@@ -223,7 +238,7 @@ templ DashboardContent() {
 							<span>Belum ada riwayat berkas terbaru.</span>
 						</div>
 					</template>
-					<template x-if="$store.drive.activeTab !== 'trash' && $store.drive.activeTab !== 'starred' && $store.drive.activeTab !== 'recent'">
+					<template x-if="!$store.drive.searchQuery && $store.drive.activeTab !== 'trash' && $store.drive.activeTab !== 'starred' && $store.drive.activeTab !== 'recent'">
 						<div class="flex flex-col items-center space-y-2">
 							<div class="w-12 h-12 rounded-full bg-[#2E3137] text-[#86898B] flex items-center justify-center border border-[#3F4247]/40">
 								@IconFolder("w-6 h-6")
@@ -273,7 +288,7 @@ templ DashboardContent() {
 								</template>
 							</div>
 							<div class="mt-2">
-								<div class="font-semibold text-xs text-white truncate group-hover:text-[#F5CE0D] transition-colors" x-text="file.name"></div>
+								<div class="font-semibold text-xs text-white truncate group-hover:text-[#F5CE0D] transition-colors" :title="file.name" x-text="file.name"></div>
 								<div class="flex justify-between items-center text-[10px] text-[#86898B] font-mono mt-1">
 									<span x-text="(file.size >= 1073741824) ? (file.size / 1073741824).toFixed(2) + ' GB' : (file.size >= 1048576) ? (file.size / 1048576).toFixed(1) + ' MB' : (file.size >= 1024) ? (file.size / 1024).toFixed(1) + ' KB' : file.size + ' B'"></span>
 									<span :class="file.is_deleted ? 'text-red-400' : 'text-emerald-400'" class="flex items-center gap-1 font-semibold text-[9px]">
@@ -300,7 +315,7 @@ templ DashboardContent() {
 							<div class="flex items-center gap-3">
 								<div class="w-8 h-8 rounded-lg bg-[#2E3137] border border-[#3F4247]/60 flex items-center justify-center text-[#F5CE0D] shrink-0" x-html="$store.drive.getFileIconSvg(file.icon, 'w-4 h-4')"></div>
 								<div>
-									<div class="font-bold text-sm text-white group-hover:text-[#F5CE0D] transition-colors" x-text="file.name"></div>
+									<div class="font-bold text-sm text-white group-hover:text-[#F5CE0D] transition-colors" :title="file.name" x-text="file.name"></div>
 									<div class="text-[11px] text-[#86898B] font-mono" x-text="`SHA-256: ${file.cas_hash}`"></div>
 								</div>
 							</div>

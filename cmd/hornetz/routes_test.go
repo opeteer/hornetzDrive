@@ -102,5 +102,20 @@ func TestRoutes_DashboardApp(t *testing.T) {
 	if !strings.Contains(body, "selectFile") {
 		t.Errorf("Expected 'selectFile' method in /app dashboard HTML")
 	}
+	if !strings.Contains(body, `type="search"`) {
+		t.Errorf("Expected 'type=\"search\"' on search bar input")
+	}
+	if !strings.Contains(body, `name="hornetz_search"`) {
+		t.Errorf("Expected 'name=\"hornetz_search\"' on search input")
+	}
+	if !strings.Contains(body, `role="search"`) {
+		t.Errorf("Expected 'role=\"search\"' form container")
+	}
+	if !strings.Contains(body, `name="vault_password"`) || !strings.Contains(body, `autocomplete="current-password"`) {
+		t.Errorf("Expected vault password modal to be enclosed with autocomplete=\"current-password\"")
+	}
+	if !strings.Contains(body, `:title="file.name"`) {
+		t.Errorf("Expected ':title=\"file.name\"' on file card titles")
+	}
 }
 

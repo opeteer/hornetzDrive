@@ -193,7 +193,7 @@ func (fc *FileController) GetFiles(c *echo.Context) error {
 	fc.SeedInitialData()
 
 	tab := c.QueryParam("tab")
-	search := c.QueryParam("q")
+	search := strings.TrimSpace(c.QueryParam("q"))
 	folderID := c.QueryParam("folder_id")
 
 	isUnlocked := fc.isVaultUnlocked(c)
@@ -221,34 +221,39 @@ func (fc *FileController) GetFiles(c *echo.Context) error {
 				query += " AND " + fc.vaultExcludeFilter()
 			}
 		} else if tab == "vault" {
-			if folderID != "" {
+			if folderID != "" && search == "" {
 				query += " AND folder_id = ?"
 				args = append(args, folderID)
 			} else {
-				query += " AND folder_id = 'f2'"
+				query += " AND (folder_id = 'f2' OR folder_id IN (SELECT id FROM folders WHERE parent_id = 'f2'))"
 			}
 		} else {
 			// Standard storage tab
-			if folderID != "" {
+			if folderID != "" && search == "" {
 				query += " AND folder_id = ?"
 				args = append(args, folderID)
 				if !isUnlocked && fc.IsVaultFolder(folderID) {
 					query += " AND 1=0"
 				}
 			} else {
-				// Root storage: exclude vault folders
+				// Root storage or global search across standard storage: exclude vault folders
 				query += " AND " + fc.vaultExcludeFilter()
 			}
 		}
 	}
 
 	if search != "" {
-		escaped := strings.ReplaceAll(search, "\\", "\\\\")
-		escaped = strings.ReplaceAll(escaped, "%", "\\%")
-		escaped = strings.ReplaceAll(escaped, "_", "\\_")
-		pattern := "%" + escaped + "%"
-		query += " AND (name LIKE ? ESCAPE '\\' OR cas_hash LIKE ? ESCAPE '\\')"
-		args = append(args, pattern, pattern)
+		terms := strings.Fields(strings.ToLower(search))
+		if len(terms) > 0 {
+			for _, term := range terms {
+				escaped := strings.ReplaceAll(term, "\\", "\\\\")
+				escaped = strings.ReplaceAll(escaped, "%", "\\%")
+				escaped = strings.ReplaceAll(escaped, "_", "\\_")
+				pattern := "%" + escaped + "%"
+				query += " AND (LOWER(name) LIKE ? ESCAPE '\\' OR LOWER(cas_hash) LIKE ? ESCAPE '\\')"
+				args = append(args, pattern, pattern)
+			}
+		}
 	}
 
 	sortBy := c.QueryParam("sort_by")
@@ -316,7 +321,7 @@ func (fc *FileController) GetFolders(c *echo.Context) error {
 
 	tab := c.QueryParam("tab")
 	parentID := c.QueryParam("parent_id")
-	search := c.QueryParam("q")
+	search := strings.TrimSpace(c.QueryParam("q"))
 
 	isUnlocked := fc.isVaultUnlocked(c)
 
@@ -335,16 +340,24 @@ func (fc *FileController) GetFolders(c *echo.Context) error {
 	
 	args := []interface{}{}
 
-	if parentID != "" {
+	if parentID != "" && search == "" {
 		query += " AND f.parent_id = ?"
 		args = append(args, parentID)
 		if !isUnlocked && fc.IsVaultFolder(parentID) {
 			query += " AND 1=0"
 		}
 	} else if tab == "vault" {
-		query += " AND f.parent_id = 'f2'"
+		if search == "" {
+			query += " AND f.parent_id = 'f2'"
+		} else {
+			query += " AND (f.id = 'f2' OR f.parent_id = 'f2')"
+		}
 	} else {
-		query += " AND f.id != 'f2' AND (f.parent_id IS NULL OR f.parent_id = '')"
+		if search == "" {
+			query += " AND f.id != 'f2' AND (f.parent_id IS NULL OR f.parent_id = '')"
+		} else {
+			query += " AND f.id != 'f2'"
+		}
 		if !isUnlocked {
 			vaultIDs := fc.GetAllVaultFolderIDs()
 			escapedIDs := make([]string, len(vaultIDs))
@@ -356,11 +369,16 @@ func (fc *FileController) GetFolders(c *echo.Context) error {
 	}
 
 	if search != "" {
-		escaped := strings.ReplaceAll(search, "\\", "\\\\")
-		escaped = strings.ReplaceAll(escaped, "%", "\\%")
-		escaped = strings.ReplaceAll(escaped, "_", "\\_")
-		query += " AND f.name LIKE ? ESCAPE '\\'"
-		args = append(args, "%"+escaped+"%")
+		terms := strings.Fields(strings.ToLower(search))
+		if len(terms) > 0 {
+			for _, term := range terms {
+				escaped := strings.ReplaceAll(term, "\\", "\\\\")
+				escaped = strings.ReplaceAll(escaped, "%", "\\%")
+				escaped = strings.ReplaceAll(escaped, "_", "\\_")
+				query += " AND LOWER(f.name) LIKE ? ESCAPE '\\'"
+				args = append(args, "%"+escaped+"%")
+			}
+		}
 	}
 
 	query += " GROUP BY f.id, f.owner_id, f.parent_id, f.name, f.created_at"

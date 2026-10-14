@@ -153,21 +153,119 @@ templ Layout(title string) {
 			</div>
 
 			<!-- Live Search Bar -->
-			<div class="flex-1 max-w-xl mx-8">
-				<div class="relative">
+			<div class="flex-1 max-w-xl mx-8 relative" x-data="{ searchFocused: false }">
+				<form role="search" @submit.prevent="$store.drive.fetchFiles(); $store.drive.fetchFolders(); searchFocused = false" autocomplete="off" class="relative">
 					<input 
-						type="text" 
+						type="search" 
+						name="hornetz_search" 
+						id="hornetz-search-input"
+						role="searchbox"
+						autocomplete="off"
+						autocorrect="off"
+						autocapitalize="off"
+						spellcheck="false"
 						x-model="$store.drive.searchQuery" 
-						@input.debounce.300ms="$store.drive.fetchFiles(); $store.drive.fetchFolders()" 
+						@input.debounce.250ms="$store.drive.fetchFiles(); $store.drive.fetchFolders(); searchFocused = true" 
+						@focus="searchFocused = true"
+						@keydown.escape="searchFocused = false"
 						placeholder="Cari berkas, folder, atau hash SHA-256..." 
-						class="w-full bg-[#2E3137]/30 border border-[#3F4247]/50 text-sm text-white px-10 py-2 rounded-xl focus:outline-none focus:border-[#F5CE0D] focus:bg-[#2E3137]/50 backdrop-blur-md transition-all placeholder-[#86898B]/50"
+						class="w-full bg-[#2E3137]/30 border border-[#3F4247]/50 text-sm text-white pl-10 pr-10 py-2 rounded-xl focus:outline-none focus:border-[#F5CE0D] focus:bg-[#2E3137]/50 backdrop-blur-md transition-all placeholder-[#86898B]/50"
 					/>
-					<div class="absolute left-3.5 top-2.5 text-[#86898B]">
+					<div class="absolute left-3.5 top-2.5 text-[#86898B] pointer-events-none">
 						@IconSearch("w-4 h-4")
 					</div>
-					<button x-show="$store.drive.searchQuery" @click="$store.drive.clearSearch()" class="absolute right-3 top-2.5 text-[#86898B] hover:text-white">
+					<button 
+						type="button"
+						x-show="$store.drive.searchQuery" 
+						@click="$store.drive.clearSearch(); searchFocused = false" 
+						class="absolute right-3 top-2.5 text-[#86898B] hover:text-white"
+						aria-label="Hapus Pencarian"
+					>
 						@IconX("w-4 h-4")
 					</button>
+				</form>
+
+				<!-- Google Drive-style Live Search Dropdown -->
+				<div 
+					x-show="searchFocused && $store.drive.searchQuery && $store.drive.searchQuery.trim().length > 0" 
+					@click.away="searchFocused = false"
+					x-cloak
+					style="display: none;"
+					x-transition:enter="transition ease-out duration-150"
+					x-transition:enter-start="opacity-0 translate-y-1"
+					x-transition:enter-end="opacity-100 translate-y-0"
+					x-transition:leave="transition ease-in duration-100"
+					x-transition:leave-start="opacity-100 translate-y-0"
+					x-transition:leave-end="opacity-0 translate-y-1"
+					class="absolute top-full left-0 right-0 mt-2 bg-[#121519]/95 backdrop-blur-2xl border border-[#3F4247]/70 rounded-2xl shadow-2xl overflow-hidden z-50 max-h-96 flex flex-col"
+				>
+					<!-- Header info -->
+					<div class="px-4 py-2.5 border-b border-[#3F4247]/40 flex justify-between items-center text-[11px] font-mono text-[#86898B]">
+						<span>Hasil pencarian untuk <span class="text-[#F5CE0D] font-bold" x-text="'“' + $store.drive.searchQuery + '”'"></span></span>
+						<span x-text="($store.drive.files.length + $store.drive.folders.length) + ' hasil'"></span>
+					</div>
+
+					<div class="overflow-y-auto divide-y divide-[#3F4247]/30 flex-1">
+						<!-- Matching Folders -->
+						<template x-if="$store.drive.folders && $store.drive.folders.length > 0">
+							<div class="p-2">
+								<div class="text-[10px] font-mono text-[#F5CE0D] uppercase font-bold px-2 py-1 tracking-wider">Folder</div>
+								<template x-for="folder in $store.drive.folders.slice(0, 4)" :key="folder.id">
+									<div 
+										@click="$store.drive.openFolder(folder); searchFocused = false"
+										class="flex items-center gap-3 px-2 py-1.5 rounded-lg hover:bg-[#2E3137]/60 cursor-pointer group transition-colors"
+									>
+										<div class="w-7 h-7 rounded-lg bg-[#2E3137] border border-[#3F4247]/60 text-[#F5CE0D] flex items-center justify-center shrink-0">
+											@IconFolder("w-3.5 h-3.5")
+										</div>
+										<div class="flex-1 min-w-0">
+											<div class="text-xs font-semibold text-white group-hover:text-[#F5CE0D] truncate transition-colors" x-text="folder.name"></div>
+											<div class="text-[10px] text-[#86898B] font-mono" x-text="(folder.file_count || 0) + ' berkas'"></div>
+										</div>
+									</div>
+								</template>
+							</div>
+						</template>
+
+						<!-- Matching Files -->
+						<template x-if="$store.drive.files && $store.drive.files.length > 0">
+							<div class="p-2">
+								<div class="text-[10px] font-mono text-[#86898B] uppercase font-bold px-2 py-1 tracking-wider">Berkas</div>
+								<template x-for="file in $store.drive.files.slice(0, 8)" :key="file.id">
+									<div 
+										@click="$store.drive.selectFile(file); searchFocused = false"
+										class="flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-[#2E3137]/60 cursor-pointer group transition-colors"
+									>
+										<div class="w-8 h-8 rounded-lg bg-[#2E3137] border border-[#3F4247]/60 text-[#F5CE0D] flex items-center justify-center shrink-0" x-html="$store.drive.getFileIconSvg(file.icon, 'w-4 h-4')"></div>
+										<div class="flex-1 min-w-0">
+											<div class="text-xs font-semibold text-white group-hover:text-[#F5CE0D] truncate transition-colors" :title="file.name" x-text="file.name"></div>
+											<div class="flex items-center gap-2 text-[10px] text-[#86898B] font-mono mt-0.5">
+												<span x-text="(file.size >= 1073741824) ? (file.size / 1073741824).toFixed(2) + ' GB' : (file.size >= 1048576) ? (file.size / 1048576).toFixed(1) + ' MB' : (file.size >= 1024) ? (file.size / 1024).toFixed(1) + ' KB' : file.size + ' B'"></span>
+												<span class="text-[#3F4247]">•</span>
+												<span class="uppercase text-[9px] px-1 bg-white/5 rounded border border-white/10" x-text="(file.ext || 'FILE').slice(0, 4)"></span>
+											</div>
+										</div>
+									</div>
+								</template>
+							</div>
+						</template>
+
+						<!-- Empty State -->
+						<template x-if="$store.drive.files.length === 0 && $store.drive.folders.length === 0">
+							<div class="py-8 px-4 text-center space-y-2">
+								<div class="text-[#86898B] font-mono text-xs">
+									Tidak ada berkas atau folder yang cocok dengan <span class="text-white font-bold" x-text="'“' + $store.drive.searchQuery + '”'"></span>
+								</div>
+								<p class="text-[11px] text-[#86898B]/60">Coba kata kunci lain atau periksa kembali ejaan.</p>
+							</div>
+						</template>
+					</div>
+
+					<!-- Footer -->
+					<div class="px-4 py-2 bg-[#0F1215]/80 border-t border-[#3F4247]/40 flex justify-between items-center text-[10px] text-[#86898B] font-mono">
+						<span>Tekan <kbd class="px-1.5 py-0.5 bg-[#2E3137] rounded border border-[#3F4247]/60 text-white font-bold">Enter</kbd> untuk filter tampilan</span>
+						<button type="button" @click="$store.drive.clearSearch(); searchFocused = false" class="hover:text-white underline">Tutup</button>
+					</div>
 				</div>
 			</div>
 
@@ -410,30 +508,33 @@ templ Layout(title string) {
 					<p class="text-xs text-[#86898B]">Masukkan kata sandi master untuk mengakses berkas rahasia.</p>
 				</div>
 				
-				<div class="space-y-4">
+				<form @submit.prevent="$store.drive.unlockVault()" autocomplete="off" class="space-y-4">
 					<input 
 						type="password" 
+						name="vault_password"
+						id="vault-password-input"
+						autocomplete="current-password"
 						x-model="$store.drive.vaultPassword" 
-						@keydown.enter="$store.drive.unlockVault()" 
 						placeholder="Kata Sandi Master Vault" 
 						class="w-full bg-white/[0.04] border border-[#3F4247]/60 text-sm text-white px-4 py-3 rounded-xl focus:outline-none focus:border-[#F5CE0D]/60 focus:bg-white/[0.07] transition-all placeholder-[#86898B]/50"
 					/>
 					
 					<div class="flex gap-3">
 						<button 
+							type="button"
 							@click="$store.drive.showVaultPasswordModal = false" 
 							class="flex-1 py-3 bg-white/[0.04] border border-[#3F4247]/60 text-[#86898B] hover:text-white rounded-xl text-sm font-bold transition-all"
 						>
 							Batal
 						</button>
 						<button 
-							@click="$store.drive.unlockVault()" 
+							type="submit"
 							class="flex-1 py-3 hornetz-btn font-bold text-sm rounded-xl"
 						>
 							Buka Vault
 						</button>
 					</div>
-				</div>
+				</form>
 			</div>
 		</div>
 
@@ -457,30 +558,33 @@ templ Layout(title string) {
 					<p class="text-xs text-[#86898B]">Masukkan nama folder untuk mengelompokkan berkas Anda.</p>
 				</div>
 				
-				<div class="space-y-4">
+				<form @submit.prevent="$store.drive.createFolder($store.drive.newFolderName)" autocomplete="off" class="space-y-4">
 					<input 
 						type="text" 
+						name="folder_name"
+						id="new-folder-name-input"
+						autocomplete="off"
 						x-model="$store.drive.newFolderName" 
-						@keydown.enter="$store.drive.createFolder($store.drive.newFolderName)" 
 						placeholder="Nama Folder (misal: Laporan 2026)" 
 						class="w-full bg-white/[0.04] border border-[#3F4247]/60 text-sm text-white px-4 py-3 rounded-xl focus:outline-none focus:border-[#F5CE0D]/60 focus:bg-white/[0.07] transition-all placeholder-[#86898B]/50"
 					/>
 					
 					<div class="flex gap-3">
 						<button 
+							type="button"
 							@click="$store.drive.showCreateFolderModal = false; $store.drive.newFolderName = ''" 
 							class="flex-1 py-3 bg-white/[0.04] border border-[#3F4247]/60 text-[#86898B] hover:text-white rounded-xl text-sm font-bold transition-all"
 						>
 							Batal
 						</button>
 						<button 
-							@click="$store.drive.createFolder($store.drive.newFolderName)" 
+							type="submit"
 							class="flex-1 py-3 hornetz-btn font-bold text-sm rounded-xl"
 						>
 							Buat Folder
 						</button>
 					</div>
-				</div>
+				</form>
 			</div>
 		</div>
 
@@ -504,30 +608,33 @@ templ Layout(title string) {
 					<p class="text-xs text-red-400">PERINGATAN: Seluruh berkas di CAS dan database akan dimusnahkan seketika. Masukkan kata sandi master untuk konfirmasi.</p>
 				</div>
 				
-				<div class="space-y-4">
+				<form @submit.prevent="$store.drive.executePanicPurge()" autocomplete="off" class="space-y-4">
 					<input 
 						type="password" 
+						name="purge_password"
+						id="purge-password-input"
+						autocomplete="current-password"
 						x-model="$store.drive.purgePassword" 
-						@keydown.enter="$store.drive.executePanicPurge()" 
 						placeholder="Kata Sandi Master Vault" 
 						class="w-full bg-white/[0.04] border border-red-500/30 text-sm text-white px-4 py-3 rounded-xl focus:outline-none focus:border-red-500 transition-all placeholder-[#86898B]/50"
 					/>
 					
 					<div class="flex gap-3">
 						<button 
+							type="button"
 							@click="$store.drive.showPurgeConfirmModal = false; $store.drive.purgePassword = ''" 
 							class="flex-1 py-3 bg-white/[0.04] border border-[#3F4247]/60 text-[#86898B] hover:text-white rounded-xl text-sm font-bold transition-all"
 						>
 							Batal
 						</button>
 						<button 
-							@click="$store.drive.executePanicPurge()" 
+							type="submit"
 							class="flex-1 py-3 bg-red-600 hover:bg-red-700 text-white font-bold text-sm rounded-xl transition-all shadow-lg shadow-red-600/30"
 						>
 							Musnahkan Data
 						</button>
 					</div>
-				</div>
+				</form>
 			</div>
 		</div>
 
