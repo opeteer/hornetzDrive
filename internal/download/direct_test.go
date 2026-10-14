@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -165,5 +166,80 @@ func TestDownloadManager_DirectDownloadLifecycle(t *testing.T) {
 
 	if storedName != "managed_payload.dat" || storedCas != finalTask.CasHash {
 		t.Errorf("DB record mismatch: name=%s, cas=%s", storedName, storedCas)
+	}
+}
+
+func TestDirectDownloader_HtmlInterstitialRejected(t *testing.T) {
+	// Simulates server returning an HTML error/interstitial page (HTTP 200 OK) when downloading a .zip file
+	htmlPage := []byte("<!DOCTYPE html><html><head><title>Error</title></head><body><h1>Session Expired</h1><p>Please re-authenticate</p></body></html>")
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=UTF-8")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(htmlPage)
+	}))
+	defer ts.Close()
+
+	dd := NewDirectDownloader()
+	var dest bytes.Buffer
+
+	// Requesting an archive (.zip)
+	_, err := dd.DownloadDirect(context.Background(), ts.URL+"/The_Better_Deal_-_Complete_Story.zip", &dest, nil)
+	if err == nil {
+		t.Fatalf("Expected error when downloading HTML content for a .zip file, but got nil")
+	}
+
+	if !strings.Contains(err.Error(), "halaman web HTML") {
+		t.Errorf("Expected error to mention HTML interstitial, got: %v", err)
+	}
+
+	// Verify nothing was written to destination
+	if dest.Len() > 0 {
+		t.Errorf("Expected 0 bytes written to destination, got %d bytes", dest.Len())
+	}
+}
+
+func TestDirectDownloader_HtmlInterstitialAutoRecovery(t *testing.T) {
+	binaryPayload := []byte{0x50, 0x4b, 0x03, 0x04, 0x00, 0x00} // Real zip binary header
+	var realServer *httptest.Server
+	realServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Disposition", `attachment; filename="game_recovered.zip"`)
+		w.Header().Set("Content-Type", "application/zip")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(binaryPayload)
+	}))
+	defer realServer.Close()
+
+	// Initial server returns an HTML page containing a direct download link to the real server
+	initialServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=UTF-8")
+		w.WriteHeader(http.StatusOK)
+		page := fmt.Sprintf(`
+		<!DOCTYPE html>
+		<html>
+		<head><title>MediaFire</title></head>
+		<body>
+			<a id="downloadButton" href="%s/game_recovered.zip">Download</a>
+		</body>
+		</html>`, realServer.URL)
+		// Pretend this is from mediafire
+		_, _ = w.Write([]byte(page))
+	}))
+	defer initialServer.Close()
+
+	dd := NewDirectDownloader()
+	var dest bytes.Buffer
+
+	// Target a mediafire link format so it triggers MediaFire link extraction
+	targetURL := initialServer.URL + "/mediafire.com/file/game.zip"
+	info, err := dd.DownloadDirect(context.Background(), targetURL, &dest, nil)
+	if err != nil {
+		t.Fatalf("DownloadDirect recovery failed: %v", err)
+	}
+
+	if info.Filename != "game_recovered.zip" {
+		t.Errorf("Expected recovered filename 'game_recovered.zip', got %q", info.Filename)
+	}
+	if dest.String() != string(binaryPayload) {
+		t.Errorf("Downloaded content mismatch: got %v", dest.Bytes())
 	}
 }

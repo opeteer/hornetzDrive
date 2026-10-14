@@ -3,21 +3,32 @@ package download
 import (
 	"encoding/base64"
 	"fmt"
+	"io"
+	"net/http"
 	"net/url"
 	"path"
 	"regexp"
 	"strings"
+	"time"
 )
 
+// DefaultBrowserUserAgent is a standard, modern browser signature to avoid automated bot/hotlink blocking.
+const DefaultBrowserUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
+
 var (
-	markdownLinkRegex = regexp.MustCompile(`^\[.*?\]\((https?://[^\s)]+)\)$`)
-	angleBracketRegex = regexp.MustCompile(`^<(https?://[^>]+)>$`)
-	domainPrefixRegex = regexp.MustCompile(`^([a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}(:\d+)?(/.*)?$`)
-	gdriveFileIDRegex = regexp.MustCompile(`/file/d/([a-zA-Z0-9_-]+)`)
-	githubBlobRegex   = regexp.MustCompile(`^/([^/]+)/([^/]+)/blob/([^/]+)/(.*)$`)
-	gitlabBlobRegex   = regexp.MustCompile(`^/([^/]+)/([^/]+)/-/blob/([^/]+)/(.*)$`)
-	bitbucketSrcRegex = regexp.MustCompile(`^/([^/]+)/([^/]+)/src/([^/]+)/(.*)$`)
-	huggingfaceRegex  = regexp.MustCompile(`^/([^/]+)/([^/]+)/blob/([^/]+)/(.*)$`)
+	markdownLinkRegex    = regexp.MustCompile(`^\[.*?\]\((https?://[^\s)]+)\)$`)
+	angleBracketRegex    = regexp.MustCompile(`^<(https?://[^>]+)>$`)
+	domainPrefixRegex    = regexp.MustCompile(`^([a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}(:\d+)?(/.*)?$`)
+	gdriveFileIDRegex    = regexp.MustCompile(`/file/d/([a-zA-Z0-9_-]+)`)
+	gdriveConfirmRegex   = regexp.MustCompile(`(?i)href\s*=\s*["'](/uc\?export=download[^"']+)["']`)
+	gdriveConfirmUrlRegex = regexp.MustCompile(`(?i)href\s*=\s*["'](https?://drive\.google\.com/uc\?export=download[^"']+)["']`)
+	githubBlobRegex      = regexp.MustCompile(`^/([^/]+)/([^/]+)/blob/([^/]+)/(.*)$`)
+	gitlabBlobRegex      = regexp.MustCompile(`^/([^/]+)/([^/]+)/-/blob/([^/]+)/(.*)$`)
+	bitbucketSrcRegex    = regexp.MustCompile(`^/([^/]+)/([^/]+)/src/([^/]+)/(.*)$`)
+	huggingfaceRegex     = regexp.MustCompile(`^/([^/]+)/([^/]+)/blob/([^/]+)/(.*)$`)
+	mediafireBtnRegex    = regexp.MustCompile(`(?i)href\s*=\s*["'](https?://download\d*\.mediafire\.com/[^"']+)["']`)
+	mediafireRawCdnRegex = regexp.MustCompile(`https?://download\d*\.mediafire\.com/[a-zA-Z0-9_\-\./%]+`)
+	mediafireTitleRegex  = regexp.MustCompile(`(?i)<title>(?:Download\s*)?([^<]+?)(?:\s*-\s*MediaFire)?</title>`)
 )
 
 // ResolvedLink represents a normalized and domain-resolved download target.
@@ -29,6 +40,7 @@ type ResolvedLink struct {
 	ProviderIcon string       `json:"provider_icon"`
 	Filename     string       `json:"filename,omitempty"`
 	AuthHeader   string       `json:"-"`
+	Referer      string       `json:"-"`
 	Type         DownloadType `json:"type"`
 	IsTorrent    bool         `json:"is_torrent"`
 }
@@ -338,11 +350,125 @@ func ResolveLink(rawInput string) (*ResolvedLink, error) {
 	}
 
 	// 11. MediaFire
-	if strings.HasSuffix(host, "mediafire.com") {
+	if strings.Contains(host, "mediafire.com") {
 		res.Provider = "MediaFire"
 		res.ProviderIcon = "fire"
+		res.Referer = "https://www.mediafire.com/"
+
+		var fileKey string
+		var extractedName string
+
+		pathParts := strings.Split(strings.Trim(u.Path, "/"), "/")
+		if strings.HasPrefix(host, "download") {
+			// Pattern: downloadXXXX.mediafire.com/<token>/<key>/<filename>
+			if len(pathParts) >= 3 {
+				fileKey = pathParts[1]
+				extractedName = pathParts[2]
+			} else if len(pathParts) == 2 {
+				fileKey = pathParts[0]
+				extractedName = pathParts[1]
+			}
+		} else {
+			// Pattern: mediafire.com/file/<key>/<filename> or /download/<key>/<filename>
+			if len(pathParts) >= 2 && (pathParts[0] == "file" || pathParts[0] == "download" || pathParts[0] == "file_premium") {
+				fileKey = pathParts[1]
+				if len(pathParts) >= 3 && pathParts[2] != "file" {
+					extractedName = pathParts[2]
+				}
+			}
+		}
+
+		if extractedName != "" {
+			if unescaped, err := url.PathUnescape(extractedName); err == nil {
+				res.Filename = CleanFilename(unescaped, res.Filename)
+			}
+		}
+
+		// If this is a sharing landing page, attempt to resolve the direct CDN download link
+		if !strings.HasPrefix(host, "download") && fileKey != "" {
+			shareURL := fmt.Sprintf("https://www.mediafire.com/file/%s/", fileKey)
+			if directLink, scrapedName, err := FetchMediaFireDirectLink(shareURL); err == nil && directLink != "" {
+				res.ResolvedURL = directLink
+				if scrapedName != "" {
+					res.Filename = CleanFilename(scrapedName, res.Filename)
+				}
+			}
+		}
+
 		return res, nil
 	}
 
 	return res, nil
+}
+
+// ExtractMediaFireDirectLinkFromHTML scans an HTML page for direct MediaFire download links and filename.
+func ExtractMediaFireDirectLinkFromHTML(htmlContent string) (string, string) {
+	directURL := ""
+	if match := mediafireBtnRegex.FindStringSubmatch(htmlContent); len(match) == 2 {
+		directURL = match[1]
+	} else if match := mediafireRawCdnRegex.FindString(htmlContent); match != "" {
+		directURL = match
+	}
+
+	filename := ""
+	if match := mediafireTitleRegex.FindStringSubmatch(htmlContent); len(match) == 2 {
+		clean := strings.TrimSpace(match[1])
+		if clean != "" && !strings.Contains(clean, "MediaFire") {
+			filename = clean
+		}
+	}
+	if filename == "" && directURL != "" {
+		if u, err := url.Parse(directURL); err == nil {
+			filename = path.Base(u.Path)
+		}
+	}
+
+	return directURL, filename
+}
+
+// ExtractGoogleDriveConfirmLinkFromHTML scans an HTML warning page for the confirmation download link.
+func ExtractGoogleDriveConfirmLinkFromHTML(htmlContent string) string {
+	if match := gdriveConfirmUrlRegex.FindStringSubmatch(htmlContent); len(match) == 2 {
+		return strings.ReplaceAll(match[1], "&amp;", "&")
+	}
+	if match := gdriveConfirmRegex.FindStringSubmatch(htmlContent); len(match) == 2 {
+		return "https://drive.google.com" + strings.ReplaceAll(match[1], "&amp;", "&")
+	}
+	return ""
+}
+
+// FetchMediaFireDirectLink attempts to fetch the MediaFire share page and extract the direct CDN download URL.
+// In restricted network or offline environments, it fails gracefully without blocking.
+func FetchMediaFireDirectLink(shareURL string) (string, string, error) {
+	client := &http.Client{
+		Timeout: 5 * time.Second,
+	}
+	req, err := http.NewRequest(http.MethodGet, shareURL, nil)
+	if err != nil {
+		return "", "", err
+	}
+	req.Header.Set("User-Agent", DefaultBrowserUserAgent)
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+	req.Header.Set("Referer", "https://www.mediafire.com/")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 400 {
+		return "", "", fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+
+	bodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, 1024*1024))
+	if err != nil {
+		return "", "", err
+	}
+
+	directURL, filename := ExtractMediaFireDirectLinkFromHTML(string(bodyBytes))
+	if directURL == "" {
+		return "", "", fmt.Errorf("direct download button not found in page")
+	}
+	return directURL, filename, nil
 }

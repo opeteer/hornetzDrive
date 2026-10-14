@@ -169,6 +169,22 @@ func TestResolveLink_DomainResolvers(t *testing.T) {
 			expectedName:     "debian-12.5.0-amd64-netinst.iso.torrent",
 			isTorrent:        true,
 		},
+		{
+			name:             "MediaFire CDN direct URL",
+			input:            "https://download2446.mediafire.com/out3f8plg2tgYDW0v9EZt6B0p-ICD0HH_wIMpfac7GsxgtT90R4SkbwPpMvGUWHGiYjkDxRNHggGoV2NhMVVmaGVtu9k5To4AAM_wxTKI2cQBRM9y8/jq783cbs3glbncr/The_Better_Deal_-_Complete_Story_for_Windows_and_Linux.zip",
+			expectedProvider: "MediaFire",
+			expectedURLPart:  "mediafire.com",
+			expectedName:     "The_Better_Deal_-_Complete_Story_for_Windows_and_Linux.zip",
+			isTorrent:        false,
+		},
+		{
+			name:             "MediaFire share file URL",
+			input:            "https://www.mediafire.com/file/jq783cbs3glbncr/The_Better_Deal_-_Complete_Story_for_Windows_and_Linux.zip/file",
+			expectedProvider: "MediaFire",
+			expectedURLPart:  "mediafire.com",
+			expectedName:     "The_Better_Deal_-_Complete_Story_for_Windows_and_Linux.zip",
+			isTorrent:        false,
+		},
 	}
 
 	for _, tc := range tests {
@@ -194,5 +210,45 @@ func TestResolveLink_DomainResolvers(t *testing.T) {
 				t.Errorf("Expected IsTorrent=%v, got %v", tc.isTorrent, res.IsTorrent)
 			}
 		})
+	}
+}
+
+func TestExtractMediaFireDirectLinkFromHTML(t *testing.T) {
+	htmlSample := `
+	<!DOCTYPE html>
+	<html>
+	<head>
+		<title>The_Better_Deal_-_Complete_Story.zip - MediaFire</title>
+	</head>
+	<body>
+		<div class="download_link">
+			<a class="input popsok" id="downloadButton" href="https://download2446.mediafire.com/token123/key456/The_Better_Deal_-_Complete_Story.zip">Download</a>
+		</div>
+	</body>
+	</html>`
+
+	directURL, filename := ExtractMediaFireDirectLinkFromHTML(htmlSample)
+	if directURL != "https://download2446.mediafire.com/token123/key456/The_Better_Deal_-_Complete_Story.zip" {
+		t.Errorf("Unexpected directURL: %q", directURL)
+	}
+	if filename != "The_Better_Deal_-_Complete_Story.zip" {
+		t.Errorf("Unexpected filename: %q", filename)
+	}
+}
+
+func TestExtractGoogleDriveConfirmLinkFromHTML(t *testing.T) {
+	htmlSample := `
+	<!DOCTYPE html>
+	<html>
+	<body>
+		<p>Google Drive cannot scan this file for viruses.</p>
+		<a id="uc-download-link" class="btn" href="/uc?export=download&amp;confirm=t&amp;id=1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs">Download anyway</a>
+	</body>
+	</html>`
+
+	confirmURL := ExtractGoogleDriveConfirmLinkFromHTML(htmlSample)
+	expected := "https://drive.google.com/uc?export=download&confirm=t&id=1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs"
+	if confirmURL != expected {
+		t.Errorf("Expected confirmURL %q, got %q", expected, confirmURL)
 	}
 }

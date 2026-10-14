@@ -102,8 +102,12 @@ func (dd *DirectDownloader) DownloadDirect(ctx context.Context, targetURL string
 	if err != nil {
 		return nil, fmt.Errorf("invalid download request: %w", err)
 	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) HornetzDrive/2.0")
-	req.Header.Set("Accept", "*/*")
+	req.Header.Set("User-Agent", DefaultBrowserUserAgent)
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,application/octet-stream,*/*;q=0.8")
+	req.Header.Set("Accept-Language", "en-US,en;q=0.9,id;q=0.8")
+	if resolved.Referer != "" {
+		req.Header.Set("Referer", resolved.Referer)
+	}
 	if resolved.AuthHeader != "" {
 		req.Header.Set("Authorization", resolved.AuthHeader)
 	}
@@ -146,6 +150,35 @@ func (dd *DirectDownloader) DownloadDirect(ctx context.Context, targetURL string
 	var streamSrc io.Reader
 	if peekN > 0 {
 		filename, mimeType = SniffMagicBytes(peekBuf[:peekN], filename, mimeType)
+
+		// Guard against HTML interstitials when expecting a binary, archive, or media file
+		isHTML := strings.HasPrefix(mimeType, "text/html") || IsHTMLPayload(peekBuf[:peekN])
+		isTargetBinary := IsBinaryExtension(filename) || (resolved.Filename != "" && IsBinaryExtension(resolved.Filename))
+
+		if isHTML && isTargetBinary {
+			// Read up to 1MB of the HTML body to inspect for recovery links (e.g. MediaFire or Google Drive)
+			restOfHTML, _ := io.ReadAll(io.LimitReader(resp.Body, 1024*1024))
+			fullHTML := string(append(peekBuf[:peekN], restOfHTML...))
+
+			var recoveredURL string
+			// MediaFire HTML check
+			if strings.Contains(strings.ToLower(resp.Request.URL.Host), "mediafire.com") || strings.Contains(strings.ToLower(resolved.Domain), "mediafire") {
+				recoveredURL, _ = ExtractMediaFireDirectLinkFromHTML(fullHTML)
+			}
+
+			// Google Drive HTML check
+			if recoveredURL == "" && (strings.Contains(strings.ToLower(resp.Request.URL.Host), "google.com") || strings.Contains(strings.ToLower(resolved.Domain), "google")) {
+				recoveredURL = ExtractGoogleDriveConfirmLinkFromHTML(fullHTML)
+			}
+
+			if recoveredURL != "" && recoveredURL != execURL {
+				// Retry with the recovered direct download link
+				return dd.DownloadDirect(ctx, recoveredURL, destWriter, onProgress)
+			}
+
+			return nil, fmt.Errorf("unduhan dibatalkan: tautan mengembalikan halaman web HTML (%s, %d bytes) alih-alih berkas biner %s. Tautan mungkin kedaluwarsa atau memerlukan otentikasi peramban", mimeType, int64(peekN)+int64(len(restOfHTML)), filename)
+		}
+
 		streamSrc = io.MultiReader(bytes.NewReader(peekBuf[:peekN]), resp.Body)
 	} else {
 		streamSrc = resp.Body
