@@ -25,6 +25,7 @@ templ Layout(title string) {
 		<script type="module" src="https://cdn.skypack.dev/@hotwired/turbo"></script>
 		<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.3/dist/cdn.min.js"></script>
 		<script src={ fullstack.AssetURL("js/turbo_downloader.js") }></script>
+		<script src={ fullstack.AssetURL("js/reconcile_tree.js") }></script>
 		<link rel="preconnect" href="https://fonts.googleapis.com"/>
 		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 		<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet"/>
@@ -2530,6 +2531,77 @@ templ Layout(title string) {
 						baseTargetFolderId = (this.activeTab === 'vault') ? 'f2' : '';
 					}
 
+					// Tree-Differential Reconciliation (TDR)
+					if (typeof TreeReconciler !== 'undefined') {
+						try {
+							this.uploadStatusText = 'Status: Rekonsiliasi Pohon Berkas...';
+							const localTree = await TreeReconciler.buildMerkleTree(files);
+							if (localTree) {
+								const reconcileRes = await fetch('/api/reconcile/tree-diff', {
+									method: 'POST',
+									headers: {
+										'Content-Type': 'application/json',
+										'X-CSRF-Token': this.getCsrfToken()
+									},
+									body: JSON.stringify({
+										target_folder_id: baseTargetFolderId,
+										root_name: localTree.name,
+										tree: localTree
+									})
+								});
+
+								if (reconcileRes.ok) {
+									const plan = await reconcileRes.json();
+
+									// If entire root folder is already 100% synchronized
+									if (plan.root_synced) {
+										this.uploadStatusText = 'Status: Selesai (100% Tersinkronisasi)';
+										await this.fetchFiles();
+										await this.fetchFolders();
+										await this.fetchStorageStats();
+										if (event.target) event.target.value = "";
+										return;
+									}
+
+									// If differential plan is ready, queue only missing or resumable files
+									const fileMap = TreeReconciler.buildFileLookupMap(files);
+									let filesQueued = 0;
+
+									for (const action of (plan.actions || [])) {
+										if (action.action === 'SKIP') {
+											continue;
+										}
+
+										const f = fileMap.get(action.path) || fileMap.get(action.name);
+										if (f) {
+											if (action.action === 'RESUME') {
+												f.resumeSessionId = action.session_id;
+												f.resumeUploadedBytes = action.uploaded_bytes;
+											}
+											this.queueFileUpload(f, action.target_folder_id || plan.root_folder_id || baseTargetFolderId);
+											filesQueued++;
+										}
+									}
+
+									await this.fetchFolders();
+									if (filesQueued > 0) {
+										this.isTransferMinimized = false;
+										this.saveTransfersToStorage();
+										this.processUploadQueue();
+									} else {
+										await this.fetchFiles();
+										await this.fetchStorageStats();
+									}
+									if (event.target) event.target.value = "";
+									return;
+								}
+							}
+						} catch (reconcileErr) {
+							console.warn('Tree reconciliation failed, falling back to sequential traversal:', reconcileErr);
+						}
+					}
+
+					// Fallback to sequential folder traversal if TDR unavailable
 					const folderCache = new Map();
 					folderCache.set("", baseTargetFolderId);
 
@@ -2675,30 +2747,41 @@ templ Layout(title string) {
 					}
 
 					try {
-						const initPayload = {
-							filename: file.name,
-							mime_type: file.type || "application/octet-stream",
-							size: file.size,
-							folder_id: targetFolderId
-						};
-						if (clientCasHash) {
-							initPayload.cas_hash = clientCasHash;
-						}
+						let initData;
+						if (file.resumeSessionId && typeof file.resumeUploadedBytes === 'number') {
+							initData = {
+								session_id: file.resumeSessionId,
+								chunk_size: 2 * 1024 * 1024,
+								uploaded: file.resumeUploadedBytes,
+								status: "incomplete",
+								resumed: true
+							};
+						} else {
+							const initPayload = {
+								filename: file.name,
+								mime_type: file.type || "application/octet-stream",
+								size: file.size,
+								folder_id: targetFolderId
+							};
+							if (clientCasHash) {
+								initPayload.cas_hash = clientCasHash;
+							}
 
-						const initRes = await fetch("/upload/init", {
-							method: "POST",
-							headers: {
-								"Content-Type": "application/json",
-								"X-CSRF-Token": this.getCsrfToken()
-							},
-							body: JSON.stringify(initPayload)
-						});
+							const initRes = await fetch("/upload/init", {
+								method: "POST",
+								headers: {
+									"Content-Type": "application/json",
+									"X-CSRF-Token": this.getCsrfToken()
+								},
+								body: JSON.stringify(initPayload)
+							});
 
-						if (!initRes.ok) {
-							const errData = await initRes.json().catch(() => ({}));
-							throw new Error(errData.message || `Gagal inisiasi upload (Status HTTP ${initRes.status})`);
+							if (!initRes.ok) {
+								const errData = await initRes.json().catch(() => ({}));
+								throw new Error(errData.message || `Gagal inisiasi upload (Status HTTP ${initRes.status})`);
+							}
+							initData = await initRes.json();
 						}
-						let initData = await initRes.json();
 
 						if (initData.status === "challenge_required" && window.crypto && window.crypto.subtle) {
 							try {

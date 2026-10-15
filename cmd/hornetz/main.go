@@ -180,6 +180,15 @@ func main() {
 	apiGroup.DELETE("/downloads/:id/dismiss", downloadCtrl.DismissDownload)
 	apiGroup.POST("/downloads/parse", downloadCtrl.ParseLink)
 
+	reconcileCtrl := &controllers.ReconcileController{
+		DB:         dbEngine,
+		SessionMgr: sessionMgr,
+		CAS:        casEngine,
+		FileCtrl:   fileCtrl,
+		QuotaBytes: appCfg.StorageQuota,
+	}
+	apiGroup.POST("/reconcile/tree-diff", reconcileCtrl.DiffTree)
+
 	uploadCtrl := &controllers.UploadController{
 		SessionMgr: sessionMgr,
 		CAS:        casEngine,
