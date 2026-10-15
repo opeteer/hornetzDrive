@@ -22,7 +22,17 @@ func UnmarshalBencode(data []byte) (interface{}, error) {
 	return val, nil
 }
 
+const maxBencodeDepth = 32
+
 func decodeValue(r *bufio.Reader) (interface{}, error) {
+	return decodeValueWithDepth(r, 0)
+}
+
+func decodeValueWithDepth(r *bufio.Reader, depth int) (interface{}, error) {
+	if depth > maxBencodeDepth {
+		return nil, errors.New("bencode: recursion depth limit exceeded")
+	}
+
 	b, err := r.ReadByte()
 	if err != nil {
 		return nil, err
@@ -32,9 +42,9 @@ func decodeValue(r *bufio.Reader) (interface{}, error) {
 	case b == 'i':
 		return decodeInt(r)
 	case b == 'l':
-		return decodeList(r)
+		return decodeList(r, depth)
 	case b == 'd':
-		return decodeDict(r)
+		return decodeDict(r, depth)
 	case b >= '0' && b <= '9':
 		_ = r.UnreadByte()
 		return decodeString(r)
@@ -52,6 +62,9 @@ func decodeInt(r *bufio.Reader) (int64, error) {
 		}
 		if b == 'e' {
 			break
+		}
+		if len(buf) >= 20 {
+			return 0, errors.New("bencode: integer length exceeds 64-bit bounds")
 		}
 		buf = append(buf, b)
 	}
@@ -87,7 +100,7 @@ func decodeString(r *bufio.Reader) (string, error) {
 	return string(buf), nil
 }
 
-func decodeList(r *bufio.Reader) ([]interface{}, error) {
+func decodeList(r *bufio.Reader, depth int) ([]interface{}, error) {
 	var list []interface{}
 	for {
 		b, err := r.ReadByte()
@@ -99,7 +112,7 @@ func decodeList(r *bufio.Reader) ([]interface{}, error) {
 		}
 		_ = r.UnreadByte()
 
-		item, err := decodeValue(r)
+		item, err := decodeValueWithDepth(r, depth+1)
 		if err != nil {
 			return nil, err
 		}
@@ -108,7 +121,7 @@ func decodeList(r *bufio.Reader) ([]interface{}, error) {
 	return list, nil
 }
 
-func decodeDict(r *bufio.Reader) (map[string]interface{}, error) {
+func decodeDict(r *bufio.Reader, depth int) (map[string]interface{}, error) {
 	dict := make(map[string]interface{})
 	for {
 		b, err := r.ReadByte()
@@ -125,7 +138,7 @@ func decodeDict(r *bufio.Reader) (map[string]interface{}, error) {
 			return nil, err
 		}
 
-		val, err := decodeValue(r)
+		val, err := decodeValueWithDepth(r, depth+1)
 		if err != nil {
 			return nil, err
 		}

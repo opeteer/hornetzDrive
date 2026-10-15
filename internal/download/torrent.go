@@ -287,6 +287,11 @@ func (tc *TorrentClient) downloadFromPeer(ctx context.Context, peerAddr string, 
 	startTime := time.Now()
 	var downloaded int64
 	total := info.ExactLength
+	pieceLength := uint32(256 * 1024)
+	if info.PieceLength > 0 && info.PieceLength <= 16*1024*1024 {
+		pieceLength = uint32(info.PieceLength)
+	}
+	var consecutiveKeepAlives int
 
 	sendRequest := func(index uint32, begin uint32, length uint32) error {
 		reqMsg := make([]byte, 17)
@@ -306,30 +311,50 @@ func (tc *TorrentClient) downloadFromPeer(ctx context.Context, peerAddr string, 
 		default:
 		}
 
-		_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
+		deadline := 10 * time.Second
+		if total == 0 && downloaded > 0 {
+			deadline = 2 * time.Second
+		}
+		_ = conn.SetDeadline(time.Now().Add(deadline))
 
 		var msgLenBuf [4]byte
 		if _, err := io.ReadFull(conn, msgLenBuf[:]); err != nil {
-			break
+			if downloaded > 0 {
+				break
+			}
+			return err
 		}
 		msgLen := binary.BigEndian.Uint32(msgLenBuf[:])
 		if msgLen == 0 {
 			// Keep-alive message
+			consecutiveKeepAlives++
+			if total == 0 && downloaded > 0 && consecutiveKeepAlives >= 2 {
+				break
+			}
 			continue
 		}
+		consecutiveKeepAlives = 0
 		if msgLen > 10*1024*1024 {
 			return errors.New("peer message too large")
 		}
 
 		msgData := make([]byte, msgLen)
 		if _, err := io.ReadFull(conn, msgData); err != nil {
+			if downloaded > 0 {
+				break
+			}
 			return err
 		}
 
 		msgID := msgData[0]
 		switch msgID {
+		case 0:
+			// Choke message
+			if total == 0 && downloaded > 0 {
+				break
+			}
 		case 1:
-			// Unchoke - peer is ready for requests! Send initial 16KB block request
+			// Unchoke - peer is ready for requests! Send initial block request
 			initSize := uint32(16384)
 			if total > 0 && int64(initSize) > total {
 				initSize = uint32(total)
@@ -360,9 +385,79 @@ func (tc *TorrentClient) downloadFromPeer(ctx context.Context, peerAddr string, 
 					if total > 0 && (total-downloaded) < int64(nextBlockSize) {
 						nextBlockSize = uint32(total - downloaded)
 					}
-					pieceIndex := uint32(downloaded / (256 * 1024))
-					pieceBegin := uint32(downloaded % (256 * 1024))
+					pieceIndex := uint32(downloaded / int64(pieceLength))
+					pieceBegin := uint32(downloaded % int64(pieceLength))
 					_ = sendRequest(pieceIndex, pieceBegin, nextBlockSize)
+				}
+			}
+		case 20:
+			// Extended message (BEP 10 / BEP 9)
+			if len(msgData) > 2 {
+				extID := msgData[1]
+				payload := msgData[2:]
+				if extID == 0 {
+					// BEP 10 extension handshake
+					if val, err := UnmarshalBencode(payload); err == nil {
+						if d, ok := val.(map[string]interface{}); ok {
+							if metaSize, ok := d["metadata_size"].(int64); ok && metaSize > 0 {
+								utID := byte(1)
+								if m, ok := d["m"].(map[string]interface{}); ok {
+									if utM, ok := m["ut_metadata"].(int64); ok {
+										utID = byte(utM)
+									}
+								}
+								metaReq := map[string]interface{}{
+									"msg_type": int64(0), // request
+									"piece":    int64(0),
+								}
+								if metaBytes, err := MarshalBencode(metaReq); err == nil {
+									reqBuf := make([]byte, 4+1+1+len(metaBytes))
+									binary.BigEndian.PutUint32(reqBuf[0:4], uint32(2+len(metaBytes)))
+									reqBuf[4] = 20
+									reqBuf[5] = utID
+									copy(reqBuf[6:], metaBytes)
+									_, _ = conn.Write(reqBuf)
+								}
+							}
+						}
+					}
+				} else {
+					// BEP 9 data message
+					if val, err := UnmarshalBencode(payload); err == nil {
+						if d, ok := val.(map[string]interface{}); ok {
+							if msgType, ok := d["msg_type"].(int64); ok && msgType == 1 {
+								if dictBytes, err := MarshalBencode(d); err == nil && len(payload) > len(dictBytes) {
+									rawInfo := payload[len(dictBytes):]
+									if infoVal, err := UnmarshalBencode(rawInfo); err == nil {
+										if infoMap, ok := infoVal.(map[string]interface{}); ok {
+											if l, ok := infoMap["length"].(int64); ok && l > 0 {
+												total = l
+												info.ExactLength = total
+											}
+											if pl, ok := infoMap["piece length"].(int64); ok && pl > 0 {
+												info.PieceLength = pl
+												pieceLength = uint32(pl)
+											}
+											if files, ok := infoMap["files"].([]interface{}); ok {
+												var sum int64
+												for _, f := range files {
+													if fm, ok := f.(map[string]interface{}); ok {
+														if fl, ok := fm["length"].(int64); ok {
+															sum += fl
+														}
+													}
+												}
+												if sum > 0 {
+													total = sum
+													info.ExactLength = total
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
 				}
 			}
 		}

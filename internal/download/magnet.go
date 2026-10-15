@@ -19,6 +19,7 @@ type MagnetInfo struct {
 	WebSeeds     []string `json:"web_seeds"`
 	ExactSources []string `json:"exact_sources"`
 	ExactLength  int64    `json:"exact_length"`
+	PieceLength  int64    `json:"piece_length,omitempty"`
 }
 
 // ParseMagnetURI parses and validates a BitTorrent magnet link (BEP 9 / BEP 53).
@@ -114,6 +115,13 @@ func ParseMagnetURI(rawURI string) (*MagnetInfo, error) {
 	if xl := q.Get("xl"); xl != "" {
 		if size, err := strconv.ParseInt(xl, 10, 64); err == nil && size >= 0 {
 			info.ExactLength = size
+		}
+	}
+
+	// Piece Length (pl)
+	if pl := q.Get("pl"); pl != "" {
+		if pLen, err := strconv.ParseInt(pl, 10, 64); err == nil && pLen > 0 {
+			info.PieceLength = pLen
 		}
 	}
 

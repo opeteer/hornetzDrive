@@ -264,8 +264,21 @@ func (fc *FileController) vaultExcludeFilter() string {
 	return fmt.Sprintf("(folder_id IS NULL OR folder_id = '' OR folder_id NOT IN (%s))", strings.Join(escapedIDs, ","))
 }
 
+func (fc *FileController) vaultIncludeFilter() string {
+	ids := fc.GetAllVaultFolderIDs()
+	if len(ids) == 0 {
+		return "folder_id = 'f2'"
+	}
+	escapedIDs := make([]string, len(ids))
+	for i, id := range ids {
+		escapedIDs[i] = fmt.Sprintf("'%s'", strings.ReplaceAll(id, "'", "''"))
+	}
+	return fmt.Sprintf("folder_id IN (%s)", strings.Join(escapedIDs, ","))
+}
+
 func (fc *FileController) GetFiles(c *echo.Context) error {
 	fc.SeedInitialData()
+	_ = fc.GetAllVaultFolderIDs()
 
 	tab := c.QueryParam("tab")
 	search := strings.TrimSpace(c.QueryParam("q"))
@@ -300,8 +313,12 @@ func (fc *FileController) GetFiles(c *echo.Context) error {
 			if folderID != "" && search == "" {
 				query += " AND folder_id = ?"
 				args = append(args, folderID)
+			} else if folderID == "" && search == "" {
+				// Browsing root of Vault: show files in root vault folder 'f2'
+				query += " AND folder_id = 'f2'"
 			} else {
-				query += " AND (folder_id = 'f2' OR folder_id IN (SELECT id FROM folders WHERE parent_id = 'f2'))"
+				// Searching inside Vault: search across all recursive vault folders (BUG-SYS-16)
+				query += " AND " + fc.vaultIncludeFilter()
 			}
 		} else {
 			// Standard storage tab
@@ -311,6 +328,9 @@ func (fc *FileController) GetFiles(c *echo.Context) error {
 				if !isUnlocked && fc.IsVaultFolder(folderID) {
 					query += " AND 1=0"
 				}
+			} else if folderID == "" && search == "" {
+				// Browsing root of standard storage: only show files at root level (BUG-SYS-17)
+				query += " AND (folder_id IS NULL OR folder_id = '') AND " + fc.vaultExcludeFilter()
 			} else {
 				// Root storage or global search across standard storage: exclude vault folders
 				query += " AND " + fc.vaultExcludeFilter()
@@ -427,7 +447,12 @@ func (fc *FileController) GetFolders(c *echo.Context) error {
 		if search == "" {
 			query += " AND f.parent_id = 'f2'"
 		} else {
-			query += " AND (f.id = 'f2' OR f.parent_id = 'f2')"
+			vaultIDs := fc.GetAllVaultFolderIDs()
+			escapedIDs := make([]string, len(vaultIDs))
+			for i, vID := range vaultIDs {
+				escapedIDs[i] = fmt.Sprintf("'%s'", strings.ReplaceAll(vID, "'", "''"))
+			}
+			query += fmt.Sprintf(" AND f.id IN (%s)", strings.Join(escapedIDs, ","))
 		}
 	} else {
 		if search == "" {
@@ -1593,7 +1618,8 @@ func extractOfficeThumbnailBytes(readerAt io.ReaderAt, size int64) ([]byte, stri
 			break
 		}
 	}
-	if targetFile == nil {
+	const maxThumbSize = 10 * 1024 * 1024 // 10MB maximum thumbnail size
+	if targetFile == nil || targetFile.UncompressedSize64 > maxThumbSize {
 		return nil, "", false
 	}
 
@@ -1604,8 +1630,8 @@ func extractOfficeThumbnailBytes(readerAt io.ReaderAt, size int64) ([]byte, stri
 	defer rc.Close()
 
 	// Limit thumbnail size to 10MB to prevent decompression bombs
-	data, err := io.ReadAll(io.LimitReader(rc, 10*1024*1024))
-	if err != nil || len(data) == 0 {
+	data, err := io.ReadAll(io.LimitReader(rc, maxThumbSize+1))
+	if err != nil || len(data) == 0 || int64(len(data)) > maxThumbSize {
 		return nil, "", false
 	}
 	return data, mimeType, true

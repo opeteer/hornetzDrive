@@ -282,7 +282,7 @@ func LockVault(c *echo.Context) error {
 		MaxAge:   -1,
 		Expires:  time.Unix(0, 0),
 		HttpOnly: true,
-		Secure:   false,
+		Secure:   c.Scheme() == "https",
 		SameSite: http.SameSiteLaxMode,
 	})
 

@@ -49,7 +49,7 @@ func TestFileController_GetFiles_AfterUpload(t *testing.T) {
 
 	// Simulate upload insertion as done in UploadChunk
 	fileID := "file_uploaded_123"
-	_, err = dbEngine.SQL.Exec("INSERT INTO files (id, owner_id, folder_id, name, mime_type, size, cas_hash) VALUES (?, 1, 'f1', 'test_doc.pdf', 'application/pdf', 1024, 'abc123hash')", fileID)
+	_, err = dbEngine.SQL.Exec("INSERT INTO files (id, owner_id, folder_id, name, mime_type, size, cas_hash) VALUES (?, 1, NULL, 'test_doc.pdf', 'application/pdf', 1024, 'abc123hash')", fileID)
 	if err != nil {
 		t.Fatalf("Failed to insert file: %v", err)
 	}
@@ -404,7 +404,7 @@ func TestFileController_DeleteRestoreAndStar(t *testing.T) {
 		t.Fatalf("CAS MoveToCAS failed: %v", err)
 	}
 	fileID := "file_test_lifecycle"
-	_, err = dbEngine.SQL.Exec("INSERT INTO files (id, owner_id, folder_id, name, mime_type, size, cas_hash, is_starred, is_deleted) VALUES (?, 1, 'f1', 'test_doc.pdf', 'application/pdf', 100, ?, 0, 0)", fileID, casHash)
+	_, err = dbEngine.SQL.Exec("INSERT INTO files (id, owner_id, folder_id, name, mime_type, size, cas_hash, is_starred, is_deleted) VALUES (?, 1, NULL, 'test_doc.pdf', 'application/pdf', 100, ?, 0, 0)", fileID, casHash)
 	if err != nil {
 		t.Fatalf("DB insert failed: %v", err)
 	}
@@ -810,9 +810,9 @@ func TestFileController_SortAndPagination(t *testing.T) {
 		CREATE TABLE files (id TEXT PRIMARY KEY, owner_id INTEGER NOT NULL, folder_id TEXT, name TEXT NOT NULL, mime_type TEXT NOT NULL, size BIGINT NOT NULL, cas_hash TEXT NOT NULL, is_starred BOOLEAN DEFAULT FALSE, is_deleted BOOLEAN DEFAULT FALSE, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
 		INSERT INTO users (id, email, password_hash, salt, encrypted_vault_key) VALUES (1, 'u', 'p', 's', 'k');
 		INSERT INTO files (id, owner_id, folder_id, name, mime_type, size, cas_hash, is_starred, is_deleted, created_at) VALUES 
-			('f1', 1, 'folder1', 'alpha.txt', 'text/plain', 100, 'h1', FALSE, FALSE, '2026-01-01 10:00:00'),
-			('f2', 1, 'folder1', 'beta.txt', 'text/plain', 500, 'h2', FALSE, FALSE, '2026-01-02 10:00:00'),
-			('f3', 1, 'folder1', 'gamma.txt', 'text/plain', 300, 'h3', FALSE, FALSE, '2026-01-03 10:00:00');
+			('f1', 1, NULL, 'alpha.txt', 'text/plain', 100, 'h1', FALSE, FALSE, '2026-01-01 10:00:00'),
+			('f2', 1, NULL, 'beta.txt', 'text/plain', 500, 'h2', FALSE, FALSE, '2026-01-02 10:00:00'),
+			('f3', 1, NULL, 'gamma.txt', 'text/plain', 300, 'h3', FALSE, FALSE, '2026-01-03 10:00:00');
 	`)
 
 	fileCtrl := &FileController{DB: dbEngine}
@@ -1154,6 +1154,33 @@ func TestExtractOfficeThumbnail(t *testing.T) {
 	}
 }
 
+func TestExtractOfficeThumbnail_ZipBombRejected(t *testing.T) {
+	// 1. Test zip entry header claiming uncompressed size > 10MB
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	header := &zip.FileHeader{
+		Name:               "docProps/thumbnail.jpeg",
+		Method:             zip.Deflate,
+		UncompressedSize64: 20 * 1024 * 1024, // 20MB claimed
+	}
+	fw, err := zw.CreateHeader(header)
+	if err != nil {
+		t.Fatalf("Failed to create zip entry header: %v", err)
+	}
+	// 12MB of repeated data compresses to ~12KB in zip
+	largePayload := make([]byte, 12*1024*1024)
+	copy(largePayload[:4], []byte("\xFF\xD8\xFF\xE0"))
+	_, _ = fw.Write(largePayload)
+	_ = zw.Close()
+
+	reader := bytes.NewReader(buf.Bytes())
+	outPath := filepath.Join(t.TempDir(), "bomb.jpg")
+	_, ok := extractOfficeThumbnail(reader, int64(buf.Len()), outPath)
+	if ok {
+		t.Fatalf("expected zip bomb with claimed size > 10MB to be rejected")
+	}
+}
+
 func TestThumbnailFile_VaultSecurityAndCaching(t *testing.T) {
 	e := echo.New()
 	dbEngine, err := data.NewDBEngine("sqlite3", ":memory:")
@@ -1486,6 +1513,122 @@ func TestFileController_ResumableDownloadWithETagAndIfRange(t *testing.T) {
 
 	if rec3.Code != http.StatusOK {
 		t.Fatalf("Expected HTTP 200 OK for mismatched If-Range (RFC 7233), got %d", rec3.Code)
+	}
+}
+
+func TestVault_NestedSubfolderSearchAndAccess(t *testing.T) {
+	e := echo.New()
+	dbEngine, err := data.NewDBEngine("sqlite3", "file:mem_vault_subfolder?mode=memory&cache=shared")
+	if err != nil {
+		t.Fatalf("Failed to create memory DB: %v", err)
+	}
+	defer dbEngine.Close()
+
+	// Setup 3-level vault folder hierarchy: f2 -> f_sub1 -> f_sub2
+	_, err = dbEngine.SQL.Exec(`
+		CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, salt BLOB NOT NULL, encrypted_vault_key BLOB NOT NULL);
+		CREATE TABLE folders (id TEXT PRIMARY KEY, owner_id INTEGER NOT NULL, parent_id TEXT, name TEXT NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+		CREATE TABLE files (id TEXT PRIMARY KEY, owner_id INTEGER NOT NULL, folder_id TEXT, name TEXT NOT NULL, mime_type TEXT NOT NULL, size BIGINT NOT NULL, cas_hash TEXT NOT NULL, is_starred BOOLEAN DEFAULT FALSE, is_deleted BOOLEAN DEFAULT FALSE, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+		INSERT INTO users (id, email, password_hash, salt, encrypted_vault_key) VALUES (1, 'u', 'p', 's', 'k');
+		INSERT INTO folders (id, owner_id, parent_id, name) VALUES 
+			('f2', 1, NULL, 'Vault Root'),
+			('f_sub1', 1, 'f2', 'Secret Vault Level 1'),
+			('f_sub2', 1, 'f_sub1', 'Ultra Secret Vault Level 2');
+		INSERT INTO files (id, owner_id, folder_id, name, mime_type, size, cas_hash) VALUES 
+			('file_v1', 1, 'f_sub1', 'top_secret_level1.txt', 'text/plain', 100, 'hash_v1'),
+			('file_v2', 1, 'f_sub2', 'top_secret_level2.txt', 'text/plain', 200, 'hash_v2');
+	`)
+	if err != nil {
+		t.Fatalf("Setup SQL failed: %v", err)
+	}
+
+	fileCtrl := &FileController{DB: dbEngine}
+	e.GET("/api/files", fileCtrl.GetFiles)
+	e.GET("/api/folders", fileCtrl.GetFolders)
+
+	sessionID := "vault_nested_sess"
+	auth.GlobalSessionStore.SetKey(sessionID, crypto.DummyVK())
+	defer auth.GlobalSessionStore.DeleteKey(sessionID)
+
+	cookie := &http.Cookie{Name: "swarm_session", Value: sessionID}
+
+	// 1. Direct navigation into deep subfolder f_sub2
+	reqNav := httptest.NewRequest(http.MethodGet, "/api/files?tab=vault&folder_id=f_sub2", nil)
+	reqNav.AddCookie(cookie)
+	recNav := httptest.NewRecorder()
+	e.ServeHTTP(recNav, reqNav)
+	if recNav.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK for f_sub2, got %d", recNav.Code)
+	}
+	var navFiles []FileRecord
+	json.Unmarshal(recNav.Body.Bytes(), &navFiles)
+	if len(navFiles) != 1 || navFiles[0].ID != "file_v2" {
+		t.Fatalf("Expected 1 file (file_v2) in f_sub2, got: %+v", navFiles)
+	}
+
+	// 2. Search inside vault for "top_secret" must return files from BOTH sub1 and sub2 (BUG-SYS-16)
+	reqSearch := httptest.NewRequest(http.MethodGet, "/api/files?tab=vault&q=top_secret", nil)
+	reqSearch.AddCookie(cookie)
+	recSearch := httptest.NewRecorder()
+	e.ServeHTTP(recSearch, reqSearch)
+	if recSearch.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK for vault search, got %d", recSearch.Code)
+	}
+	var searchFiles []FileRecord
+	json.Unmarshal(recSearch.Body.Bytes(), &searchFiles)
+	if len(searchFiles) != 2 {
+		t.Fatalf("Expected 2 files across nested vault subfolders, got %d, body: %s", len(searchFiles), recSearch.Body.String())
+	}
+
+	// 3. Search inside vault folders for "Ultra" must return f_sub2
+	reqFolderSearch := httptest.NewRequest(http.MethodGet, "/api/folders?tab=vault&q=Ultra", nil)
+	reqFolderSearch.AddCookie(cookie)
+	recFolderSearch := httptest.NewRecorder()
+	e.ServeHTTP(recFolderSearch, reqFolderSearch)
+	if recFolderSearch.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK for vault folder search, got %d", recFolderSearch.Code)
+	}
+	var searchFolders []FolderRecord
+	json.Unmarshal(recFolderSearch.Body.Bytes(), &searchFolders)
+	if len(searchFolders) != 1 || searchFolders[0].ID != "f_sub2" {
+		t.Fatalf("Expected f_sub2 in vault folder search, got: %+v", searchFolders)
+	}
+}
+
+func TestGetFiles_RootFolder_DoesNotContainSubfolderFiles(t *testing.T) {
+	e := echo.New()
+	dbEngine, err := data.NewDBEngine("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to create memory DB: %v", err)
+	}
+	defer dbEngine.Close()
+
+	_, _ = dbEngine.SQL.Exec(`
+		CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, salt BLOB NOT NULL, encrypted_vault_key BLOB NOT NULL);
+		CREATE TABLE folders (id TEXT PRIMARY KEY, owner_id INTEGER NOT NULL, parent_id TEXT, name TEXT NOT NULL);
+		CREATE TABLE files (id TEXT PRIMARY KEY, owner_id INTEGER NOT NULL, folder_id TEXT, name TEXT NOT NULL, mime_type TEXT NOT NULL, size BIGINT NOT NULL, cas_hash TEXT NOT NULL, is_starred BOOLEAN DEFAULT FALSE, is_deleted BOOLEAN DEFAULT FALSE, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+		INSERT INTO users (id, email, password_hash, salt, encrypted_vault_key) VALUES (1, 'u', 'p', 's', 'k');
+		INSERT INTO folders (id, owner_id, parent_id, name) VALUES ('f1', 1, NULL, 'Subfolder');
+		INSERT INTO files (id, owner_id, folder_id, name, mime_type, size, cas_hash) VALUES 
+			('file_root', 1, NULL, 'root_file.txt', 'text/plain', 10, 'hash_root'),
+			('file_sub', 1, 'f1', 'subfolder_file.txt', 'text/plain', 20, 'hash_sub');
+	`)
+
+	fileCtrl := &FileController{DB: dbEngine}
+	e.GET("/api/files", fileCtrl.GetFiles)
+
+	// Browsing root standard storage (folder_id == "") must NOT return files in subfolders (BUG-SYS-17)
+	req := httptest.NewRequest(http.MethodGet, "/api/files?tab=storage&folder_id=", nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK, got %d", rec.Code)
+	}
+
+	var files []FileRecord
+	json.Unmarshal(rec.Body.Bytes(), &files)
+	if len(files) != 1 || files[0].ID != "file_root" {
+		t.Fatalf("Expected ONLY root file (file_root) in root file list, but got %d files: %+v", len(files), files)
 	}
 }
 

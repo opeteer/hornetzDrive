@@ -394,6 +394,27 @@ func (dm *DownloadManager) CancelTask(id string) bool {
 	return false
 }
 
+// CancelAllTasks cancels and aborts all currently active download tasks.
+func (dm *DownloadManager) CancelAllTasks() {
+	dm.tasks.Range(func(key, value interface{}) bool {
+		if t, ok := value.(*DownloadTask); ok {
+			t.Mu.Lock()
+			if t.Status != StatusCompleted && t.Status != StatusCancelled && t.Status != StatusFailed {
+				if t.CancelFunc != nil {
+					t.CancelFunc()
+				}
+				t.Status = StatusCancelled
+				t.StatusText = "Dibatalkan"
+				t.SpeedText = "Dibatalkan"
+				t.Progress = 0
+				t.CompletedAt = time.Now()
+			}
+			t.Mu.Unlock()
+		}
+		return true
+	})
+}
+
 func (dm *DownloadManager) getUserStorageUsed(ownerID int) int64 {
 	if dm.DB == nil || dm.DB.SQL == nil {
 		return 0

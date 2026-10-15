@@ -55,10 +55,11 @@ func main() {
 	cfg := ztatic.DefaultConfig()
 	// Disable automatic per-request nonce injection so browsers respect 'unsafe-inline' for Alpine.js store scripts
 	cfg.Security.Headers.EnableCSPNonce = false
-	// Set Content-Security-Policy to allow Tailwind, Turbo, Alpine.js, and Google Fonts CDNs cleanly
-	cfg.Security.Headers.ContentSecurityPolicy = "default-src * 'unsafe-inline' 'unsafe-eval' blob: data:; font-src * data: https://fonts.gstatic.com; style-src * 'unsafe-inline' https://fonts.googleapis.com; script-src * 'unsafe-inline' 'unsafe-eval' blob: https://cdn.tailwindcss.com https://cdn.skypack.dev https://cdn.jsdelivr.net;"
-	// Allow client-side JavaScript (Alpine.js) to read _csrf cookie
+	// Set hardened Content-Security-Policy with default-src 'self' while allowing required frontend CDNs
+	cfg.Security.Headers.ContentSecurityPolicy = "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://cdn.tailwindcss.com https://cdn.skypack.dev https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' blob:; worker-src 'self' blob:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self';"
+	// Allow client-side JavaScript (Alpine.js) to read _csrf cookie with SameSite protection
 	cfg.Security.CSRF.CookieHTTPOnly = false
+	cfg.Security.CSRF.CookieSameSite = http.SameSiteLaxMode
 	cfg.Security.CSRF.Skipper = func(c *echo.Context) bool {
 		path := c.Request().URL.Path
 		return path == "/docs" || strings.HasPrefix(path, "/docs/")
@@ -190,8 +191,9 @@ func main() {
 		Broker:     broker,
 		DB:         dbEngine,
 		TmpDir:     appCfg.TmpDir,
-		SessionMgr: sessionMgr,
-		UploadCtrl: uploadCtrl,
+		SessionMgr:  sessionMgr,
+		UploadCtrl:  uploadCtrl,
+		DownloadMgr: downloadMgr,
 	}
 	app.POST("/api/purge", secCtrl.PanicPurge, web.AdaptiveRateLimiterWithConfig(web.AuthRateLimiterConfig()))
 

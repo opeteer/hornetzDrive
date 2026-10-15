@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestCASEngineDeduplication(t *testing.T) {
@@ -118,5 +119,56 @@ func TestCASEngine_TotalCapacity(t *testing.T) {
 	}
 	if capFallback <= 0 {
 		t.Fatalf("Expected fallback TotalCapacity > 0, got %d", capFallback)
+	}
+}
+
+func TestChitinShuffler_TimelineJitter(t *testing.T) {
+	tempDir := t.TempDir()
+	cas, err := NewCASEngine(tempDir)
+	if err != nil {
+		t.Fatalf("Failed to init CAS: %v", err)
+	}
+
+	// Create 3 dummy CAS files
+	f1 := cas.Path("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+	f2 := cas.Path("1123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+	f3 := cas.Path("2123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+
+	_ = os.MkdirAll(filepath.Dir(f1), 0755)
+	_ = os.MkdirAll(filepath.Dir(f2), 0755)
+	_ = os.MkdirAll(filepath.Dir(f3), 0755)
+
+	_ = os.WriteFile(f1, []byte("data1"), 0644)
+	_ = os.WriteFile(f2, []byte("data2"), 0644)
+	_ = os.WriteFile(f3, []byte("data3"), 0644)
+
+	shuffler := &ChitinShuffler{CAS: cas}
+	shuffler.ShufflePaths()
+
+	info1, err := os.Stat(f1)
+	if err != nil {
+		t.Fatalf("Stat f1 failed: %v", err)
+	}
+	info2, err := os.Stat(f2)
+	if err != nil {
+		t.Fatalf("Stat f2 failed: %v", err)
+	}
+	info3, err := os.Stat(f3)
+	if err != nil {
+		t.Fatalf("Stat f3 failed: %v", err)
+	}
+
+	now := time.Now()
+	// All timestamps must be in the past (at least 30 minutes in the past, within 8 days)
+	for _, fi := range []os.FileInfo{info1, info2, info3} {
+		diff := now.Sub(fi.ModTime())
+		if diff < 30*time.Minute || diff > 8*24*time.Hour {
+			t.Errorf("ModTime %v not properly jittered in the past: diff=%v", fi.ModTime(), diff)
+		}
+	}
+
+	// Timestamps must not all be identical (decorrelated)
+	if info1.ModTime().Equal(info2.ModTime()) && info2.ModTime().Equal(info3.ModTime()) {
+		t.Errorf("Timestamps across files should be decorrelated, but all equal: %v", info1.ModTime())
 	}
 }

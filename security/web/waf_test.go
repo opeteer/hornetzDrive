@@ -218,3 +218,22 @@ func TestWAF_UploadPath_LargePayload_Allowed(t *testing.T) {
 	}
 }
 
+func TestWAF_OctetStream_NonUploadRoute_Inspected(t *testing.T) {
+	e := echo.New()
+	e.Use(WAF())
+	e.POST("/api/folders", func(c *echo.Context) error {
+		return c.String(http.StatusOK, "created")
+	})
+
+	// Malicious SQLi payload sent with Content-Type: application/octet-stream to non-upload route
+	maliciousPayload := []byte(`{"name": "' UNION SELECT * FROM users --"}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/folders", bytes.NewReader(maliciousPayload))
+	req.Header.Set("Content-Type", "application/octet-stream")
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("expected 403 Forbidden for malicious octet-stream payload to non-upload route, got %d", rec.Code)
+	}
+}
+

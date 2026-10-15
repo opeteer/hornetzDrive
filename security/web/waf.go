@@ -75,10 +75,11 @@ func WAFWithConfig(cfg WAFConfig) echo.MiddlewareFunc {
 				isUpload, _ := c.Get("ztatic_upload_route").(bool)
 				isMultipart := strings.HasPrefix(req.Header.Get("Content-Type"), "multipart/form-data")
 				isOctetStream := strings.HasPrefix(req.Header.Get("Content-Type"), "application/octet-stream")
-				isUploadPath := strings.HasPrefix(req.URL.Path, "/upload/") || req.URL.Path == "/upload"
+				isUploadPath := strings.HasPrefix(req.URL.Path, "/upload/") || req.URL.Path == "/upload" || strings.HasPrefix(req.URL.Path, "/api/upload")
 
-				// For multipart file uploads, binary octet-streams, or designated upload routes, avoid buffering binary streams into strings
-				if isUpload || isMultipart || isOctetStream || isUploadPath {
+				isUploadRoute := isUpload || isUploadPath
+				// Only dedicated file upload routes can bypass WAF body inspection for binary streams
+				if isUploadRoute && (isOctetStream || isMultipart) {
 					return next(c)
 				}
 

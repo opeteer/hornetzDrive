@@ -85,3 +85,30 @@ func TestBencode_Dict(t *testing.T) {
 		t.Errorf("Expected sorted dict d3:bar4:spam3:fooi42ee, got %s", encoded)
 	}
 }
+
+func TestUnmarshalBencode_OversizedInteger_Rejected(t *testing.T) {
+	// 25 digits integer exceeds 20 bytes bound
+	oversized := []byte("i1234567890123456789012345e")
+	_, err := UnmarshalBencode(oversized)
+	if err == nil {
+		t.Fatalf("expected error for oversized integer, got nil")
+	}
+}
+
+func TestUnmarshalBencode_DeeplyNestedStructures_Rejected(t *testing.T) {
+	// Build 40 levels of nested lists: "l"*40 + "i1e" + "e"*40
+	var nested []byte
+	for i := 0; i < 40; i++ {
+		nested = append(nested, 'l')
+	}
+	nested = append(nested, []byte("i1e")...)
+	for i := 0; i < 40; i++ {
+		nested = append(nested, 'e')
+	}
+
+	_, err := UnmarshalBencode(nested)
+	if err == nil {
+		t.Fatalf("expected error for recursion depth exceeded, got nil")
+	}
+}
+
