@@ -1,6 +1,10 @@
-.PHONY: all generate build run
+.PHONY: all generate build run css
 
-all: generate build
+all: css generate build
+
+css:
+	@echo "Compiling optimized Tailwind CSS..."
+	/home/opeteer/campagne/frontend/node_modules/.bin/tailwindcss -i ./assets/css/input.css --content "./internal/ui/components/**/*.templ,./assets/js/**/*.js" --output ./assets/css/main.css --minify
 
 generate:
 	@echo "Generating Templ components..."

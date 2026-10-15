@@ -5,6 +5,9 @@ import (
 	"bytes"
 	"database/sql"
 	"encoding/json"
+	"image"
+	"image/color"
+	"image/png"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -1986,6 +1989,163 @@ func TestFileController_DownloadFile_CacheControlHeaders(t *testing.T) {
 	cc := rec.Header().Get("Cache-Control")
 	if !strings.Contains(cc, "private") || !strings.Contains(cc, "no-transform") {
 		t.Fatalf("Expected Cache-Control with 'private' and 'no-transform', got %q", cc)
+	}
+}
+
+func TestFileController_ImageThumbnail_GenerationAndCaching(t *testing.T) {
+	e := echo.New()
+	dbEngine, err := data.NewDBEngine("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to create memory DB: %v", err)
+	}
+	defer dbEngine.Close()
+
+	_, err = dbEngine.SQL.Exec(`
+		CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT, password_hash TEXT, salt BLOB, encrypted_vault_key BLOB);
+		CREATE TABLE folders (id TEXT PRIMARY KEY, owner_id INTEGER, parent_id TEXT, name TEXT);
+		CREATE TABLE files (id TEXT PRIMARY KEY, owner_id INTEGER, folder_id TEXT, name TEXT, mime_type TEXT, size BIGINT, cas_hash TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, is_starred BOOLEAN DEFAULT FALSE, is_deleted BOOLEAN DEFAULT FALSE);
+	`)
+	if err != nil {
+		t.Fatalf("Failed to init tables: %v", err)
+	}
+
+	tmpDir := t.TempDir()
+	casEngine, err := storage.NewCASEngine(filepath.Join(tmpDir, "cas"))
+	if err != nil {
+		t.Fatalf("Failed to create CAS: %v", err)
+	}
+
+	// Create test RGBA image
+	img := image.NewRGBA(image.Rect(0, 0, 400, 400))
+	for y := 0; y < 400; y++ {
+		for x := 0; x < 400; x++ {
+			img.Set(x, y, color.RGBA{R: uint8(x % 256), G: uint8(y % 256), B: 150, A: 255})
+		}
+	}
+	var pngBuf bytes.Buffer
+	if err := png.Encode(&pngBuf, img); err != nil {
+		t.Fatalf("Failed to encode PNG: %v", err)
+	}
+
+	tempEncFile := filepath.Join(tmpDir, "temp_img.bin")
+	encF, err := os.Create(tempEncFile)
+	if err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
+	}
+	encWriter, err := crypto.NewEncryptStream(encF, crypto.GetStandardStorageKey())
+	if err != nil {
+		t.Fatalf("EncryptStream error: %v", err)
+	}
+	_, _ = encWriter.Write(pngBuf.Bytes())
+	_ = encF.Close()
+
+	casHash, err := casEngine.MoveToCAS(tempEncFile)
+	if err != nil {
+		t.Fatalf("MoveToCAS failed: %v", err)
+	}
+
+	_, _ = dbEngine.SQL.Exec("INSERT INTO files (id, owner_id, folder_id, name, mime_type, size, cas_hash) VALUES ('img1', 1, NULL, 'photo.png', 'image/png', ?, ?)", pngBuf.Len(), casHash)
+
+	fileCtrl := &FileController{
+		DB:       dbEngine,
+		CAS:      casEngine,
+		ThumbDir: filepath.Join(tmpDir, "thumbnails"),
+	}
+	e.GET("/api/files/:id/thumbnail", fileCtrl.ThumbnailFile)
+
+	// First request: generates and caches thumbnail
+	req := httptest.NewRequest(http.MethodGet, "/api/files/img1/thumbnail", nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK for thumbnail, got %d, body: %s", rec.Code, rec.Body.String())
+	}
+	etag := rec.Header().Get("ETag")
+	if etag == "" {
+		t.Errorf("Expected ETag header on thumbnail response")
+	}
+	cc := rec.Header().Get("Cache-Control")
+	if !strings.Contains(cc, "max-age=86400") {
+		t.Errorf("Expected Cache-Control max-age=86400, got %q", cc)
+	}
+
+	// Second request with If-None-Match should return 304 Not Modified
+	req304 := httptest.NewRequest(http.MethodGet, "/api/files/img1/thumbnail", nil)
+	req304.Header.Set("If-None-Match", etag)
+	rec304 := httptest.NewRecorder()
+	e.ServeHTTP(rec304, req304)
+
+	if rec304.Code != http.StatusNotModified {
+		t.Errorf("Expected 304 Not Modified on matching ETag, got %d", rec304.Code)
+	}
+}
+
+func TestFileController_Optimization_FormattedRecordAndStats(t *testing.T) {
+	e := echo.New()
+	dbEngine, err := data.NewDBEngine("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to create memory DB: %v", err)
+	}
+	defer dbEngine.Close()
+
+	_, _ = dbEngine.SQL.Exec(`
+		CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT, password_hash TEXT, salt BLOB, encrypted_vault_key BLOB);
+		CREATE TABLE folders (id TEXT PRIMARY KEY, owner_id INTEGER, parent_id TEXT, name TEXT);
+		CREATE TABLE files (id TEXT PRIMARY KEY, owner_id INTEGER, folder_id TEXT, name TEXT, mime_type TEXT, size BIGINT, cas_hash TEXT, created_at DATETIME DEFAULT '2026-10-15 10:00:00', is_starred BOOLEAN DEFAULT FALSE, is_deleted BOOLEAN DEFAULT FALSE);
+		INSERT INTO users (id, email, password_hash, salt, encrypted_vault_key) VALUES (1, 'u@hornetz.io', 'h', x'00', x'00');
+		INSERT INTO files (id, owner_id, folder_id, name, mime_type, size, cas_hash, is_deleted) VALUES 
+			('f_act', 1, NULL, 'doc.txt', 'text/plain', 5242880, 'hash1', FALSE),
+			('f_del', 1, NULL, 'old.txt', 'text/plain', 1048576, 'hash2', TRUE);
+	`)
+
+	fileCtrl := &FileController{
+		DB:         dbEngine,
+		QuotaBytes: 100 * 1024 * 1024,
+	}
+
+	// Test GetFiles formatted fields
+	reqFiles := httptest.NewRequest(http.MethodGet, "/api/files?tab=storage", nil)
+	recFiles := httptest.NewRecorder()
+	cFiles := e.NewContext(reqFiles, recFiles)
+	if err := fileCtrl.GetFiles(cFiles); err != nil {
+		t.Fatalf("GetFiles error: %v", err)
+	}
+
+	var files []FileRecord
+	if err := json.Unmarshal(recFiles.Body.Bytes(), &files); err != nil {
+		t.Fatalf("JSON decode error: %v", err)
+	}
+	if len(files) != 1 {
+		t.Fatalf("Expected 1 active file, got %d", len(files))
+	}
+	if files[0].SizeFormatted != "5.0 MB" {
+		t.Errorf("Expected SizeFormatted '5.0 MB', got %q", files[0].SizeFormatted)
+	}
+	if files[0].DateFormatted != "15/10/2026" {
+		t.Errorf("Expected DateFormatted '15/10/2026', got %q", files[0].DateFormatted)
+	}
+
+	// Test GetStorageStats consolidated aggregation
+	reqStats := httptest.NewRequest(http.MethodGet, "/api/storage/stats", nil)
+	recStats := httptest.NewRecorder()
+	cStats := e.NewContext(reqStats, recStats)
+	if err := fileCtrl.GetStorageStats(cStats); err != nil {
+		t.Fatalf("GetStorageStats error: %v", err)
+	}
+
+	var stats StorageStats
+	if err := json.Unmarshal(recStats.Body.Bytes(), &stats); err != nil {
+		t.Fatalf("Stats JSON decode error: %v", err)
+	}
+	if stats.UsedBytes != 6291456 { // 5MB + 1MB
+		t.Errorf("Expected UsedBytes 6291456, got %d", stats.UsedBytes)
+	}
+	if stats.FileCount != 1 {
+		t.Errorf("Expected FileCount 1, got %d", stats.FileCount)
+	}
+	if stats.TrashBytes != 1048576 {
+		t.Errorf("Expected TrashBytes 1048576, got %d", stats.TrashBytes)
 	}
 }
 

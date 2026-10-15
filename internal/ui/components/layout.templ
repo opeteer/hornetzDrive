@@ -9,7 +9,6 @@ templ Layout(title string) {
 		<meta charset="UTF-8"/>
 		<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 		<title>{ title } - Hornetz Drive</title>
-		<script src="https://cdn.tailwindcss.com"></script>
 		<script>
 			tailwind.config = {
 				theme: {
@@ -22,8 +21,7 @@ templ Layout(title string) {
 				}
 			}
 		</script>
-		<script type="module" src="https://cdn.skypack.dev/@hotwired/turbo"></script>
-		<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.3/dist/cdn.min.js"></script>
+		<script defer src={ fullstack.AssetURL("js/alpine.min.js") }></script>
 		<script src={ fullstack.AssetURL("js/turbo_downloader.js") }></script>
 		<script src={ fullstack.AssetURL("js/reconcile_tree.js") }></script>
 		<link rel="preconnect" href="https://fonts.googleapis.com"/>
@@ -1199,6 +1197,10 @@ templ Layout(title string) {
 				availableMoveFolders: [],
 				files: [],
 				folders: [],
+				folderCache: {},
+				isLoadingFiles: false,
+				_fileAbortController: null,
+				_folderAbortController: null,
 				selectedFile: null,
 				filePreviewText: '',
 				filePreviewLoading: false,
@@ -1210,6 +1212,14 @@ templ Layout(title string) {
 				_lastPopTime: 0,
 				_lastMouseBackTime: 0,
 				currentUploadTransferId: null,
+
+				getCacheKey(tab = this.activeTab, folderId = this.currentFolderId, q = this.searchQuery, sort = this.sortBy, order = this.sortOrder) {
+					return `${tab}:${folderId || 'root'}:${sort}:${order}:${q ? q.trim() : ''}`;
+				},
+
+				invalidateCache() {
+					this.folderCache = {};
+				},
 				currentUploadXhr: null,
 				uploadFileName: '',
 				uploadProgress: 0,
@@ -1591,19 +1601,31 @@ templ Layout(title string) {
 						this.currentFolderId = st.folderId || '';
 						this.currentFolderName = st.folderName || '';
 						this.folderHistory = st.folderHistory || [];
-						this.fetchFolders();
-						this.fetchFiles();
-						this.dismissModals();
 					} else {
 						const params = new URLSearchParams(window.location.search);
 						this.activeTab = params.get('tab') || 'storage';
 						this.currentFolderId = params.get('folder') || '';
 						this.currentFolderName = '';
 						this.folderHistory = [];
-						this.fetchFolders();
-						this.fetchFiles();
-						this.dismissModals();
 					}
+
+					const cacheKey = this.getCacheKey();
+					if (this.folderCache && this.folderCache[cacheKey]) {
+						const cached = this.folderCache[cacheKey];
+						this.files = cached.files || [];
+						this.folders = cached.folders || [];
+						this.isLoadingFiles = false;
+					} else {
+						this.isLoadingFiles = true;
+					}
+
+					if (this.activeTab === 'storage' || this.activeTab === 'vault') {
+						this.fetchFolders();
+					} else {
+						this.folders = [];
+					}
+					this.fetchFiles();
+					this.dismissModals();
 				},
 
 				handleMouseUp(e) {
@@ -1799,6 +1821,7 @@ templ Layout(title string) {
 						});
 
 						if (res.ok) {
+							this.invalidateCache();
 							await this.fetchFiles();
 							await this.fetchFolders();
 							await this.fetchStorageStats();
@@ -1955,7 +1978,24 @@ templ Layout(title string) {
 					if (pushState) {
 						this.updateUrlHistory(true);
 					}
-					this.fetchFolders();
+
+					const cacheKey = this.getCacheKey();
+					if (this.folderCache && this.folderCache[cacheKey]) {
+						const cached = this.folderCache[cacheKey];
+						this.files = cached.files || [];
+						this.folders = cached.folders || [];
+						this.isLoadingFiles = false;
+					} else {
+						this.files = [];
+						this.folders = [];
+						this.isLoadingFiles = true;
+					}
+
+					if (tab === 'storage' || tab === 'vault') {
+						this.fetchFolders();
+					} else {
+						this.folders = [];
+					}
 					this.fetchFiles();
 				},
 
@@ -1972,6 +2012,19 @@ templ Layout(title string) {
 					if (pushState) {
 						this.updateUrlHistory(true);
 					}
+
+					const cacheKey = this.getCacheKey();
+					if (this.folderCache && this.folderCache[cacheKey]) {
+						const cached = this.folderCache[cacheKey];
+						this.files = cached.files || [];
+						this.folders = cached.folders || [];
+						this.isLoadingFiles = false;
+					} else {
+						this.files = [];
+						this.folders = [];
+						this.isLoadingFiles = true;
+					}
+
 					this.fetchFiles();
 					this.fetchFolders();
 				},
@@ -1983,6 +2036,19 @@ templ Layout(title string) {
 					if (pushState) {
 						this.updateUrlHistory(true);
 					}
+
+					const cacheKey = this.getCacheKey();
+					if (this.folderCache && this.folderCache[cacheKey]) {
+						const cached = this.folderCache[cacheKey];
+						this.files = cached.files || [];
+						this.folders = cached.folders || [];
+						this.isLoadingFiles = false;
+					} else {
+						this.files = [];
+						this.folders = [];
+						this.isLoadingFiles = true;
+					}
+
 					this.fetchFiles();
 					this.fetchFolders();
 				},
@@ -1996,14 +2062,36 @@ templ Layout(title string) {
 					if (pushState) {
 						this.updateUrlHistory(true);
 					}
+
+					const cacheKey = this.getCacheKey();
+					if (this.folderCache && this.folderCache[cacheKey]) {
+						const cached = this.folderCache[cacheKey];
+						this.files = cached.files || [];
+						this.folders = cached.folders || [];
+						this.isLoadingFiles = false;
+					} else {
+						this.files = [];
+						this.folders = [];
+						this.isLoadingFiles = true;
+					}
+
 					this.fetchFiles();
 					this.fetchFolders();
 				},
 
 				clearSearch() {
 					this.searchQuery = '';
+					const cacheKey = this.getCacheKey();
+					if (this.folderCache && this.folderCache[cacheKey]) {
+						const cached = this.folderCache[cacheKey];
+						this.files = cached.files || [];
+						this.folders = cached.folders || [];
+						this.isLoadingFiles = false;
+					}
 					this.fetchFiles();
-					this.fetchFolders();
+					if (this.activeTab === 'storage' || this.activeTab === 'vault') {
+						this.fetchFolders();
+					}
 				},
 
 				isDownloadLink(str) {
@@ -2373,27 +2461,85 @@ templ Layout(title string) {
 				},
 
 				async fetchFiles() {
+					if (this._fileAbortController) {
+						this._fileAbortController.abort();
+					}
+					this._fileAbortController = new AbortController();
+					const signal = this._fileAbortController.signal;
+
 					try {
 						const url = `/api/files?tab=${this.activeTab}&q=${encodeURIComponent(this.searchQuery)}&folder_id=${encodeURIComponent(this.currentFolderId)}&sort_by=${this.sortBy}&order=${this.sortOrder}`;
-						const res = await fetch(url);
+						const res = await fetch(url, { signal });
 						if (res.ok) {
-							this.files = await res.json();
+							const data = await res.json();
+							this.files = data;
+							const key = this.getCacheKey();
+							if (!this.folderCache) this.folderCache = {};
+							if (!this.folderCache[key]) this.folderCache[key] = {};
+							this.folderCache[key].files = data;
+							this.folderCache[key].timestamp = Date.now();
 						}
 					} catch(e) {
-						console.error("Fetch files error:", e);
+						if (e.name !== 'AbortError') {
+							console.error("Fetch files error:", e);
+						}
+					} finally {
+						this.isLoadingFiles = false;
 					}
 				},
 
 				async fetchFolders() {
+					if (this.activeTab !== 'storage' && this.activeTab !== 'vault') {
+						this.folders = [];
+						return;
+					}
+					if (this._folderAbortController) {
+						this._folderAbortController.abort();
+					}
+					this._folderAbortController = new AbortController();
+					const signal = this._folderAbortController.signal;
+
 					try {
 						const url = `/api/folders?tab=${this.activeTab}&parent_id=${encodeURIComponent(this.currentFolderId)}&q=${encodeURIComponent(this.searchQuery)}&sort_by=${encodeURIComponent(this.sortBy)}&order=${encodeURIComponent(this.sortOrder)}`;
-						const res = await fetch(url);
+						const res = await fetch(url, { signal });
 						if (res.ok) {
-							this.folders = await res.json();
+							const data = await res.json();
+							this.folders = data;
+							const key = this.getCacheKey();
+							if (!this.folderCache) this.folderCache = {};
+							if (!this.folderCache[key]) this.folderCache[key] = {};
+							this.folderCache[key].folders = data;
+							this.folderCache[key].timestamp = Date.now();
+
+							if (this.currentFolderId && (!this.folderHistory || this.folderHistory.length === 0)) {
+								this.resolveBreadcrumbPath(this.currentFolderId);
+							}
 						}
 					} catch(e) {
-						console.error("Fetch folders error:", e);
+						if (e.name !== 'AbortError') {
+							console.error("Fetch folders error:", e);
+						}
 					}
+				},
+
+				async resolveBreadcrumbPath(folderId) {
+					if (!folderId) return;
+					try {
+						const res = await fetch('/api/folders?all=true');
+						if (res.ok) {
+							const all = await res.json();
+							const trail = [];
+							let cur = all.find(f => f.id === folderId);
+							if (cur) {
+								this.currentFolderName = cur.name;
+								while (cur) {
+									trail.unshift({ id: cur.id, name: cur.name });
+									cur = (cur.parent_id && cur.parent_id !== 'root') ? all.find(f => f.id === cur.parent_id) : null;
+								}
+								this.folderHistory = trail;
+							}
+						}
+					} catch(e) {}
 				},
 
 				async createFolder(name) {
@@ -2413,6 +2559,7 @@ templ Layout(title string) {
 						if (res.ok) {
 							this.showCreateFolderModal = false;
 							this.newFolderName = '';
+							this.invalidateCache();
 							this.fetchFolders();
 						} else {
 							const data = await res.json().catch(() => ({}));
@@ -3334,6 +3481,7 @@ templ Layout(title string) {
 						});
 						if (res.ok) {
 							this.selectedFile = null;
+							this.invalidateCache();
 							this.fetchFiles();
 							this.fetchFolders();
 							this.fetchStorageStats();
@@ -3357,6 +3505,7 @@ templ Layout(title string) {
 						});
 						if (res.ok) {
 							this.selectedFile = null;
+							this.invalidateCache();
 							this.fetchFiles();
 							this.fetchFolders();
 							this.fetchStorageStats();
@@ -3371,6 +3520,15 @@ templ Layout(title string) {
 
 				async toggleStar(file) {
 					if (!file) return;
+					const oldStarred = file.is_starred;
+					file.is_starred = !oldStarred;
+					if (this.activeTab === 'starred' && !file.is_starred) {
+						this.files = this.files.filter(f => f.id !== file.id);
+					}
+					if (this.selectedFile && this.selectedFile.id === file.id) {
+						this.selectedFile.is_starred = file.is_starred;
+					}
+					this.invalidateCache();
 					try {
 						const res = await fetch(`/api/files/${file.id}/star`, {
 							method: "POST",
@@ -3378,14 +3536,19 @@ templ Layout(title string) {
 								"X-CSRF-Token": this.getCsrfToken()
 							}
 						});
-						if (res.ok) {
-							file.is_starred = !file.is_starred;
-							this.fetchFiles();
-						} else {
+						if (!res.ok) {
+							file.is_starred = oldStarred;
+							if (this.selectedFile && this.selectedFile.id === file.id) {
+								this.selectedFile.is_starred = oldStarred;
+							}
 							const data = await res.json().catch(() => ({}));
 							alert(data.message || data.error?.message || "Gagal mengubah status bintang");
 						}
 					} catch(e) {
+						file.is_starred = oldStarred;
+						if (this.selectedFile && this.selectedFile.id === file.id) {
+							this.selectedFile.is_starred = oldStarred;
+						}
 						alert("Gagal mengubah status bintang: " + e.message);
 					}
 				},
@@ -3499,6 +3662,7 @@ templ Layout(title string) {
 							}
 						});
 						if (res.ok) {
+							this.invalidateCache();
 							this.fetchFiles();
 							this.fetchFolders();
 							this.fetchStorageStats();
@@ -3522,6 +3686,7 @@ templ Layout(title string) {
 							}
 						});
 						if (res.ok) {
+							this.invalidateCache();
 							if (this.currentFolderId === folder.id) {
 								this.clearFolder();
 							} else {
@@ -3552,6 +3717,7 @@ templ Layout(title string) {
 							body: JSON.stringify({ name: newName.trim() })
 						});
 						if (res.ok) {
+							this.invalidateCache();
 							if (this.currentFolderId === folder.id) {
 								this.currentFolderName = newName.trim();
 								const crumb = this.folderHistory.find(c => c.id === folder.id);
@@ -3585,6 +3751,7 @@ templ Layout(title string) {
 							if (this.selectedFile && this.selectedFile.id === file.id) {
 								this.selectedFile.name = newName.trim();
 							}
+							this.invalidateCache();
 							this.fetchFiles();
 						} else {
 							const data = await res.json().catch(() => ({}));

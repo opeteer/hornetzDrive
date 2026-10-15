@@ -9,6 +9,10 @@ import (
 	"errors"
 	"fmt"
 	"html"
+	"image"
+	_ "image/gif"
+	"image/jpeg"
+	_ "image/png"
 	"io"
 	"net/http"
 	"os"
@@ -40,6 +44,7 @@ type FileController struct {
 	DB              *data.DBEngine
 	CAS             *storage.CASEngine
 	QuotaBytes      int64
+	ThumbDir        string
 	seedOnce        sync.Once
 	vaultMu         sync.RWMutex
 	vaultIDsMap     map[string]bool
@@ -64,8 +69,10 @@ type FileRecord struct {
 	IsVault    bool   `json:"is_vault"`
 	CreatedAt  string `json:"created_at"`
 	HasPreview bool   `json:"has_preview"`
-	PreviewURL string `json:"preview_url,omitempty"`
-	ThumbURL   string `json:"thumb_url,omitempty"`
+	PreviewURL    string `json:"preview_url,omitempty"`
+	ThumbURL      string `json:"thumb_url,omitempty"`
+	SizeFormatted string `json:"size_formatted,omitempty"`
+	DateFormatted string `json:"date_formatted,omitempty"`
 }
 
 type FolderRecord struct {
@@ -409,6 +416,18 @@ func (fc *FileController) GetFiles(c *echo.Context) error {
 			f.Ext = getFileExt(f.Name)
 			f.IsVault = fc.IsVaultFolder(f.FolderID)
 			f.HasPreview = IsPreviewable(f.Name, f.MimeType)
+			f.SizeFormatted = formatBytes(f.Size)
+			if f.CreatedAt != "" {
+				if t, err := time.Parse(time.RFC3339, f.CreatedAt); err == nil {
+					f.DateFormatted = t.Format("02/01/2006")
+				} else if t, err := time.Parse("2006-01-02 15:04:05", f.CreatedAt); err == nil {
+					f.DateFormatted = t.Format("02/01/2006")
+				} else if t, err := time.Parse("2006-01-02T15:04:05Z", f.CreatedAt); err == nil {
+					f.DateFormatted = t.Format("02/01/2006")
+				} else {
+					f.DateFormatted = f.CreatedAt
+				}
+			}
 			if f.HasPreview {
 				f.PreviewURL = fmt.Sprintf("/api/files/%s/preview", f.ID)
 				f.ThumbURL = fmt.Sprintf("/api/files/%s/thumbnail", f.ID)
@@ -1021,13 +1040,119 @@ func (fc *FileController) ThumbnailFile(c *echo.Context) error {
 	isPDF := (ext == "pdf" || f.MimeType == "application/pdf")
 	isImg := strings.HasPrefix(f.MimeType, "image/") || (ext == "png" || ext == "jpg" || ext == "jpeg" || ext == "gif" || ext == "webp" || ext == "svg")
 	isOffice := (ext == "pptx" || ext == "ppt" || ext == "docx" || ext == "doc" || ext == "xlsx" || ext == "xls" || ext == "odp" || ext == "odt" || ext == "ods")
+	thumbDir := fc.ThumbDir
+	if thumbDir == "" {
+		thumbDir = "storage/thumbnails"
+	}
+	_ = os.MkdirAll(thumbDir, 0755)
 
 	if isImg {
+		if ext == "svg" || f.MimeType == "image/svg+xml" || isVault {
+			return fc.PreviewFile(c)
+		}
+
+		cachedThumb := filepath.Join(thumbDir, "img_"+f.CasHash+"_256.jpg")
+		etag := fmt.Sprintf("\"thumb_%s\"", f.CasHash)
+		c.Response().Header().Set("ETag", etag)
+		c.Response().Header().Set("Cache-Control", "private, max-age=86400, stale-while-revalidate=604800")
+		c.Response().Header().Set("Content-Type", "image/jpeg")
+
+		if ifNoneMatch := c.Request().Header.Get("If-None-Match"); ifNoneMatch != "" {
+			cleanNoneMatch := strings.TrimPrefix(ifNoneMatch, "W/")
+			if cleanNoneMatch == etag || ifNoneMatch == "*" {
+				return c.NoContent(http.StatusNotModified)
+			}
+		}
+
+		serveThumb := func() error {
+			tf, err := os.Open(cachedThumb)
+			if err != nil {
+				return err
+			}
+			defer tf.Close()
+			fi, err := tf.Stat()
+			if err != nil {
+				return err
+			}
+			http.ServeContent(c.Response(), c.Request(), fi.Name(), fi.ModTime(), tf)
+			return nil
+		}
+
+		if _, err := os.Stat(cachedThumb); err == nil {
+			return serveThumb()
+		}
+
+		_, _, _ = fc.thumbGroup.Do("img_"+f.CasHash, func() (interface{}, error) {
+			if _, err := os.Stat(cachedThumb); err == nil {
+				return nil, nil
+			}
+			if fc.CAS == nil || !fc.CAS.Exists(f.CasHash) {
+				return nil, os.ErrNotExist
+			}
+			casFile, err := os.Open(fc.CAS.Path(f.CasHash))
+			if err != nil {
+				return nil, err
+			}
+			defer casFile.Close()
+
+			reader, err := fc.openContentReader(casFile, isVault, vk, 0)
+			if err != nil {
+				return nil, err
+			}
+
+			img, _, err := image.Decode(reader)
+			if err != nil {
+				return nil, err
+			}
+
+			bounds := img.Bounds()
+			w, h := bounds.Dx(), bounds.Dy()
+			if w <= 0 || h <= 0 {
+				return nil, errors.New("invalid image bounds")
+			}
+			maxDim := 256
+			thumbW, thumbH := w, h
+			if w > maxDim || h > maxDim {
+				if w > h {
+					thumbW = maxDim
+					thumbH = (h * maxDim) / w
+				} else {
+					thumbH = maxDim
+					thumbW = (w * maxDim) / h
+				}
+			}
+			if thumbW <= 0 {
+				thumbW = 1
+			}
+			if thumbH <= 0 {
+				thumbH = 1
+			}
+
+			dst := resizeImage(img, thumbW, thumbH)
+
+			tmpThumb := cachedThumb + ".tmp"
+			outFile, err := os.Create(tmpThumb)
+			if err != nil {
+				return nil, err
+			}
+			defer func() {
+				_ = outFile.Close()
+				_ = os.Remove(tmpThumb)
+			}()
+
+			if err := jpeg.Encode(outFile, dst, &jpeg.Options{Quality: 82}); err != nil {
+				return nil, err
+			}
+			_ = outFile.Close()
+			_ = os.Rename(tmpThumb, cachedThumb)
+			return nil, nil
+		})
+
+		if _, err := os.Stat(cachedThumb); err == nil {
+			return serveThumb()
+		}
 		return fc.PreviewFile(c)
 	}
-
-	thumbDir := "storage/thumbnails"
-	_ = os.MkdirAll(thumbDir, 0755)
 
 	if isVault {
 		vaultEncPath := filepath.Join(thumbDir, "vault_"+f.CasHash+".enc")
@@ -1530,19 +1655,27 @@ func (fc *FileController) GetStorageStats(c *echo.Context) error {
 
 	userID := auth.GetUserID(c)
 
-	// Physical disk quota usage and total used bytes MUST always include all files
-	// (both standard and encrypted vault files) regardless of vault unlock status.
-	// This prevents a side-channel information leak where locking/unlocking the vault
-	// visibly shrinks/expands the storage quota meter bar (BUG-UX-23).
-	_ = fc.DB.SQL.QueryRow(fc.DB.Rebind("SELECT COALESCE(SUM(size), 0) FROM files WHERE owner_id = ? AND is_deleted = FALSE"), userID).Scan(&activeBytes)
-	_ = fc.DB.SQL.QueryRow(fc.DB.Rebind("SELECT COALESCE(SUM(size), 0), COUNT(*) FROM files WHERE owner_id = ? AND is_deleted = TRUE"), userID).Scan(&trashBytes, &trashCount)
+	if isUnlocked {
+		queryAgg := `
+			SELECT 
+				COALESCE(SUM(CASE WHEN is_deleted = FALSE THEN size ELSE 0 END), 0),
+				COALESCE(SUM(CASE WHEN is_deleted = TRUE THEN size ELSE 0 END), 0),
+				COALESCE(SUM(CASE WHEN is_deleted = TRUE THEN 1 ELSE 0 END), 0),
+				COALESCE(SUM(CASE WHEN is_deleted = FALSE THEN 1 ELSE 0 END), 0)
+			FROM files WHERE owner_id = ?`
+		_ = fc.DB.SQL.QueryRow(fc.DB.Rebind(queryAgg), userID).Scan(&activeBytes, &trashBytes, &trashCount, &activeCount)
+	} else {
+		queryAgg := `
+			SELECT 
+				COALESCE(SUM(CASE WHEN is_deleted = FALSE THEN size ELSE 0 END), 0),
+				COALESCE(SUM(CASE WHEN is_deleted = TRUE THEN size ELSE 0 END), 0),
+				COALESCE(SUM(CASE WHEN is_deleted = TRUE THEN 1 ELSE 0 END), 0)
+			FROM files WHERE owner_id = ?`
+		_ = fc.DB.SQL.QueryRow(fc.DB.Rebind(queryAgg), userID).Scan(&activeBytes, &trashBytes, &trashCount)
 
-	// Active file count reflects visible accessible files for the current session state.
-	filterCount := "owner_id = ? AND is_deleted = FALSE"
-	if !isUnlocked {
-		filterCount += " AND " + fc.vaultExcludeFilter()
+		filterCount := "owner_id = ? AND is_deleted = FALSE AND " + fc.vaultExcludeFilter()
+		_ = fc.DB.SQL.QueryRow(fc.DB.Rebind("SELECT COUNT(*) FROM files WHERE "+filterCount), userID).Scan(&activeCount)
 	}
-	_ = fc.DB.SQL.QueryRow(fc.DB.Rebind("SELECT COUNT(*) FROM files WHERE "+filterCount), userID).Scan(&activeCount)
 
 	activeUsed := activeBytes.Int64
 	trashedUsed := trashBytes.Int64
@@ -1579,6 +1712,24 @@ func (fc *FileController) getQuotaBytes() int64 {
 	}
 	// Fallback to 500 GB if filesystem capacity cannot be queried
 	return 500 * 1024 * 1024 * 1024
+}
+
+func resizeImage(src image.Image, targetWidth, targetHeight int) *image.RGBA {
+	dst := image.NewRGBA(image.Rect(0, 0, targetWidth, targetHeight))
+	srcBounds := src.Bounds()
+	srcW := srcBounds.Dx()
+	srcH := srcBounds.Dy()
+	if srcW <= 0 || srcH <= 0 || targetWidth <= 0 || targetHeight <= 0 {
+		return dst
+	}
+	for y := 0; y < targetHeight; y++ {
+		srcY := srcBounds.Min.Y + (y*srcH)/targetHeight
+		for x := 0; x < targetWidth; x++ {
+			srcX := srcBounds.Min.X + (x*srcW)/targetWidth
+			dst.Set(x, y, src.At(srcX, srcY))
+		}
+	}
+	return dst
 }
 
 func formatBytes(b int64) string {
