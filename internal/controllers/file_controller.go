@@ -437,7 +437,19 @@ func (fc *FileController) GetFolders(c *echo.Context) error {
 	
 	args := []interface{}{userID}
 
-	if parentID != "" && search == "" {
+	all := c.QueryParam("all") == "true"
+
+	if all {
+		query += " AND f.id != 'f2'"
+		if !isUnlocked {
+			vaultIDs := fc.GetAllVaultFolderIDs()
+			escapedIDs := make([]string, len(vaultIDs))
+			for i, vID := range vaultIDs {
+				escapedIDs[i] = fmt.Sprintf("'%s'", strings.ReplaceAll(vID, "'", "''"))
+			}
+			query += fmt.Sprintf(" AND f.id NOT IN (%s)", strings.Join(escapedIDs, ","))
+		}
+	} else if parentID != "" && search == "" {
 		query += " AND f.parent_id = ?"
 		args = append(args, parentID)
 		if !isUnlocked && fc.IsVaultFolder(parentID) {

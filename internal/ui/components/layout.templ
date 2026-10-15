@@ -1010,6 +1010,8 @@ templ Layout(title string) {
 				currentFolderId: '',
 				currentFolderName: '',
 				isUploading: false,
+				_lastPopTime: 0,
+				_lastMouseBackTime: 0,
 				currentUploadTransferId: null,
 				currentUploadXhr: null,
 				uploadFileName: '',
@@ -1345,6 +1347,10 @@ templ Layout(title string) {
 				},
 
 				handlePopState(e) {
+					this._lastPopTime = Date.now();
+					if (Date.now() - (this._lastMouseBackTime || 0) < 350) {
+						return;
+					}
 					if (e && e.state) {
 						const st = e.state;
 						this.activeTab = st.tab || 'storage';
@@ -1368,10 +1374,19 @@ templ Layout(title string) {
 
 				handleMouseUp(e) {
 					if (e && e.button === 3) {
-						if (this.currentFolderId || this.folderHistory.length > 0 || this.activeTab !== 'storage') {
-							e.preventDefault();
-							e.stopPropagation();
-							window.history.back();
+						e.preventDefault();
+						e.stopPropagation();
+						const now = Date.now();
+						if (now - (this._lastPopTime || 0) < 350) {
+							return;
+						}
+						this._lastMouseBackTime = now;
+						if (this.folderHistory && this.folderHistory.length > 1) {
+							this.navigateToBreadcrumb(this.folderHistory.length - 2);
+						} else if (this.currentFolderId || (this.folderHistory && this.folderHistory.length === 1)) {
+							this.clearFolder();
+						} else if (this.activeTab !== 'storage') {
+							this.setTab('storage');
 						}
 					}
 				},
@@ -1422,11 +1437,21 @@ templ Layout(title string) {
 					}
 				},
 
-				openMoveModal(file) {
+				async openMoveModal(file) {
 					if (!file) return;
 					this.fileToMove = file;
 					this.targetMoveFolderId = file.folder_id || '';
-					this.availableMoveFolders = this.folders.filter(f => f.id !== file.folder_id);
+					try {
+						const res = await fetch('/api/folders?all=true');
+						if (res.ok) {
+							const all = await res.json();
+							this.availableMoveFolders = all.filter(f => f.id !== file.folder_id);
+						} else {
+							this.availableMoveFolders = this.folders.filter(f => f.id !== file.folder_id);
+						}
+					} catch(e) {
+						this.availableMoveFolders = this.folders.filter(f => f.id !== file.folder_id);
+					}
 					this.showMoveModal = true;
 				},
 
@@ -2226,25 +2251,6 @@ templ Layout(title string) {
 					}
 				},
 
-				async handleDrop(event) {
-					event.preventDefault();
-					this.dragCounter = 0;
-					this.isDragging = false;
-					const dt = event.dataTransfer;
-					if (!dt) return;
-
-					// If dragging internal file, skip OS upload
-					if (this.draggedFile || (dt.types && Array.from(dt.types).includes('application/x-hornetz-file-id'))) {
-						this.draggedFile = null;
-						this.dragTargetFolderId = null;
-						return;
-					}
-
-					let targetFolderId = this.currentFolderId;
-					if (!targetFolderId) {
-						targetFolderId = (this.activeTab === 'vault') ? 'f2' : '';
-					}
-
 				queueFileUpload(file, targetFolderId) {
 					file.targetFolderId = targetFolderId;
 					const tId = 'up-' + Date.now() + '-' + Math.random().toString(36).substr(2, 6);
@@ -2268,7 +2274,26 @@ templ Layout(title string) {
 					this.uploadQueue.push(file);
 				},
 
-				// 1. Process items using FileSystem Entry API if supported
+				async handleDrop(event) {
+					event.preventDefault();
+					this.dragCounter = 0;
+					this.isDragging = false;
+					const dt = event.dataTransfer;
+					if (!dt) return;
+
+					// If dragging internal file, skip OS upload
+					if (this.draggedFile || (dt.types && Array.from(dt.types).includes('application/x-hornetz-file-id'))) {
+						this.draggedFile = null;
+						this.dragTargetFolderId = null;
+						return;
+					}
+
+					let targetFolderId = this.currentFolderId;
+					if (!targetFolderId) {
+						targetFolderId = (this.activeTab === 'vault') ? 'f2' : '';
+					}
+
+					// 1. Process items using FileSystem Entry API if supported
 					if (dt.items && dt.items.length > 0 && typeof dt.items[0].webkitGetAsEntry === 'function') {
 						const entries = [];
 						for (let i = 0; i < dt.items.length; i++) {
