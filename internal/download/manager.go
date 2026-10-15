@@ -37,13 +37,14 @@ func (p ProgressComponent) Render(ctx context.Context, w io.Writer) error {
 
 // DownloadManager orchestrates background direct and torrent magnet downloads.
 type DownloadManager struct {
-	CAS              *storage.CASEngine
-	DB               *data.DBEngine
-	Broker           *realtime.MemoryBroker
-	TmpDir           string
-	QuotaBytes       int64
-	DirectDownloader *DirectDownloader
-	TorrentClient    *TorrentClient
+	CAS                   *storage.CASEngine
+	DB                    *data.DBEngine
+	Broker                *realtime.MemoryBroker
+	TmpDir                string
+	QuotaBytes            int64
+	DirectDownloader      *DirectDownloader
+	AcceleratedDownloader *AcceleratedDownloader
+	TorrentClient         *TorrentClient
 
 	tasks sync.Map // map[string]*DownloadTask
 }
@@ -53,14 +54,18 @@ func NewDownloadManager(cas *storage.CASEngine, db *data.DBEngine, broker *realt
 		return nil, fmt.Errorf("failed to create download tmp directory: %w", err)
 	}
 
+	directDl := NewDirectDownloader()
+	accelDl := NewAcceleratedDownloader(directDl.HTTPClient, nil)
+
 	return &DownloadManager{
-		CAS:              cas,
-		DB:               db,
-		Broker:           broker,
-		TmpDir:           tmpDir,
-		QuotaBytes:       quotaBytes,
-		DirectDownloader: NewDirectDownloader(),
-		TorrentClient:    NewTorrentClient(),
+		CAS:                   cas,
+		DB:                    db,
+		Broker:                broker,
+		TmpDir:                tmpDir,
+		QuotaBytes:            quotaBytes,
+		DirectDownloader:      directDl,
+		AcceleratedDownloader: accelDl,
+		TorrentClient:         NewTorrentClient(),
 	}, nil
 }
 
@@ -239,28 +244,146 @@ func (dm *DownloadManager) executeDownload(ctx context.Context, task *DownloadTa
 	var finalFilename string
 
 	if task.Type == DownloadTypeDirect {
-		fileInfo, err := dm.DirectDownloader.DownloadDirect(ctx, task.URL, multiDest, onProgress, func(meta *DirectFileInfo) {
-			task.Mu.Lock()
-			if !hasCustomName && meta.Filename != "" && !strings.HasPrefix(meta.Filename, "download_") {
-				task.Filename = meta.Filename
+		var fileInfo *DirectFileInfo
+
+		// Check if eligible for multi-threaded dynamic acceleration
+		probeRes, probeErr := ProbeLink(ctx, dm.DirectDownloader.HTTPClient, task.URL)
+		canAccelerate := probeErr == nil && probeRes.Resumable && dm.AcceleratedDownloader != nil && probeRes.FileSize >= dm.AcceleratedDownloader.Config.MinAccelerationBytes
+
+		if canAccelerate {
+			partPath := filepath.Join(dm.TmpDir, fmt.Sprintf("hornetz_dl_%s.part", task.ID))
+			statePath := filepath.Join(dm.TmpDir, fmt.Sprintf("hornetz_dl_%s.state", task.ID))
+			defer func() {
+				_ = os.Remove(statePath)
+				_ = os.Remove(partPath)
+			}()
+
+			partFile, pErr := os.OpenFile(partPath, os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0600)
+			if pErr == nil {
+				task.Mu.Lock()
+				task.IsAccelerated = true
+				task.Mu.Unlock()
+
+				onProgressAccel := func(downloaded int64, total int64, speed string, threads int, completedBlocks int, totalBlocks int) {
+					if dm.QuotaBytes > 0 && (currentUsed+downloaded) > dm.QuotaBytes {
+						task.Mu.Lock()
+						if task.CancelFunc != nil {
+							task.CancelFunc()
+						}
+						task.Mu.Unlock()
+						dm.failTask(task, "Kapasitas penyimpanan terlampaui (Storage quota exceeded)")
+						return
+					}
+
+					task.Mu.Lock()
+					task.DownloadedBytes = downloaded
+					if total > 0 {
+						task.TotalBytes = total
+					}
+					task.SpeedText = speed
+					task.ActiveThreads = threads
+					task.CompletedBlocks = completedBlocks
+					task.TotalBlocks = totalBlocks
+					task.StatusText = fmt.Sprintf("Mengunduh (%d thread akselerasi)...", threads)
+					if total > 0 {
+						calc := int((float64(downloaded) / float64(total)) * 88)
+						if calc > 90 {
+							calc = 90
+						}
+						task.Progress = 5 + calc
+					} else {
+						task.Progress = 45
+					}
+					task.Mu.Unlock()
+
+					if dm.Broker != nil {
+						userTopic := fmt.Sprintf("nest:user_%d", task.OwnerID)
+						_ = dm.Broker.Publish(ctx, userTopic, fullstack.TurboStreamItem{
+							Action:    fullstack.StreamUpdate,
+							Target:    "storage-refresh",
+							Component: ProgressComponent{Percentage: int64(task.Progress)},
+						})
+					}
+				}
+
+				accelInfo, aErr := dm.AcceleratedDownloader.DownloadToFile(ctx, task.ID, task.URL, partFile, statePath, onProgressAccel, func(meta *DirectFileInfo) {
+					task.Mu.Lock()
+					if !hasCustomName && meta.Filename != "" && !strings.HasPrefix(meta.Filename, "download_") {
+						task.Filename = meta.Filename
+					}
+					if meta.TotalBytes > 0 {
+						task.TotalBytes = meta.TotalBytes
+					}
+					if meta.MimeType != "" {
+						task.MimeType = meta.MimeType
+					}
+					task.Mu.Unlock()
+				})
+
+				if aErr == nil {
+					// Phase 2: Sequential stream into CAS EncryptStream and Hasher
+					task.Mu.Lock()
+					task.StatusText = "Mengenkripsi ke CAS..."
+					task.SpeedText = "Optimizing..."
+					task.ActiveThreads = 0
+					task.Progress = 92
+					task.Mu.Unlock()
+
+					if _, sErr := partFile.Seek(0, io.SeekStart); sErr != nil {
+						_ = partFile.Close()
+						dm.failTask(task, fmt.Sprintf("Failed rewinding scratch file: %v", sErr))
+						return
+					}
+
+					if _, cErr := io.Copy(multiDest, partFile); cErr != nil {
+						_ = partFile.Close()
+						dm.failTask(task, fmt.Sprintf("Encryption stream failed: %v", cErr))
+						return
+					}
+					_ = partFile.Close()
+					fileInfo = accelInfo
+				} else {
+					_ = partFile.Close()
+					if errors.Is(ctx.Err(), context.Canceled) {
+						dm.cancelTask(task)
+						return
+					}
+					// If accelerated download failed, reset acceleration flag and fallback to single-stream
+					task.Mu.Lock()
+					task.IsAccelerated = false
+					task.ActiveThreads = 1
+					task.Mu.Unlock()
+				}
 			}
-			if meta.TotalBytes > 0 {
-				task.TotalBytes = meta.TotalBytes
-			}
-			if meta.MimeType != "" {
-				task.MimeType = meta.MimeType
-			}
-			task.StatusText = "Mengunduh..."
-			task.Mu.Unlock()
-		})
-		if err != nil {
-			if errors.Is(ctx.Err(), context.Canceled) {
-				dm.cancelTask(task)
-			} else {
-				dm.failTask(task, fmt.Sprintf("Direct download failed: %v", err))
-			}
-			return
 		}
+
+		// Fallback to standard sequential single-stream if not accelerated or acceleration returned error
+		if fileInfo == nil {
+			var err error
+			fileInfo, err = dm.DirectDownloader.DownloadDirect(ctx, task.URL, multiDest, onProgress, func(meta *DirectFileInfo) {
+				task.Mu.Lock()
+				if !hasCustomName && meta.Filename != "" && !strings.HasPrefix(meta.Filename, "download_") {
+					task.Filename = meta.Filename
+				}
+				if meta.TotalBytes > 0 {
+					task.TotalBytes = meta.TotalBytes
+				}
+				if meta.MimeType != "" {
+					task.MimeType = meta.MimeType
+				}
+				task.StatusText = "Mengunduh..."
+				task.Mu.Unlock()
+			})
+			if err != nil {
+				if errors.Is(ctx.Err(), context.Canceled) {
+					dm.cancelTask(task)
+				} else {
+					dm.failTask(task, fmt.Sprintf("Direct download failed: %v", err))
+				}
+				return
+			}
+		}
+
 		if hasCustomName && task.Filename != "" {
 			finalFilename = task.Filename
 		} else {

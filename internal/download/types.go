@@ -44,6 +44,10 @@ type DownloadTask struct {
 	FileID          string         `json:"file_id,omitempty"`
 	CasHash         string         `json:"cas_hash,omitempty"`
 	PlaintextHash   string         `json:"plaintext_hash,omitempty"`
+	ActiveThreads   int            `json:"active_threads,omitempty"`
+	CompletedBlocks int            `json:"completed_blocks,omitempty"`
+	TotalBlocks     int            `json:"total_blocks,omitempty"`
+	IsAccelerated   bool           `json:"is_accelerated,omitempty"`
 	CreatedAt       time.Time      `json:"created_at"`
 	CompletedAt     time.Time      `json:"completed_at,omitempty"`
 
@@ -73,6 +77,10 @@ func (t *DownloadTask) Snapshot() *DownloadTask {
 		FileID:          t.FileID,
 		CasHash:         t.CasHash,
 		PlaintextHash:   t.PlaintextHash,
+		ActiveThreads:   t.ActiveThreads,
+		CompletedBlocks: t.CompletedBlocks,
+		TotalBlocks:     t.TotalBlocks,
+		IsAccelerated:   t.IsAccelerated,
 		CreatedAt:       t.CreatedAt,
 		CompletedAt:     t.CompletedAt,
 	}
