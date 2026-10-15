@@ -714,7 +714,12 @@ func (fc *FileController) PreviewFile(c *echo.Context) error {
 	safeName = strings.ReplaceAll(safeName, "\n", "")
 
 	c.Response().Header().Set("Accept-Ranges", "bytes")
-	c.Response().Header().Set("Cache-Control", "private, max-age=3600")
+	if fc.IsVaultFolder(f.FolderID) {
+		c.Response().Header().Set("Cache-Control", "private, no-store, no-cache, must-revalidate")
+		c.Response().Header().Set("Pragma", "no-cache")
+	} else {
+		c.Response().Header().Set("Cache-Control", "private, max-age=3600")
+	}
 
 	var file *os.File
 	if fc.CAS != nil {
@@ -807,10 +812,20 @@ func (fc *FileController) ThumbnailFile(c *echo.Context) error {
 		return echo.NewHTTPError(http.StatusNotFound, "File not found")
 	}
 
-	if fc.IsVaultFolder(f.FolderID) {
+	isVault := fc.IsVaultFolder(f.FolderID)
+	var vk []byte
+	if isVault {
 		if !fc.isVaultUnlocked(c) {
 			return echo.NewHTTPError(http.StatusUnauthorized, "Vault locked.")
 		}
+		if cookie, err := c.Cookie("swarm_session"); err == nil && cookie != nil {
+			vk, _ = auth.GlobalSessionStore.GetKey(cookie.Value)
+		}
+		if len(vk) == 0 {
+			return echo.NewHTTPError(http.StatusUnauthorized, "Vault locked.")
+		}
+	} else {
+		vk = crypto.GetStandardStorageKey()
 	}
 
 	if !IsPreviewable(f.Name, f.MimeType) {
@@ -828,26 +843,177 @@ func (fc *FileController) ThumbnailFile(c *echo.Context) error {
 
 	thumbDir := "storage/thumbnails"
 	_ = os.MkdirAll(thumbDir, 0755)
-	cachedPath := filepath.Join(thumbDir, f.CasHash+".png")
 
+	if isVault {
+		vaultEncPath := filepath.Join(thumbDir, "vault_"+f.CasHash+".enc")
+		// Check if an encrypted vault thumbnail already exists
+		if encBytes, err := os.ReadFile(vaultEncPath); err == nil {
+			if decBytes, err := crypto.DecryptBlock(encBytes, vk); err == nil {
+				mime := http.DetectContentType(decBytes)
+				c.Response().Header().Set("Cache-Control", "private, no-store, no-cache, must-revalidate")
+				c.Response().Header().Set("Pragma", "no-cache")
+				c.Response().Header().Set("Content-Type", mime)
+				return c.Blob(http.StatusOK, mime, decBytes)
+			}
+		}
+
+		if isPDF {
+			if fc.CAS != nil && fc.CAS.Exists(f.CasHash) {
+				casPath := fc.CAS.Path(f.CasHash)
+				_, _, _ = fc.thumbGroup.Do("pdf_vault_"+f.CasHash, func() (interface{}, error) {
+					if _, err := os.Stat(vaultEncPath); err == nil {
+						return nil, nil
+					}
+					file, err := os.Open(casPath)
+					if err != nil {
+						return nil, err
+					}
+					defer file.Close()
+					decStream, err := crypto.NewDecryptStream(file, vk)
+					if err != nil {
+						return nil, err
+					}
+					tmpDir := "storage/tmp"
+					_ = os.MkdirAll(tmpDir, 0755)
+					tmpPdfPath := filepath.Join(tmpDir, fmt.Sprintf("thumb_pdf_%s_%d.pdf", f.CasHash[:8], time.Now().UnixNano()))
+					tmpOutPrefix := filepath.Join(tmpDir, fmt.Sprintf("thumb_out_%s_%d", f.CasHash[:8], time.Now().UnixNano()))
+
+					tmpFile, err := os.Create(tmpPdfPath)
+					if err != nil {
+						return nil, err
+					}
+					_, _ = io.CopyN(tmpFile, decStream, 10*1024*1024)
+					_ = tmpFile.Close()
+
+					cmd := exec.Command("pdftoppm", "-png", "-singlefile", "-scale-to", "256", tmpPdfPath, tmpOutPrefix)
+					if err := cmd.Run(); err == nil {
+						generatedPng := tmpOutPrefix + ".png"
+						if _, err := os.Stat(generatedPng); err == nil {
+							pngBytes, err := os.ReadFile(generatedPng)
+							_ = os.Remove(generatedPng)
+							_ = os.Remove(tmpPdfPath)
+							if err == nil {
+								if encBytes, err := crypto.EncryptBlock(pngBytes, vk); err == nil {
+									_ = os.WriteFile(vaultEncPath, encBytes, 0600)
+									return nil, nil
+								}
+							}
+						}
+					}
+					_ = os.Remove(tmpPdfPath)
+					_ = os.Remove(tmpOutPrefix + ".png")
+					return nil, errors.New("pdftoppm failed")
+				})
+
+				if encBytes, err := os.ReadFile(vaultEncPath); err == nil {
+					if decBytes, err := crypto.DecryptBlock(encBytes, vk); err == nil {
+						c.Response().Header().Set("Cache-Control", "private, no-store, no-cache, must-revalidate")
+						c.Response().Header().Set("Pragma", "no-cache")
+						c.Response().Header().Set("Content-Type", "image/png")
+						return c.Blob(http.StatusOK, "image/png", decBytes)
+					}
+				}
+			}
+
+			// SVG fallback for vault PDF - do NOT store in global fc.svgCache
+			svgBytes := []byte(generatePdfSvgThumbnail(f.Name))
+			c.Response().Header().Set("Cache-Control", "private, no-store, no-cache, must-revalidate")
+			c.Response().Header().Set("Pragma", "no-cache")
+			c.Response().Header().Set("Content-Type", "image/svg+xml")
+			return c.Blob(http.StatusOK, "image/svg+xml", svgBytes)
+		}
+
+		if isOffice {
+			if fc.CAS != nil && fc.CAS.Exists(f.CasHash) {
+				casPath := fc.CAS.Path(f.CasHash)
+				_, _, _ = fc.thumbGroup.Do("off_vault_"+f.CasHash, func() (interface{}, error) {
+					if _, err := os.Stat(vaultEncPath); err == nil {
+						return nil, nil
+					}
+					file, err := os.Open(casPath)
+					if err != nil {
+						return nil, err
+					}
+					defer file.Close()
+					decStream, err := crypto.NewDecryptStream(file, vk)
+					if err != nil {
+						return nil, err
+					}
+					tmpDir := "storage/tmp"
+					_ = os.MkdirAll(tmpDir, 0755)
+					tmpZipPath := filepath.Join(tmpDir, fmt.Sprintf("thumb_office_%s_%d.zip", f.CasHash[:8], time.Now().UnixNano()))
+					tmpFile, err := os.Create(tmpZipPath)
+					if err != nil {
+						return nil, err
+					}
+					written, _ := io.Copy(tmpFile, decStream)
+					_ = tmpFile.Close()
+
+					if tmpFileRead, err := os.Open(tmpZipPath); err == nil {
+						thumbBytes, _, ok := extractOfficeThumbnailBytes(tmpFileRead, written)
+						_ = tmpFileRead.Close()
+						_ = os.Remove(tmpZipPath)
+						if ok {
+							if encBytes, err := crypto.EncryptBlock(thumbBytes, vk); err == nil {
+								_ = os.WriteFile(vaultEncPath, encBytes, 0600)
+								return nil, nil
+							}
+						}
+					}
+					_ = os.Remove(tmpZipPath)
+					return nil, errors.New("extractOfficeThumbnail failed")
+				})
+
+				if encBytes, err := os.ReadFile(vaultEncPath); err == nil {
+					if decBytes, err := crypto.DecryptBlock(encBytes, vk); err == nil {
+						mime := http.DetectContentType(decBytes)
+						c.Response().Header().Set("Cache-Control", "private, no-store, no-cache, must-revalidate")
+						c.Response().Header().Set("Pragma", "no-cache")
+						c.Response().Header().Set("Content-Type", mime)
+						return c.Blob(http.StatusOK, mime, decBytes)
+					}
+				}
+			}
+
+			// SVG fallback for vault Office - do NOT store in global fc.svgCache
+			svgBytes := []byte(generateOfficeSvgThumbnail(f.Name, ext))
+			c.Response().Header().Set("Cache-Control", "private, no-store, no-cache, must-revalidate")
+			c.Response().Header().Set("Pragma", "no-cache")
+			c.Response().Header().Set("Content-Type", "image/svg+xml")
+			return c.Blob(http.StatusOK, "image/svg+xml", svgBytes)
+		}
+
+		// Generic Document fallback for vault
+		snippet := ""
+		if fc.CAS != nil && fc.CAS.Exists(f.CasHash) {
+			casPath := fc.CAS.Path(f.CasHash)
+			if file, err := os.Open(casPath); err == nil {
+				defer file.Close()
+				if decStream, err := crypto.NewDecryptStream(file, vk); err == nil {
+					buf := make([]byte, 1024)
+					n, _ := decStream.Read(buf)
+					snippet = string(buf[:n])
+				}
+			}
+		}
+		svgBytes := []byte(generateDocumentSvgThumbnail(f.Name, ext, snippet))
+		c.Response().Header().Set("Cache-Control", "private, no-store, no-cache, must-revalidate")
+		c.Response().Header().Set("Pragma", "no-cache")
+		c.Response().Header().Set("Content-Type", "image/svg+xml")
+		return c.Blob(http.StatusOK, "image/svg+xml", svgBytes)
+	}
+
+	// Standard non-vault files
+	cachedPath := filepath.Join(thumbDir, f.CasHash+".png")
 	if isPDF {
 		if _, err := os.Stat(cachedPath); err == nil {
-			c.Response().Header().Set("Cache-Control", "public, max-age=86400")
+			c.Response().Header().Set("Cache-Control", "private, max-age=86400")
 			c.Response().Header().Set("Content-Type", "image/png")
 			return c.File(cachedPath)
 		}
 
 		if fc.CAS != nil && fc.CAS.Exists(f.CasHash) {
 			casPath := fc.CAS.Path(f.CasHash)
-			var vk []byte
-			if fc.IsVaultFolder(f.FolderID) {
-				if cookie, err := c.Cookie("swarm_session"); err == nil && cookie != nil {
-					vk, _ = auth.GlobalSessionStore.GetKey(cookie.Value)
-				}
-			} else {
-				vk = crypto.GetStandardStorageKey()
-			}
-
 			// Singleflight group to prevent thundering herd for PDF thumbnail rendering
 			_, _, _ = fc.thumbGroup.Do("pdf_"+f.CasHash, func() (interface{}, error) {
 				if _, err := os.Stat(cachedPath); err == nil {
@@ -889,7 +1055,7 @@ func (fc *FileController) ThumbnailFile(c *echo.Context) error {
 			})
 
 			if _, err := os.Stat(cachedPath); err == nil {
-				c.Response().Header().Set("Cache-Control", "public, max-age=86400")
+				c.Response().Header().Set("Cache-Control", "private, max-age=86400")
 				c.Response().Header().Set("Content-Type", "image/png")
 				return c.File(cachedPath)
 			}
@@ -904,7 +1070,7 @@ func (fc *FileController) ThumbnailFile(c *echo.Context) error {
 			svgBytes = []byte(generatePdfSvgThumbnail(f.Name))
 			fc.svgCache.Store(svgKey, svgBytes)
 		}
-		c.Response().Header().Set("Cache-Control", "public, max-age=3600")
+		c.Response().Header().Set("Cache-Control", "private, max-age=3600")
 		c.Response().Header().Set("Content-Type", "image/svg+xml")
 		return c.Blob(http.StatusOK, "image/svg+xml", svgBytes)
 	}
@@ -912,28 +1078,19 @@ func (fc *FileController) ThumbnailFile(c *echo.Context) error {
 	if isOffice {
 		cachedJpg := filepath.Join(thumbDir, f.CasHash+".jpg")
 		if _, err := os.Stat(cachedJpg); err == nil {
-			c.Response().Header().Set("Cache-Control", "public, max-age=86400")
+			c.Response().Header().Set("Cache-Control", "private, max-age=86400")
 			c.Response().Header().Set("Content-Type", "image/jpeg")
 			return c.File(cachedJpg)
 		}
 		cachedPng := filepath.Join(thumbDir, f.CasHash+".png")
 		if _, err := os.Stat(cachedPng); err == nil {
-			c.Response().Header().Set("Cache-Control", "public, max-age=86400")
+			c.Response().Header().Set("Cache-Control", "private, max-age=86400")
 			c.Response().Header().Set("Content-Type", "image/png")
 			return c.File(cachedPng)
 		}
 
 		if fc.CAS != nil && fc.CAS.Exists(f.CasHash) {
 			casPath := fc.CAS.Path(f.CasHash)
-			var vk []byte
-			if fc.IsVaultFolder(f.FolderID) {
-				if cookie, err := c.Cookie("swarm_session"); err == nil && cookie != nil {
-					vk, _ = auth.GlobalSessionStore.GetKey(cookie.Value)
-				}
-			} else {
-				vk = crypto.GetStandardStorageKey()
-			}
-
 			// Singleflight group to prevent duplicate concurrent office thumbnail extraction
 			_, _, _ = fc.thumbGroup.Do("off_"+f.CasHash, func() (interface{}, error) {
 				if _, err := os.Stat(cachedJpg); err == nil {
@@ -974,12 +1131,12 @@ func (fc *FileController) ThumbnailFile(c *echo.Context) error {
 			})
 
 			if _, err := os.Stat(cachedJpg); err == nil {
-				c.Response().Header().Set("Cache-Control", "public, max-age=86400")
+				c.Response().Header().Set("Cache-Control", "private, max-age=86400")
 				c.Response().Header().Set("Content-Type", "image/jpeg")
 				return c.File(cachedJpg)
 			}
 			if _, err := os.Stat(cachedPng); err == nil {
-				c.Response().Header().Set("Cache-Control", "public, max-age=86400")
+				c.Response().Header().Set("Cache-Control", "private, max-age=86400")
 				c.Response().Header().Set("Content-Type", "image/png")
 				return c.File(cachedPng)
 			}
@@ -994,14 +1151,14 @@ func (fc *FileController) ThumbnailFile(c *echo.Context) error {
 			svgBytes = []byte(generateOfficeSvgThumbnail(f.Name, ext))
 			fc.svgCache.Store(svgKey, svgBytes)
 		}
-		c.Response().Header().Set("Cache-Control", "public, max-age=3600")
+		c.Response().Header().Set("Cache-Control", "private, max-age=3600")
 		c.Response().Header().Set("Content-Type", "image/svg+xml")
 		return c.Blob(http.StatusOK, "image/svg+xml", svgBytes)
 	}
 
 	svgKey := "doc_" + ext + "_" + f.CasHash
 	if val, ok := fc.svgCache.Load(svgKey); ok {
-		c.Response().Header().Set("Cache-Control", "public, max-age=3600")
+		c.Response().Header().Set("Cache-Control", "private, max-age=3600")
 		c.Response().Header().Set("Content-Type", "image/svg+xml")
 		return c.Blob(http.StatusOK, "image/svg+xml", val.([]byte))
 	}
@@ -1009,14 +1166,6 @@ func (fc *FileController) ThumbnailFile(c *echo.Context) error {
 	snippet := ""
 	if fc.CAS != nil && fc.CAS.Exists(f.CasHash) {
 		casPath := fc.CAS.Path(f.CasHash)
-		var vk []byte
-		if fc.IsVaultFolder(f.FolderID) {
-			if cookie, err := c.Cookie("swarm_session"); err == nil && cookie != nil {
-				vk, _ = auth.GlobalSessionStore.GetKey(cookie.Value)
-			}
-		} else {
-			vk = crypto.GetStandardStorageKey()
-		}
 		if file, err := os.Open(casPath); err == nil {
 			defer file.Close()
 			if decStream, err := crypto.NewDecryptStream(file, vk); err == nil {
@@ -1030,7 +1179,7 @@ func (fc *FileController) ThumbnailFile(c *echo.Context) error {
 	svgBytes := []byte(generateDocumentSvgThumbnail(f.Name, ext, snippet))
 	fc.svgCache.Store(svgKey, svgBytes)
 
-	c.Response().Header().Set("Cache-Control", "public, max-age=3600")
+	c.Response().Header().Set("Cache-Control", "private, max-age=3600")
 	c.Response().Header().Set("Content-Type", "image/svg+xml")
 	return c.Blob(http.StatusOK, "image/svg+xml", svgBytes)
 }
@@ -1425,10 +1574,10 @@ func generateDocumentSvgThumbnail(name, ext, snippet string) string {
 </svg>`, badgeColor, upperExt, escapedName, linesSvg)
 }
 
-func extractOfficeThumbnail(readerAt io.ReaderAt, size int64, targetPath string) (string, bool) {
+func extractOfficeThumbnailBytes(readerAt io.ReaderAt, size int64) ([]byte, string, bool) {
 	zr, err := zip.NewReader(readerAt, size)
 	if err != nil {
-		return "", false
+		return nil, "", false
 	}
 	var targetFile *zip.File
 	var mimeType string
@@ -1445,23 +1594,29 @@ func extractOfficeThumbnail(readerAt io.ReaderAt, size int64, targetPath string)
 		}
 	}
 	if targetFile == nil {
-		return "", false
+		return nil, "", false
 	}
 
 	rc, err := targetFile.Open()
 	if err != nil {
-		return "", false
+		return nil, "", false
 	}
 	defer rc.Close()
 
-	out, err := os.Create(targetPath)
-	if err != nil {
+	// Limit thumbnail size to 10MB to prevent decompression bombs
+	data, err := io.ReadAll(io.LimitReader(rc, 10*1024*1024))
+	if err != nil || len(data) == 0 {
+		return nil, "", false
+	}
+	return data, mimeType, true
+}
+
+func extractOfficeThumbnail(readerAt io.ReaderAt, size int64, targetPath string) (string, bool) {
+	data, mimeType, ok := extractOfficeThumbnailBytes(readerAt, size)
+	if !ok {
 		return "", false
 	}
-	defer out.Close()
-
-	_, err = io.Copy(out, rc)
-	if err != nil {
+	if err := os.WriteFile(targetPath, data, 0644); err != nil {
 		return "", false
 	}
 	return mimeType, true

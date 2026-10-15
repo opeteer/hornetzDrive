@@ -58,6 +58,18 @@ type UploadController struct {
 	DB                *data.DBEngine
 	completedSessions sync.Map
 	FileCtrl          *FileController
+	QuotaBytes        int64
+}
+
+// GetUserStorageUsed calculates total active storage bytes consumed by a user.
+func (uc *UploadController) GetUserStorageUsed(ownerID int64) int64 {
+	if uc.DB == nil || uc.DB.SQL == nil {
+		return 0
+	}
+	var used int64
+	query := uc.DB.Rebind("SELECT COALESCE(SUM(size), 0) FROM files WHERE owner_id = ? AND (is_deleted = FALSE OR is_deleted = 0)")
+	_ = uc.DB.SQL.QueryRow(query, ownerID).Scan(&used)
+	return used
 }
 
 var uploadBufPool = sync.Pool{
@@ -111,6 +123,14 @@ func (uc *UploadController) VerifyProofOfOwnership(c *echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "challenge expired or invalid")
 	}
 
+	userID := auth.GetUserID(c)
+	if uc.QuotaBytes > 0 && req.Size > 0 {
+		currentUsed := uc.GetUserStorageUsed(userID)
+		if currentUsed+req.Size > uc.QuotaBytes {
+			return echo.NewHTTPError(http.StatusRequestEntityTooLarge, "Kapasitas penyimpanan terlampaui (Storage quota exceeded)")
+		}
+	}
+
 	if !uc.CAS.Exists(ch.CasHash) {
 		return echo.NewHTTPError(http.StatusNotFound, "referenced CAS blob not found")
 	}
@@ -137,7 +157,6 @@ func (uc *UploadController) VerifyProofOfOwnership(c *echo.Context) error {
 		folderID = ""
 	}
 
-	userID := auth.GetUserID(c)
 	fileID := fmt.Sprintf("file_%d_%s", time.Now().Unix(), upload.GenerateID()[:8])
 	if uc.DB != nil && uc.DB.SQL != nil {
 		query := uc.DB.Rebind("INSERT INTO files (id, owner_id, folder_id, name, mime_type, size, cas_hash, plaintext_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
@@ -247,6 +266,12 @@ func (uc *UploadController) InitSession(c *echo.Context) error {
 	}
 
 	userID := auth.GetUserID(c)
+	if uc.QuotaBytes > 0 && req.Size > 0 {
+		currentUsed := uc.GetUserStorageUsed(userID)
+		if currentUsed+req.Size > uc.QuotaBytes {
+			return echo.NewHTTPError(http.StatusRequestEntityTooLarge, "Kapasitas penyimpanan terlampaui (Storage quota exceeded)")
+		}
+	}
 
 	if req.CasHash != "" {
 		if !storage.IsValidHash(req.CasHash) {
@@ -420,6 +445,17 @@ func (uc *UploadController) UploadChunk(c *echo.Context) error {
 	remaining := sess.ExpectedSize - sess.UploadedSize
 	if remaining < 0 {
 		return echo.NewHTTPError(http.StatusBadRequest, "uploaded bytes exceed declared session size")
+	}
+
+	if uc.QuotaBytes > 0 {
+		currentUsed := uc.GetUserStorageUsed(int64(sess.OwnerID))
+		chunkLen := c.Request().ContentLength
+		if chunkLen < 0 {
+			chunkLen = 0
+		}
+		if currentUsed+(sess.UploadedSize+chunkLen) > uc.QuotaBytes {
+			return echo.NewHTTPError(http.StatusRequestEntityTooLarge, "Kapasitas penyimpanan terlampaui (Storage quota exceeded)")
+		}
 	}
 
 	// BUG-SYS-41 & BUG-SYS-42: Record initial disk offset before writing chunk

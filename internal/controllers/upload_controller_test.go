@@ -3,6 +3,7 @@ package controllers
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -933,6 +934,77 @@ func TestUploadController_AlreadyCompletedFile_InstantCompleted(t *testing.T) {
 	}
 	if res["file_id"] != "done_file_1" {
 		t.Fatalf("Expected file_id 'done_file_1', got %v", res["file_id"])
+	}
+}
+
+func TestUploadController_QuotaEnforcement(t *testing.T) {
+	e, ctrl := setupUploadTest(t)
+
+	dbEngine, err := data.NewDBEngine("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to create memory DB: %v", err)
+	}
+	defer dbEngine.Close()
+
+	_, _ = dbEngine.SQL.Exec(`
+		CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT, password_hash TEXT, salt BLOB, encrypted_vault_key BLOB);
+		CREATE TABLE folders (id TEXT PRIMARY KEY, owner_id INTEGER, parent_id TEXT, name TEXT);
+		CREATE TABLE files (id TEXT PRIMARY KEY, owner_id INTEGER, folder_id TEXT, name TEXT, mime_type TEXT, size BIGINT, cas_hash TEXT, plaintext_hash TEXT, is_deleted BOOLEAN DEFAULT FALSE);
+		INSERT INTO files (id, owner_id, folder_id, name, mime_type, size, cas_hash, is_deleted) VALUES 
+			('existing_1', 1, 'root', 'data.bin', 'application/octet-stream', 800, 'dummy_cas_1', FALSE);
+	`)
+	ctrl.DB = dbEngine
+	ctrl.QuotaBytes = 1000 // 1000 bytes quota, 800 already used
+
+	// 1. InitSession with 300 bytes (800 + 300 = 1100 > 1000) -> 413
+	body := []byte(`{"filename":"exceed.bin","mime_type":"application/octet-stream","size":300,"folder_id":"root"}`)
+	req := httptest.NewRequest(http.MethodPost, "/upload/init", bytes.NewReader(body))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.Set("user_id", int64(1))
+
+	err = ctrl.InitSession(c)
+	if err == nil && rec.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("Expected HTTP 413 on quota exceeded init, got %d", rec.Code)
+	}
+	if he, ok := err.(*echo.HTTPError); ok {
+		if he.Code != http.StatusRequestEntityTooLarge {
+			t.Fatalf("Expected HTTP 413, got %d", he.Code)
+		}
+	}
+
+	// 2. InitSession with 100 bytes (800 + 100 = 900 <= 1000) -> 201 Created
+	bodyOk := []byte(`{"filename":"fit.bin","mime_type":"application/octet-stream","size":100,"folder_id":"root"}`)
+	reqOk := httptest.NewRequest(http.MethodPost, "/upload/init", bytes.NewReader(bodyOk))
+	reqOk.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	recOk := httptest.NewRecorder()
+	cOk := e.NewContext(reqOk, recOk)
+	cOk.Set("user_id", int64(1))
+
+	if err := ctrl.InitSession(cOk); err != nil {
+		t.Fatalf("InitSession fit error: %v", err)
+	}
+	if recOk.Code != http.StatusCreated {
+		t.Fatalf("Expected HTTP 201 for quota compliant upload, got %d", recOk.Code)
+	}
+
+	// 3. VerifyProofOfOwnership with 300 bytes (800 + 300 > 1000) -> 413
+	ch, _ := upload.GeneratePoWChallenge("dummy_cas_1", 300)
+	verifyBody := []byte(fmt.Sprintf(`{"cas_hash":"dummy_cas_1","challenge_nonce":"%s","proof":"valid","filename":"dedup.bin","size":300,"folder_id":"root"}`, ch.ChallengeNonce))
+	reqDedup := httptest.NewRequest(http.MethodPost, "/upload/verify-pow", bytes.NewReader(verifyBody))
+	reqDedup.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	recDedup := httptest.NewRecorder()
+	cDedup := e.NewContext(reqDedup, recDedup)
+	cDedup.Set("user_id", int64(1))
+
+	err = ctrl.VerifyProofOfOwnership(cDedup)
+	if he, ok := err.(*echo.HTTPError); ok {
+		if he.Code != http.StatusRequestEntityTooLarge {
+			t.Fatalf("Expected 413 on dedup quota exceeded, got %d", he.Code)
+		}
+	} else if recDedup.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("Expected 413 on dedup quota exceeded, got %d", recDedup.Code)
 	}
 }
 

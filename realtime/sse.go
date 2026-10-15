@@ -8,14 +8,16 @@ import (
 	"github.com/labstack/echo/v5"
 )
 
-// SSEHandler creates an HTTP endpoint that streams Turbo Stream events to the browser.
-// The client connects natively via Hotwire Turbo 8: `<turbo-stream-from src="/sse?topic=room:101">`.
-// Zero custom client-side JavaScript is required.
-func SSEHandler(broker EventBroker) echo.HandlerFunc {
+// AuthorizedSSEHandler creates an HTTP endpoint that streams Turbo Stream events to the browser with topic authorization.
+func AuthorizedSSEHandler(broker EventBroker, authorizer func(c *echo.Context, topic string) bool) echo.HandlerFunc {
 	return func(c *echo.Context) error {
 		topic := c.QueryParam("topic")
 		if topic == "" {
-			return echo.NewHTTPError(http.StatusBadRequest, "missing topic query param")
+			return echo.NewHTTPError(http.StatusBadRequest, "Missing 'topic' query parameter")
+		}
+
+		if authorizer != nil && !authorizer(c, topic) {
+			return echo.NewHTTPError(http.StatusForbidden, "Forbidden: unauthorized topic subscription")
 		}
 
 		// Configure strict headers for Server-Sent Events
@@ -89,3 +91,11 @@ func SSEHandler(broker EventBroker) echo.HandlerFunc {
 		}
 	}
 }
+
+// SSEHandler creates an HTTP endpoint that streams Turbo Stream events to the browser.
+// The client connects natively via Hotwire Turbo 8: `<turbo-stream-from src="/sse?topic=room:101">`.
+// Zero custom client-side JavaScript is required.
+func SSEHandler(broker EventBroker) echo.HandlerFunc {
+	return AuthorizedSSEHandler(broker, nil)
+}
+

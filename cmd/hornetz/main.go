@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -58,6 +59,10 @@ func main() {
 	cfg.Security.Headers.ContentSecurityPolicy = "default-src * 'unsafe-inline' 'unsafe-eval' blob: data:; font-src * data: https://fonts.gstatic.com; style-src * 'unsafe-inline' https://fonts.googleapis.com; script-src * 'unsafe-inline' 'unsafe-eval' blob: https://cdn.tailwindcss.com https://cdn.skypack.dev https://cdn.jsdelivr.net;"
 	// Allow client-side JavaScript (Alpine.js) to read _csrf cookie
 	cfg.Security.CSRF.CookieHTTPOnly = false
+	cfg.Security.CSRF.Skipper = func(c *echo.Context) bool {
+		path := c.Request().URL.Path
+		return path == "/docs" || strings.HasPrefix(path, "/docs/")
+	}
 	// Allow chunk uploads up to 50MB
 	cfg.Security.WAF.MaxBodySize = 50 * 1024 * 1024
 
@@ -99,7 +104,14 @@ func main() {
 	}
 
 	broker := realtime.NewMemoryBroker()
-	app.GET("/sse", realtime.SSEHandler(broker))
+	sseAuthorizer := func(c *echo.Context, topic string) bool {
+		userID := auth.GetUserID(c)
+		if strings.HasPrefix(topic, "nest:user_") {
+			return topic == fmt.Sprintf("nest:user_%d", userID)
+		}
+		return true
+	}
+	app.GET("/sse", realtime.AuthorizedSSEHandler(broker, sseAuthorizer), auth.RequireAuth(dbEngine))
 
 	// Mount Static Assets from embedded FS
 	assetMgr, err := fullstack.NewAssetManager(ztatic.AssetsFS, false, "/assets")
@@ -169,6 +181,7 @@ func main() {
 		Broker:     broker,
 		DB:         dbEngine,
 		FileCtrl:   fileCtrl,
+		QuotaBytes: appCfg.StorageQuota,
 	}
 
 	// Phase 3: Security & Shuffler

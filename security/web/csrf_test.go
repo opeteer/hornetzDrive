@@ -90,3 +90,42 @@ func TestHardenedCSRF_POST_ValidToken_Success(t *testing.T) {
 		t.Errorf("expected HTTP 200 for valid CSRF token POST, got %d", postRec.Code)
 	}
 }
+
+func TestHardenedCSRF_API_Routes_RequireTokenOnMutatingMethods(t *testing.T) {
+	e := echo.New()
+	e.Use(HardenedCSRF())
+	e.GET("/api/files", func(c *echo.Context) error {
+		return c.String(http.StatusOK, "files")
+	})
+	e.POST("/api/files", func(c *echo.Context) error {
+		return c.String(http.StatusOK, "created")
+	})
+	e.DELETE("/api/files/1", func(c *echo.Context) error {
+		return c.String(http.StatusOK, "deleted")
+	})
+
+	// 1. GET /api/files should succeed without token
+	getReq := httptest.NewRequest(http.MethodGet, "/api/files", nil)
+	getRec := httptest.NewRecorder()
+	e.ServeHTTP(getRec, getReq)
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("expected GET /api/files to succeed without token, got %d", getRec.Code)
+	}
+
+	// 2. POST /api/files without token should fail with 400 or 403
+	postReq := httptest.NewRequest(http.MethodPost, "/api/files", nil)
+	postRec := httptest.NewRecorder()
+	e.ServeHTTP(postRec, postReq)
+	if postRec.Code != http.StatusBadRequest && postRec.Code != http.StatusForbidden {
+		t.Fatalf("expected POST /api/files without CSRF token to be blocked, got %d", postRec.Code)
+	}
+
+	// 3. DELETE /api/files/1 without token should fail with 400 or 403
+	delReq := httptest.NewRequest(http.MethodDelete, "/api/files/1", nil)
+	delRec := httptest.NewRecorder()
+	e.ServeHTTP(delRec, delReq)
+	if delRec.Code != http.StatusBadRequest && delRec.Code != http.StatusForbidden {
+		t.Fatalf("expected DELETE /api/files/1 without CSRF token to be blocked, got %d", delRec.Code)
+	}
+}
+

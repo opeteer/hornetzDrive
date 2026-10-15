@@ -544,7 +544,22 @@ func TestAuditIntegration_Engine_NewSecure_AuditWiring(t *testing.T) {
 		t.Errorf("expected CSRF rejection 400 or 403 for web route, got %d", recWeb.Code)
 	}
 
-	// 2. API route: CSRF automatically skips /api/, request succeeds and is audited as mutating operation
+	// 2. API route: with valid CSRF token, request succeeds and is audited as mutating operation
+	app.GET("/api/token", func(c *ztatic.Context) error {
+		return c.String(http.StatusOK, "token")
+	})
+	reqGet := httptest.NewRequest(http.MethodGet, "/api/token", nil)
+	recGet := httptest.NewRecorder()
+	app.ServeHTTP(recGet, reqGet)
+
+	var csrfToken string
+	for _, cookie := range recGet.Result().Cookies() {
+		if cookie.Name == "_csrf" {
+			csrfToken = cookie.Value
+			break
+		}
+	}
+
 	app.POST("/api/data", func(c *ztatic.Context) error {
 		ztatic.AuditRecord(c, "data.mutate", "dataset", "ds_1")
 		return c.String(http.StatusOK, "ok")
@@ -552,6 +567,10 @@ func TestAuditIntegration_Engine_NewSecure_AuditWiring(t *testing.T) {
 
 	reqAPI := httptest.NewRequest(http.MethodPost, "/api/data", nil)
 	reqAPI.Header.Set("X-User-ID", "operator_1")
+	if csrfToken != "" {
+		reqAPI.Header.Set("X-CSRF-Token", csrfToken)
+		reqAPI.AddCookie(&http.Cookie{Name: "_csrf", Value: csrfToken})
+	}
 	recAPI := httptest.NewRecorder()
 	app.ServeHTTP(recAPI, reqAPI)
 

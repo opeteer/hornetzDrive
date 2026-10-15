@@ -76,3 +76,41 @@ func TestSSEHandler_StreamDelivery(t *testing.T) {
 		t.Errorf("expected SSE body to contain event: message and turbo-stream action=\"append\", got %q", body)
 	}
 }
+
+func TestAuthorizedSSEHandler_TopicAccessControl(t *testing.T) {
+	broker := NewMemoryBroker()
+	authorizer := func(c *echo.Context, topic string) bool {
+		return topic == "allowed-topic"
+	}
+	e := echo.New()
+	e.GET("/sse", AuthorizedSSEHandler(broker, authorizer))
+
+	// 1. Forbidden topic
+	reqForbidden := httptest.NewRequest(http.MethodGet, "/sse?topic=forbidden-topic", nil)
+	recForbidden := httptest.NewRecorder()
+	e.ServeHTTP(recForbidden, reqForbidden)
+	if recForbidden.Code != http.StatusForbidden {
+		t.Errorf("expected HTTP 403 Forbidden for unauthorized topic, got %d", recForbidden.Code)
+	}
+
+	// 2. Allowed topic
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	reqAllowed := httptest.NewRequest(http.MethodGet, "/sse?topic=allowed-topic", nil).WithContext(ctx)
+	recAllowed := httptest.NewRecorder()
+
+	done := make(chan struct{})
+	go func() {
+		e.ServeHTTP(recAllowed, reqAllowed)
+		close(done)
+	}()
+
+	time.Sleep(30 * time.Millisecond)
+	cancel()
+	<-done
+
+	if recAllowed.Header().Get("Content-Type") != "text/event-stream" {
+		t.Errorf("expected Content-Type text/event-stream, got %q", recAllowed.Header().Get("Content-Type"))
+	}
+}

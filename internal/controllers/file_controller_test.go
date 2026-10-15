@@ -1154,6 +1154,155 @@ func TestExtractOfficeThumbnail(t *testing.T) {
 	}
 }
 
+func TestThumbnailFile_VaultSecurityAndCaching(t *testing.T) {
+	e := echo.New()
+	dbEngine, err := data.NewDBEngine("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to create memory DB: %v", err)
+	}
+	defer dbEngine.Close()
+
+	_, _ = dbEngine.SQL.Exec(`
+		CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, salt BLOB NOT NULL, encrypted_vault_key BLOB NOT NULL);
+		CREATE TABLE folders (id TEXT PRIMARY KEY, owner_id INTEGER NOT NULL, parent_id TEXT, name TEXT NOT NULL);
+		CREATE TABLE files (id TEXT PRIMARY KEY, owner_id INTEGER NOT NULL, folder_id TEXT, name TEXT NOT NULL, mime_type TEXT NOT NULL, size BIGINT NOT NULL, cas_hash TEXT NOT NULL, is_starred BOOLEAN DEFAULT FALSE, is_deleted BOOLEAN DEFAULT FALSE, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+		INSERT INTO users (id, email, password_hash, salt, encrypted_vault_key) VALUES (1, 'u', 'p', 's', 'k');
+		INSERT INTO folders (id, owner_id, parent_id, name) VALUES ('f2', 1, NULL, 'Vault');
+		INSERT INTO files (id, owner_id, folder_id, name, mime_type, size, cas_hash) VALUES 
+			('vault_pdf', 1, 'f2', 'secret.pdf', 'application/pdf', 1024, 'cas_vault_pdf_hash'),
+			('norm_pdf', 1, 'f1', 'public.pdf', 'application/pdf', 1024, 'cas_norm_pdf_hash');
+	`)
+
+	casDir := t.TempDir()
+	casEngine, _ := storage.NewCASEngine(casDir)
+	fileCtrl := &FileController{
+		DB:  dbEngine,
+		CAS: casEngine,
+	}
+
+	e.GET("/api/files/:id/thumbnail", fileCtrl.ThumbnailFile)
+
+	// 1. Unlocked vault access without cookie must return 401 Unauthorized
+	reqLocked := httptest.NewRequest(http.MethodGet, "/api/files/vault_pdf/thumbnail", nil)
+	recLocked := httptest.NewRecorder()
+	e.ServeHTTP(recLocked, reqLocked)
+	if recLocked.Code != http.StatusUnauthorized {
+		t.Fatalf("Expected 401 for locked vault thumbnail, got %d", recLocked.Code)
+	}
+
+	// 2. Unlocked vault with valid session
+	vk := crypto.DummyVK()
+	sessionID := "vault_thumb_test_session"
+	auth.GlobalSessionStore.SetKey(sessionID, vk)
+	defer auth.GlobalSessionStore.DeleteKey(sessionID)
+
+	reqUnlocked := httptest.NewRequest(http.MethodGet, "/api/files/vault_pdf/thumbnail", nil)
+	reqUnlocked.AddCookie(&http.Cookie{Name: "swarm_session", Value: sessionID})
+	recUnlocked := httptest.NewRecorder()
+	e.ServeHTTP(recUnlocked, reqUnlocked)
+	if recUnlocked.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK for unlocked vault thumbnail, got %d", recUnlocked.Code)
+	}
+
+	// Verify Cache-Control header has no-store, private, must-revalidate
+	cc := recUnlocked.Header().Get("Cache-Control")
+	if !strings.Contains(cc, "no-store") || !strings.Contains(cc, "private") {
+		t.Errorf("Expected Cache-Control to contain 'no-store' and 'private', got: %s", cc)
+	}
+	pragma := recUnlocked.Header().Get("Pragma")
+	if pragma != "no-cache" {
+		t.Errorf("Expected Pragma: no-cache, got: %s", pragma)
+	}
+
+	// Verify unencrypted thumbnail file was NOT written to disk
+	unencryptedThumbPath := filepath.Join("storage", "thumbnails", "cas_vault_pdf_hash.png")
+	if _, err := os.Stat(unencryptedThumbPath); err == nil {
+		t.Errorf("Unencrypted vault thumbnail was leaked to disk at: %s", unencryptedThumbPath)
+	}
+
+	// 3. Normal file thumbnail must use private, max-age (not public)
+	reqNorm := httptest.NewRequest(http.MethodGet, "/api/files/norm_pdf/thumbnail", nil)
+	recNorm := httptest.NewRecorder()
+	e.ServeHTTP(recNorm, reqNorm)
+	if recNorm.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK for normal thumbnail, got %d", recNorm.Code)
+	}
+	normCC := recNorm.Header().Get("Cache-Control")
+	if strings.Contains(normCC, "public") {
+		t.Errorf("Expected Cache-Control to NOT contain 'public', got: %s", normCC)
+	}
+	if !strings.Contains(normCC, "private") {
+		t.Errorf("Expected Cache-Control to contain 'private', got: %s", normCC)
+	}
+}
+
+func TestPreviewFile_VaultSecurityAndCaching(t *testing.T) {
+	e := echo.New()
+	dbEngine, err := data.NewDBEngine("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to create memory DB: %v", err)
+	}
+	defer dbEngine.Close()
+
+	_, _ = dbEngine.SQL.Exec(`
+		CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, salt BLOB NOT NULL, encrypted_vault_key BLOB NOT NULL);
+		CREATE TABLE folders (id TEXT PRIMARY KEY, owner_id INTEGER NOT NULL, parent_id TEXT, name TEXT NOT NULL);
+		CREATE TABLE files (id TEXT PRIMARY KEY, owner_id INTEGER NOT NULL, folder_id TEXT, name TEXT NOT NULL, mime_type TEXT NOT NULL, size BIGINT NOT NULL, cas_hash TEXT NOT NULL, is_starred BOOLEAN DEFAULT FALSE, is_deleted BOOLEAN DEFAULT FALSE, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+		INSERT INTO users (id, email, password_hash, salt, encrypted_vault_key) VALUES (1, 'u', 'p', 's', 'k');
+		INSERT INTO folders (id, owner_id, parent_id, name) VALUES ('f2', 1, NULL, 'Vault');
+		INSERT INTO files (id, owner_id, folder_id, name, mime_type, size, cas_hash) VALUES 
+			('vault_img', 1, 'f2', 'secret.png', 'image/png', 512, 'cas_vault_img_hash'),
+			('norm_img', 1, 'f1', 'public.png', 'image/png', 512, 'cas_norm_img_hash');
+	`)
+
+	fileCtrl := &FileController{
+		DB: dbEngine,
+	}
+
+	e.GET("/api/files/:id/preview", fileCtrl.PreviewFile)
+
+	// 1. Locked vault preview returns 401
+	reqLocked := httptest.NewRequest(http.MethodGet, "/api/files/vault_img/preview", nil)
+	recLocked := httptest.NewRecorder()
+	e.ServeHTTP(recLocked, reqLocked)
+	if recLocked.Code != http.StatusUnauthorized {
+		t.Fatalf("Expected 401 for locked vault preview, got %d", recLocked.Code)
+	}
+
+	// 2. Unlocked vault preview returns private, no-store
+	sessionID := "vault_preview_sess"
+	auth.GlobalSessionStore.SetKey(sessionID, crypto.DummyVK())
+	defer auth.GlobalSessionStore.DeleteKey(sessionID)
+
+	reqUnlocked := httptest.NewRequest(http.MethodGet, "/api/files/vault_img/preview", nil)
+	reqUnlocked.AddCookie(&http.Cookie{Name: "swarm_session", Value: sessionID})
+	recUnlocked := httptest.NewRecorder()
+	e.ServeHTTP(recUnlocked, reqUnlocked)
+	if recUnlocked.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK for unlocked vault preview, got %d", recUnlocked.Code)
+	}
+	cc := recUnlocked.Header().Get("Cache-Control")
+	if !strings.Contains(cc, "no-store") || !strings.Contains(cc, "private") {
+		t.Errorf("Expected Cache-Control to contain 'no-store' and 'private', got: %s", cc)
+	}
+	pragma := recUnlocked.Header().Get("Pragma")
+	if pragma != "no-cache" {
+		t.Errorf("Expected Pragma: no-cache, got: %s", pragma)
+	}
+
+	// 3. Normal preview returns private, max-age
+	reqNorm := httptest.NewRequest(http.MethodGet, "/api/files/norm_img/preview", nil)
+	recNorm := httptest.NewRecorder()
+	e.ServeHTTP(recNorm, reqNorm)
+	if recNorm.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK for normal preview, got %d", recNorm.Code)
+	}
+	normCC := recNorm.Header().Get("Cache-Control")
+	if !strings.Contains(normCC, "private") || strings.Contains(normCC, "no-store") {
+		t.Errorf("Expected Cache-Control 'private, max-age=...', got: %s", normCC)
+	}
+}
+
 func TestSearch_CaseInsensitiveAndMultiWord(t *testing.T) {
 	e := echo.New()
 	dbEngine, err := data.NewDBEngine("sqlite3", ":memory:")

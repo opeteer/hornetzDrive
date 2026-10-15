@@ -2147,7 +2147,8 @@ templ Layout(title string) {
 							this.uploadStatusText = 'Status: Mengunggah';
 						}
 
-						while (offset < totalSize || totalSize === 0) {
+						let zeroByteDone = false;
+						while (offset < totalSize || (totalSize === 0 && !zeroByteDone)) {
 							const end = Math.min(offset + chunkSize, totalSize);
 							const chunk = file.slice(offset, end);
 							const currentOffset = offset;
@@ -2160,10 +2161,11 @@ templ Layout(title string) {
 							this.uploadStatusText = `Status: Mengunggah chunk ${currentChunkIndex}/${this.transferChunkTotal} (${currentDisplayPct}%)`;
 
 							let chunkSuccess = false;
+							let offsetResynced = false;
 							let retryCount = 0;
 							const maxRetries = 8;
 
-							while (!chunkSuccess) {
+							while (!chunkSuccess && !offsetResynced) {
 								try {
 									if (typeof navigator !== 'undefined' && 'onLine' in navigator && !navigator.onLine) {
 										this.uploadStatusText = 'Status: Jaringan Terputus, Menunggu Koneksi...';
@@ -2190,6 +2192,7 @@ templ Layout(title string) {
 													offset = checkData.uploaded;
 													this.transferBytesLoaded = offset;
 													this.recordTransferProgress(offset);
+													offsetResynced = true;
 													break;
 												}
 											}
@@ -2222,16 +2225,21 @@ templ Layout(title string) {
 												this.uploadStatusText = `Status: Mengunggah chunk ${currentChunkIndex}/${this.transferChunkTotal} (${chunkDonePct}%)`;
 												resolve(xhr.response);
 											} else if (xhr.status === 409) {
+												let expectedOffset = null;
 												try {
 													const errJson = JSON.parse(xhr.responseText);
 													if (typeof errJson.expected_offset === 'number') {
-														offset = errJson.expected_offset;
-														this.transferBytesLoaded = offset;
-														this.recordTransferProgress(offset);
-														resolve(xhr.response);
-														return;
+														expectedOffset = errJson.expected_offset;
 													}
 												} catch(e) {}
+												if (expectedOffset !== null) {
+													offset = expectedOffset;
+													this.transferBytesLoaded = offset;
+													this.recordTransferProgress(offset);
+													offsetResynced = true;
+													reject(new Error(`Offset mismatch: server expects ${expectedOffset}`));
+													return;
+												}
 												reject(new Error("Offset mismatch (HTTP 409)"));
 											} else {
 												let errMsg = `Gagal mengunggah payload berkas (Status HTTP ${xhr.status})`;
@@ -2256,6 +2264,10 @@ templ Layout(title string) {
 
 									chunkSuccess = true;
 								} catch (chunkErr) {
+									if (offsetResynced) {
+										console.info(`[Hornetz Upload] Offset disinkronkan kembali ke ${offset}, memuat ulang chunk...`);
+										break;
+									}
 									retryCount++;
 									console.warn(`[Hornetz Upload] Chunk ${currentChunkIndex}/${this.transferChunkTotal} gagal, mencoba lagi (${retryCount}/${maxRetries}). Alasan:`, chunkErr.message);
 									if (retryCount >= maxRetries) {
@@ -2268,9 +2280,11 @@ templ Layout(title string) {
 								}
 							}
 
-							offset = end;
-							this.transferBytesLoaded = offset;
-							if (totalSize === 0) break;
+							if (chunkSuccess) {
+								offset = end;
+								this.transferBytesLoaded = offset;
+								if (totalSize === 0) zeroByteDone = true;
+							}
 						}
 
 						this.stopTransferWatchdog();

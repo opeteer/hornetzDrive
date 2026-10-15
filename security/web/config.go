@@ -88,22 +88,12 @@ func DefaultCSRFConfig() middleware.CSRFConfig {
 	return middleware.CSRFConfig{
 		Skipper: func(c *echo.Context) bool {
 			path := c.Request().URL.Path
-			// Sensitive mutating endpoints require CSRF protection
-			if path == "/api/purge" || strings.HasPrefix(path, "/api/files") || strings.HasPrefix(path, "/api/vault") || strings.HasPrefix(path, "/api/folders") {
-				if c.Request().Method == http.MethodPost || c.Request().Method == http.MethodDelete || c.Request().Method == http.MethodPut || c.Request().Method == http.MethodPatch {
-					return false
-				}
-			}
-			return path == "/api" || strings.HasPrefix(path, "/api/") ||
-				path == "/docs" || strings.HasPrefix(path, "/docs/") ||
-				strings.HasPrefix(path, "/v1/") ||
-				strings.HasPrefix(path, "/v2/") ||
-				strings.HasPrefix(path, "/rest/")
+			return path == "/docs" || strings.HasPrefix(path, "/docs/")
 		},
 		TokenLookup:    "header:X-CSRF-Token,form:_csrf",
 		CookiePath:     "/",
 		CookieSecure:   false,
-		CookieHTTPOnly: true,
+		CookieHTTPOnly: false,
 		CookieSameSite: http.SameSiteLaxMode,
 	}
 }
