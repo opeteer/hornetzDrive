@@ -57,10 +57,12 @@ func setupDownloadControllerTest(t *testing.T) (*echo.Echo, *DownloadController,
 	}
 
 	download.AllowPrivateNetworks = true
+	e.GET("/api/downloads", ctrl.ListDownloads)
 	e.POST("/api/downloads", ctrl.StartDownload)
 	e.POST("/api/downloads/batch", ctrl.StartBatchDownload)
 	e.GET("/api/downloads/:id", ctrl.GetDownloadStatus)
 	e.DELETE("/api/downloads/:id", ctrl.CancelDownload)
+	e.DELETE("/api/downloads/:id/dismiss", ctrl.DismissDownload)
 	e.POST("/api/downloads/parse", ctrl.ParseLink)
 
 	// Mock HTTP file server for downloads
@@ -392,4 +394,87 @@ func TestDownloadController_ParseLink_DeepProbeAndGoogleDrive(t *testing.T) {
 	if !strings.Contains(resolvedURL, "export=download") || !strings.Contains(resolvedURL, "id=1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs") {
 		t.Errorf("Expected Google Drive direct download URL, got %q", resolvedURL)
 	}
+}
+
+func TestDownloadController_ListDownloads(t *testing.T) {
+	e, ctrl, fs := setupDownloadControllerTest(t)
+	defer fs.Close()
+
+	// Initially empty
+	req := httptest.NewRequest(http.MethodGet, "/api/downloads", nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK, got %d", rec.Code)
+	}
+	var tasks []*download.DownloadTask
+	if err := json.Unmarshal(rec.Body.Bytes(), &tasks); err != nil {
+		t.Fatalf("Failed to unmarshal tasks: %v", err)
+	}
+	if len(tasks) != 0 {
+		t.Fatalf("Expected 0 tasks initially, got %d", len(tasks))
+	}
+
+	// Start a download
+	payload := map[string]string{
+		"url":       fs.URL + "/remote_file.bin",
+		"folder_id": "f1",
+	}
+	body, _ := json.Marshal(payload)
+	reqDl := httptest.NewRequest(http.MethodPost, "/api/downloads", bytes.NewReader(body))
+	reqDl.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	recDl := httptest.NewRecorder()
+	e.ServeHTTP(recDl, reqDl)
+
+	if recDl.Code != http.StatusAccepted {
+		t.Fatalf("Expected 202 Accepted, got %d", recDl.Code)
+	}
+
+	var createdTask download.DownloadTask
+	json.Unmarshal(recDl.Body.Bytes(), &createdTask)
+
+	// List downloads again
+	req2 := httptest.NewRequest(http.MethodGet, "/api/downloads", nil)
+	rec2 := httptest.NewRecorder()
+	e.ServeHTTP(rec2, req2)
+
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK on list, got %d", rec2.Code)
+	}
+
+	var tasks2 []*download.DownloadTask
+	if err := json.Unmarshal(rec2.Body.Bytes(), &tasks2); err != nil {
+		t.Fatalf("Failed to unmarshal tasks: %v", err)
+	}
+	if len(tasks2) != 1 {
+		t.Fatalf("Expected 1 task in list, got %d", len(tasks2))
+	}
+	if tasks2[0].ID != createdTask.ID {
+		t.Errorf("Expected task ID %s, got %s", createdTask.ID, tasks2[0].ID)
+	}
+
+	// Wait for completion or check dismiss
+	time.Sleep(100 * time.Millisecond)
+
+	// Dismiss the completed task
+	reqDis := httptest.NewRequest(http.MethodDelete, "/api/downloads/"+createdTask.ID+"/dismiss", nil)
+	recDis := httptest.NewRecorder()
+	e.ServeHTTP(recDis, reqDis)
+
+	if recDis.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK on dismiss, got %d: %s", recDis.Code, recDis.Body.String())
+	}
+
+	// Verify task is now removed
+	req3 := httptest.NewRequest(http.MethodGet, "/api/downloads", nil)
+	rec3 := httptest.NewRecorder()
+	e.ServeHTTP(rec3, req3)
+
+	var tasks3 []*download.DownloadTask
+	json.Unmarshal(rec3.Body.Bytes(), &tasks3)
+	if len(tasks3) != 0 {
+		t.Errorf("Expected 0 tasks after dismiss, got %d", len(tasks3))
+	}
+	_ = ctrl
 }

@@ -156,6 +156,8 @@ func main() {
 	apiGroup := app.Group("/api", auth.RequireAuth(dbEngine))
 	apiGroup.GET("/files", fileCtrl.GetFiles)
 	apiGroup.PATCH("/files/:id", fileCtrl.RenameFile)
+	apiGroup.PATCH("/files/:id/move", fileCtrl.MoveFile)
+	apiGroup.POST("/files/move-batch", fileCtrl.MoveFilesBatch)
 	apiGroup.GET("/folders", fileCtrl.GetFolders)
 	apiGroup.POST("/folders", fileCtrl.CreateFolder)
 	apiGroup.DELETE("/folders/:id", fileCtrl.DeleteFolder)
@@ -170,10 +172,12 @@ func main() {
 	apiGroup.POST("/files/:id/star", fileCtrl.StarFile)
 	apiGroup.POST("/vault/lock", auth.LockVault)
 
+	apiGroup.GET("/downloads", downloadCtrl.ListDownloads)
 	apiGroup.POST("/downloads", downloadCtrl.StartDownload)
 	apiGroup.POST("/downloads/batch", downloadCtrl.StartBatchDownload)
 	apiGroup.GET("/downloads/:id", downloadCtrl.GetDownloadStatus)
 	apiGroup.DELETE("/downloads/:id", downloadCtrl.CancelDownload)
+	apiGroup.DELETE("/downloads/:id/dismiss", downloadCtrl.DismissDownload)
 	apiGroup.POST("/downloads/parse", downloadCtrl.ParseLink)
 
 	uploadCtrl := &controllers.UploadController{

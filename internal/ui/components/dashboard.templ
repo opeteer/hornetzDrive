@@ -25,8 +25,14 @@ templ DashboardContent() {
 				<span class="text-[#F5CE0D] font-bold cursor-pointer hover:underline" @click="$store.drive.setTab('storage')">Penyimpanan Saya</span>
 				<span class="text-[#86898B]/60">\</span>
 				<span 
-					:class="$store.drive.currentFolderId ? 'text-[#F5CE0D] cursor-pointer font-semibold hover:underline' : 'text-white font-semibold'"
+					:class="[
+						$store.drive.currentFolderId ? 'text-[#F5CE0D] cursor-pointer font-semibold hover:underline' : 'text-white font-semibold',
+						$store.drive.dragTargetFolderId === 'root' ? 'bg-[#F5CE0D]/20 px-2 py-0.5 rounded border border-[#F5CE0D] text-white font-bold' : ''
+					]"
 					@click="if ($store.drive.currentFolderId) $store.drive.clearFolder()"
+					@dragover.prevent.stop="$store.drive.handleFolderDragOver($event, { id: 'root', name: 'Utama' })"
+					@dragleave.prevent.stop="$store.drive.handleFolderDragLeave($event, { id: 'root' })"
+					@drop.prevent.stop="$store.drive.handleFolderDrop($event, { id: 'root', name: 'Utama' })"
 					x-text="
 						$store.drive.activeTab === 'storage' ? 'Penyimpanan Utama' : 
 						($store.drive.activeTab === 'vault' ? 'Vault Terenkripsi' : 
@@ -38,8 +44,14 @@ templ DashboardContent() {
 					<span class="flex items-center gap-2">
 						<span class="text-[#86898B]/60">\</span>
 						<span 
-							:class="idx === $store.drive.folderHistory.length - 1 ? 'text-white font-bold' : 'text-[#F5CE0D] cursor-pointer hover:underline font-semibold'" 
+							:class="[
+								idx === $store.drive.folderHistory.length - 1 ? 'text-white font-bold' : 'text-[#F5CE0D] cursor-pointer hover:underline font-semibold',
+								$store.drive.dragTargetFolderId === crumb.id ? 'bg-[#F5CE0D]/20 px-2 py-0.5 rounded border border-[#F5CE0D] text-white font-bold' : ''
+							]" 
 							@click="if (idx < $store.drive.folderHistory.length - 1) $store.drive.navigateToBreadcrumb(idx)" 
+							@dragover.prevent.stop="$store.drive.handleFolderDragOver($event, crumb)"
+							@dragleave.prevent.stop="$store.drive.handleFolderDragLeave($event, crumb)"
+							@drop.prevent.stop="$store.drive.handleFolderDrop($event, crumb)"
 							x-text="crumb.name"
 						></span>
 					</span>
@@ -143,7 +155,15 @@ templ DashboardContent() {
 					<template x-for="folder in $store.drive.folders" :key="folder.id">
 						<div 
 							@click="$store.drive.openFolder(folder)" 
-							class="bg-[#2E3137]/30 hover:bg-[#2E3137]/50 border border-[#3F4247]/60 hover:border-[#F5CE0D]/50 p-4 rounded-2xl cursor-pointer group transition-all shadow-sm hover:shadow-xl hover:-translate-y-0.5 relative backdrop-blur-md"
+							@dragover.prevent.stop="$store.drive.handleFolderDragOver($event, folder)"
+							@dragleave.prevent.stop="$store.drive.handleFolderDragLeave($event, folder)"
+							@drop.prevent.stop="$store.drive.handleFolderDrop($event, folder)"
+							:class="[
+								$store.drive.dragTargetFolderId === folder.id 
+									? 'border-[#F5CE0D] ring-2 ring-[#F5CE0D]/60 scale-[1.02] bg-[#2E3137]/80 shadow-2xl' 
+									: 'border-[#3F4247]/60 hover:border-[#F5CE0D]/50 bg-[#2E3137]/30 hover:bg-[#2E3137]/50'
+							]"
+							class="p-4 rounded-2xl cursor-pointer group transition-all shadow-sm hover:shadow-xl hover:-translate-y-0.5 relative backdrop-blur-md"
 						>
 							<div class="flex justify-between items-start mb-3">
 								<div class="w-10 h-10 rounded-xl bg-[#2E3137] border border-[#3F4247]/60 text-[#F5CE0D] flex items-center justify-center group-hover:bg-gradient-to-br group-hover:from-[#F5CE0D] group-hover:to-[#DDAC0D] group-hover:text-[#121519] transition-all shadow-sm">
@@ -263,7 +283,11 @@ templ DashboardContent() {
 					<template x-for="file in $store.drive.files" :key="file.id">
 						<div 
 							@click="$store.drive.selectFile(file)" 
-							class="bg-[#2E3137]/30 hover:bg-[#2E3137]/50 border border-[#3F4247]/60 hover:border-[#F5CE0D]/50 p-3 rounded-2xl cursor-pointer group transition-all flex flex-col justify-between h-52 shadow-sm hover:shadow-xl hover:-translate-y-0.5 relative backdrop-blur-md"
+							draggable="true"
+							@dragstart="$store.drive.handleFileDragStart($event, file)"
+							@dragend="$store.drive.handleFileDragEnd($event)"
+							:class="$store.drive.draggedFile && $store.drive.draggedFile.id === file.id ? 'opacity-40 scale-95 border-[#F5CE0D]' : ''"
+							class="bg-[#2E3137]/30 hover:bg-[#2E3137]/50 border border-[#3F4247]/60 hover:border-[#F5CE0D]/50 p-3 rounded-2xl cursor-pointer group transition-all flex flex-col justify-between h-52 shadow-sm hover:shadow-xl hover:-translate-y-0.5 relative backdrop-blur-md select-none"
 						>
 							<div class="h-28 bg-[#121519]/70 border border-[#3F4247]/40 rounded-xl flex items-center justify-center text-[#F5CE0D] relative overflow-hidden group-hover:border-[#F5CE0D]/30 transition-all backdrop-blur-sm">
 								<!-- Preview for readable files (PDFs, images, documents, text) -->
@@ -320,7 +344,11 @@ templ DashboardContent() {
 					<template x-for="file in $store.drive.files" :key="file.id">
 						<div 
 							@click="$store.drive.selectFile(file)" 
-							class="flex items-center justify-between px-4 py-3 hover:bg-[#2E3137]/40 cursor-pointer transition-colors group"
+							draggable="true"
+							@dragstart="$store.drive.handleFileDragStart($event, file)"
+							@dragend="$store.drive.handleFileDragEnd($event)"
+							:class="$store.drive.draggedFile && $store.drive.draggedFile.id === file.id ? 'opacity-40 border-[#F5CE0D] bg-[#2E3137]/60' : ''"
+							class="flex items-center justify-between px-4 py-3 hover:bg-[#2E3137]/40 cursor-pointer transition-colors group select-none"
 						>
 							<div class="flex items-center gap-3">
 								<div class="w-8 h-8 rounded-lg bg-[#2E3137] border border-[#3F4247]/60 flex items-center justify-center text-[#F5CE0D] shrink-0" x-html="$store.drive.getFileIconSvg(file.icon, 'w-4 h-4')"></div>
@@ -535,6 +563,14 @@ templ DashboardContent() {
 								<span x-text="$store.drive.activeTab === 'vault' ? 'Dekripsi & Unduh' : 'Unduh Berkas'"></span>
 							</button>
 							<button 
+								@click="$store.drive.openMoveModal($store.drive.selectedFile)" 
+								class="bg-white/[0.04] hover:bg-white/[0.08] text-[#EDEBE8] hover:text-[#F5CE0D] border border-[#3F4247]/60 py-2.5 px-3 rounded-xl text-xs font-semibold transition-all backdrop-blur-md flex items-center gap-1.5"
+								title="Pindahkan berkas ke folder lain"
+							>
+								@IconFolderInput("w-4 h-4")
+								<span>Pindahkan</span>
+							</button>
+							<button 
 								@click="$store.drive.renameFile($store.drive.selectedFile)" 
 								class="bg-white/[0.04] hover:bg-white/[0.08] text-[#EDEBE8] border border-[#3F4247]/60 py-2.5 px-3 rounded-xl text-xs font-semibold transition-all backdrop-blur-md flex items-center gap-1.5"
 							>
@@ -550,6 +586,91 @@ templ DashboardContent() {
 							</button>
 						</div>
 					</template>
+				</div>
+			</div>
+		</div>
+
+		<!-- MOVE FILE MODAL -->
+		<div 
+			x-show="$store.drive && $store.drive.showMoveModal" 
+			x-cloak
+			style="display: none;"
+			x-transition 
+			class="fixed inset-0 bg-black/80 backdrop-blur-xl flex items-center justify-center z-[110] p-4"
+		>
+			<div 
+				@click.away="$store.drive.showMoveModal = false" 
+				class="bg-[#121519]/95 backdrop-blur-2xl border border-[#3F4247]/60 w-full max-w-md rounded-2xl p-6 shadow-2xl space-y-4"
+			>
+				<div class="flex justify-between items-center border-b border-[#3F4247]/60 pb-3">
+					<div class="flex items-center gap-2">
+						<div class="w-8 h-8 rounded-lg bg-[#2E3137] border border-[#F5CE0D]/40 text-[#F5CE0D] flex items-center justify-center">
+							@IconFolderInput("w-4 h-4")
+						</div>
+						<h3 class="font-bold text-sm text-white">Pindahkan Berkas</h3>
+					</div>
+					<button @click="$store.drive.showMoveModal = false" class="text-[#86898B] hover:text-white transition-colors">
+						@IconX("w-4 h-4")
+					</button>
+				</div>
+
+				<div class="space-y-1">
+					<p class="text-xs text-[#86898B]">Pindahkan berkas berikut ke folder tujuan:</p>
+					<p class="text-xs font-bold text-[#F5CE0D] truncate font-mono" x-text="$store.drive.fileToMove ? $store.drive.fileToMove.name : ''"></p>
+				</div>
+
+				<!-- Target Folder Selection List -->
+				<div class="space-y-2 max-h-60 overflow-y-auto pr-1">
+					<!-- Root Folder Option -->
+					<div 
+						@click="$store.drive.targetMoveFolderId = ''" 
+						:class="$store.drive.targetMoveFolderId === '' ? 'border-[#F5CE0D] bg-[#F5CE0D]/10 text-white font-bold' : 'border-[#3F4247]/50 hover:bg-[#2E3137]/40 text-[#86898B] hover:text-white'"
+						class="p-3 rounded-xl border flex items-center justify-between cursor-pointer transition-all"
+					>
+						<div class="flex items-center gap-2.5">
+							@IconHardDrive("w-4 h-4 text-[#F5CE0D]")
+							<span class="text-xs font-semibold">Penyimpanan Utama (Root)</span>
+						</div>
+						<span x-show="$store.drive.targetMoveFolderId === ''" class="text-[#F5CE0D] text-xs font-bold font-mono">Pilihan</span>
+					</div>
+
+					<!-- Available Folders -->
+					<template x-for="f in $store.drive.availableMoveFolders" :key="f.id">
+						<div 
+							@click="$store.drive.targetMoveFolderId = f.id" 
+							:class="$store.drive.targetMoveFolderId === f.id ? 'border-[#F5CE0D] bg-[#F5CE0D]/10 text-white font-bold' : 'border-[#3F4247]/50 hover:bg-[#2E3137]/40 text-[#86898B] hover:text-white'"
+							class="p-3 rounded-xl border flex items-center justify-between cursor-pointer transition-all"
+						>
+							<div class="flex items-center gap-2.5 min-w-0">
+								<div class="text-[#F5CE0D] shrink-0">
+									@IconFolder("w-4 h-4")
+								</div>
+								<div class="min-w-0">
+									<div class="text-xs font-semibold truncate" x-text="f.name"></div>
+									<div class="text-[10px] text-[#86898B] font-mono" x-text="(f.file_count || 0) + ' berkas'"></div>
+								</div>
+							</div>
+							<span x-show="$store.drive.targetMoveFolderId === f.id" class="text-[#F5CE0D] text-xs font-bold font-mono shrink-0">Pilihan</span>
+						</div>
+					</template>
+				</div>
+
+				<div class="flex gap-3 pt-2 border-t border-[#3F4247]/60">
+					<button 
+						type="button" 
+						@click="$store.drive.showMoveModal = false" 
+						class="flex-1 py-2.5 bg-white/[0.04] border border-[#3F4247]/60 text-[#86898B] hover:text-white rounded-xl text-xs font-bold transition-all"
+					>
+						Batal
+					</button>
+					<button 
+						type="button" 
+						@click="$store.drive.executeMoveFile()" 
+						class="flex-1 hornetz-btn py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5"
+					>
+						@IconFolderInput("w-4 h-4")
+						<span>Pindahkan ke Sini</span>
+					</button>
 				</div>
 			</div>
 		</div>

@@ -12,6 +12,7 @@ import (
 	"mime"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -425,7 +426,7 @@ func (dm *DownloadManager) getUserStorageUsed(ownerID int) int64 {
 	return used
 }
 
-// ListTasks returns all tasks for an owner.
+// ListTasks returns all tasks for an owner, sorted with newest first.
 func (dm *DownloadManager) ListTasks(ownerID int) []*DownloadTask {
 	var list []*DownloadTask
 	dm.tasks.Range(func(key, value interface{}) bool {
@@ -437,7 +438,27 @@ func (dm *DownloadManager) ListTasks(ownerID int) []*DownloadTask {
 		}
 		return true
 	})
+	sort.Slice(list, func(i, j int) bool {
+		return list[i].CreatedAt.After(list[j].CreatedAt)
+	})
 	return list
+}
+
+// DismissTask removes a completed, cancelled, or failed task.
+func (dm *DownloadManager) DismissTask(id string, ownerID int) bool {
+	if val, ok := dm.tasks.Load(id); ok {
+		if t, ok := val.(*DownloadTask); ok {
+			t.Mu.RLock()
+			status := t.Status
+			owner := t.OwnerID
+			t.Mu.RUnlock()
+			if (ownerID == 0 || owner == ownerID) && (status == StatusCompleted || status == StatusCancelled || status == StatusFailed) {
+				dm.tasks.Delete(id)
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // PruneOldTasks removes finished tasks older than ttl.

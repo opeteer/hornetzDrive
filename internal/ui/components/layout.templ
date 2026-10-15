@@ -125,6 +125,7 @@ templ Layout(title string) {
 		@dragover.prevent="$store.drive.handleDragOver($event)"
 		@drop.prevent="$store.drive.handleDrop($event)"
 		@keydown.escape.window="$store.drive.dismissModals()"
+		@mouseup.window="$store.drive.handleMouseUp($event)"
 	>
 		<!-- Atmospheric Glass Background Lighting -->
 		<div class="glass-ambient-bg">
@@ -555,60 +556,134 @@ templ Layout(title string) {
 			</main>
 		</div>
 
-		<!-- Global Upload/Download Progress Notification Overlay (Controlled strictly by $store.drive.isUploading) -->
+		<!-- Upgraded Multi-Upload/Download Intelligent Transfer Manager Panel -->
 		<div 
-			x-show="$store.drive && $store.drive.isUploading" 
+			x-show="$store.drive && ($store.drive.transfers.length > 0 || $store.drive.isUploading)" 
 			x-cloak
 			style="display: none;"
 			x-transition 
-			class="fixed bottom-6 right-6 bg-[#121519]/95 backdrop-blur-2xl border border-[#3F4247]/60 p-4 rounded-2xl shadow-2xl z-50 w-88 sm:w-96 space-y-2.5"
+			class="fixed bottom-6 right-6 z-50 flex flex-col items-end"
 		>
-			<div class="flex justify-between items-center text-xs font-bold text-white">
-				<span class="flex items-center gap-2 min-w-0">
-					<span x-show="$store.drive.uploadStatusText && ($store.drive.uploadStatusText.includes('Gagal') || $store.drive.uploadStatusText.includes('Gangguan'))" class="text-rose-400 shrink-0">
-						@IconAlertTriangle("w-4 h-4")
-					</span>
-					<span x-show="!($store.drive.uploadStatusText && ($store.drive.uploadStatusText.includes('Gagal') || $store.drive.uploadStatusText.includes('Gangguan'))) && $store.drive.uploadProgress === 100" class="text-emerald-400 shrink-0">
-						@IconCheck("w-4 h-4")
-					</span>
-					<span x-show="!($store.drive.uploadStatusText && ($store.drive.uploadStatusText.includes('Gagal') || $store.drive.uploadStatusText.includes('Gangguan'))) && $store.drive.uploadProgress !== 100" class="animate-spin text-[#F5CE0D] shrink-0">
-						@IconLoader("w-4 h-4")
-					</span>
-					<span class="truncate max-w-[190px]" :title="$store.drive.uploadFileName" x-text="$store.drive.uploadFileName">Mengunggah...</span>
-				</span>
-				<div class="flex items-center gap-2 shrink-0">
-					<span class="text-[#F5CE0D] font-mono font-bold" x-text="$store.drive.uploadProgress + '%'">0%</span>
-					<button 
-						type="button" 
-						@click="$store.drive.isUploading = false"
-						class="text-[#86898B] hover:text-white p-0.5 cursor-pointer"
-						title="Tutup Notifikasi"
-					>
-						@IconX("w-3.5 h-3.5")
-					</button>
+			<!-- Minimized Compact Pill -->
+			<div 
+				x-show="$store.drive.isTransferMinimized"
+				@click="$store.drive.isTransferMinimized = false"
+				class="bg-[#121519]/95 backdrop-blur-2xl border border-[#F5CE0D]/40 shadow-2xl rounded-2xl px-4 py-2.5 flex items-center gap-3 cursor-pointer hover:border-[#F5CE0D] transition-all hover:scale-105"
+			>
+				<div class="w-2.5 h-2.5 rounded-full" :class="$store.drive.transfers.some(t => t.status === 'active') ? 'bg-[#F5CE0D] animate-ping' : 'bg-emerald-400'"></div>
+				<span class="text-xs font-bold text-white font-mono" x-text="$store.drive.getTransferSummaryText()"></span>
+				<div class="text-[#86898B] hover:text-white">
+					@IconChevronUp("w-4 h-4")
 				</div>
 			</div>
 
-			<!-- Real-time Transfer Telemetry (Bytes, Chunks, ETA) -->
-			<div class="flex items-center justify-between text-[11px] font-mono text-[#86898B]">
-				<span x-show="$store.drive.transferBytesTotal > 0" x-text="$store.drive.formatBytes($store.drive.transferBytesLoaded) + ' / ' + $store.drive.formatBytes($store.drive.transferBytesTotal)">0 B / 0 B</span>
-				<div class="flex items-center gap-2">
-					<span x-show="$store.drive.transferDirection === 'upload' && $store.drive.transferChunkTotal > 1" class="px-1.5 py-0.2 rounded bg-[#2E3137]/80 text-[#F5CE0D] border border-[#3F4247]/50 text-[10px]" x-text="'Chunk ' + $store.drive.transferChunkCurrent + '/' + $store.drive.transferChunkTotal"></span>
-					<span x-show="$store.drive.transferEtaText && $store.drive.transferEtaText !== '-'" class="text-[#EDEBE8] text-[10px]" x-text="'ETA: ' + $store.drive.transferEtaText"></span>
+			<!-- Expanded Multi-Transfer Tray -->
+			<div 
+				x-show="!$store.drive.isTransferMinimized"
+				class="bg-[#121519]/95 backdrop-blur-2xl border border-[#3F4247]/70 rounded-2xl shadow-2xl w-88 sm:w-96 flex flex-col overflow-hidden"
+			>
+				<!-- Header -->
+				<div class="px-4 py-3 border-b border-[#3F4247]/50 flex items-center justify-between bg-white/[0.02]">
+					<div class="flex items-center gap-2">
+						<div class="w-6 h-6 rounded-lg bg-[#2E3137] border border-[#F5CE0D]/40 text-[#F5CE0D] flex items-center justify-center">
+							<template x-if="$store.drive.transfers.some(t => t.type === 'download' && t.status === 'active')">
+								@IconDownload("w-3.5 h-3.5")
+							</template>
+							<template x-if="!$store.drive.transfers.some(t => t.type === 'download' && t.status === 'active')">
+								@IconUploadCloud("w-3.5 h-3.5")
+							</template>
+						</div>
+						<div>
+							<h4 class="text-xs font-bold text-white">Pengelola Transfer</h4>
+							<span class="text-[10px] text-[#86898B] font-mono" x-text="$store.drive.getTransferSummaryText()"></span>
+						</div>
+					</div>
+					<div class="flex items-center gap-1.5">
+						<button 
+							type="button" 
+							@click="$store.drive.clearCompletedTransfers()" 
+							x-show="$store.drive.transfers.some(t => t.status === 'completed' || t.status === 'failed' || t.status === 'cancelled')"
+							class="text-[10px] text-[#86898B] hover:text-[#F5CE0D] px-2 py-0.5 rounded hover:bg-[#2E3137]/40 font-mono transition-colors"
+							title="Bersihkan transfer yang sudah selesai"
+						>
+							Bersihkan
+						</button>
+						<button 
+							type="button" 
+							@click="$store.drive.isTransferMinimized = true"
+							class="text-[#86898B] hover:text-white p-1 rounded hover:bg-[#2E3137]/40 transition-colors"
+							title="Perkecil Panel"
+						>
+							@IconChevronDown("w-4 h-4")
+						</button>
+						<button 
+							type="button" 
+							@click="$store.drive.dismissAllTransfers()"
+							class="text-[#86898B] hover:text-white p-1 rounded hover:bg-[#2E3137]/40 transition-colors"
+							title="Tutup Panel"
+						>
+							@IconX("w-3.5 h-3.5")
+						</button>
+					</div>
 				</div>
-			</div>
 
-			<div class="w-full h-2 bg-black/40 rounded-full overflow-hidden border border-[#3F4247]/50">
-				<div 
-					class="h-full transition-all duration-150" 
-					:class="($store.drive.uploadStatusText && $store.drive.uploadStatusText.includes('Gagal')) ? 'bg-gradient-to-r from-rose-500 to-amber-600' : 'bg-gradient-to-r from-[#F5CE0D] to-[#DDAC0D]'"
-					:style="`width: ${$store.drive.uploadProgress}%`"
-				></div>
-			</div>
+				<!-- Transfers List -->
+				<div class="max-h-72 overflow-y-auto divide-y divide-[#3F4247]/30 p-2 space-y-2">
+					<template x-for="t in $store.drive.transfers" :key="t.id">
+						<div class="p-2.5 rounded-xl bg-[#2E3137]/20 border border-[#3F4247]/40 space-y-1.5">
+							<div class="flex items-center justify-between text-xs gap-2">
+								<div class="flex items-center gap-2 min-w-0">
+									<div 
+										class="w-6 h-6 rounded-md flex items-center justify-center shrink-0"
+										:class="t.type === 'download' ? 'bg-purple-500/15 text-purple-300' : 'bg-[#F5CE0D]/15 text-[#F5CE0D]'"
+									>
+										<template x-if="t.type === 'download'">
+											@IconDownload("w-3.5 h-3.5")
+										</template>
+										<template x-if="t.type !== 'download'">
+											@IconUploadCloud("w-3.5 h-3.5")
+										</template>
+									</div>
+									<span class="font-bold text-white truncate max-w-[170px]" :title="t.name" x-text="t.name"></span>
+								</div>
 
-			<div class="text-[10px] text-[#86898B] font-mono flex items-start justify-between gap-2 pt-0.5">
-				<span class="shrink-0" x-text="$store.drive.transferDirection === 'download' ? 'Unduhan Jarak Jauh' : 'Enkripsi: AES-256-GCM'">Enkripsi: AES-256-GCM</span>
-				<span class="text-right break-words leading-tight" :class="($store.drive.uploadStatusText && ($store.drive.uploadStatusText.includes('Gagal') || $store.drive.uploadStatusText.includes('Gangguan') || $store.drive.uploadStatusText.includes('Mencoba'))) ? 'text-amber-400 font-bold' : ''" x-text="$store.drive.uploadStatusText">Status: Processing</span>
+								<div class="flex items-center gap-2 shrink-0">
+									<span 
+										class="text-xs font-mono font-bold" 
+										:class="t.status === 'failed' ? 'text-rose-400' : (t.status === 'completed' ? 'text-emerald-400' : 'text-[#F5CE0D]')"
+										x-text="(t.progress || 0) + '%'"
+									></span>
+									<button 
+										type="button"
+										@click="$store.drive.cancelTransfer(t.id); $store.drive.dismissTransfer(t.id)"
+										class="text-[#86898B] hover:text-white p-0.5 rounded hover:bg-white/10 transition-colors"
+										:title="t.status === 'active' ? 'Batalkan Transfer' : 'Hapus dari Daftar'"
+									>
+										@IconX("w-3.5 h-3.5")
+									</button>
+								</div>
+							</div>
+
+							<!-- Progress Bar -->
+							<div class="w-full h-1.5 bg-black/40 rounded-full overflow-hidden border border-[#3F4247]/40">
+								<div 
+									class="h-full transition-all duration-200" 
+									:class="t.status === 'failed' ? 'bg-gradient-to-r from-rose-500 to-amber-600' : (t.status === 'completed' ? 'bg-gradient-to-r from-emerald-500 to-teal-400' : 'bg-gradient-to-r from-[#F5CE0D] to-[#DDAC0D]')"
+									:style="`width: ${t.progress || 0}%`"
+								></div>
+							</div>
+
+							<!-- Transfer Telemetry Footer -->
+							<div class="flex items-center justify-between text-[10px] font-mono text-[#86898B]">
+								<span class="truncate max-w-[160px]" :class="t.status === 'failed' ? 'text-rose-400 font-semibold' : ''" x-text="t.statusText || t.status"></span>
+								<div class="flex items-center gap-2">
+									<span x-show="t.total > 0" x-text="$store.drive.formatBytes(t.loaded || 0) + ' / ' + $store.drive.formatBytes(t.total)"></span>
+									<span x-show="t.speed && t.speed !== 'Idle' && t.status === 'active'" class="text-[#EDEBE8] font-bold" x-text="t.speed"></span>
+								</div>
+							</div>
+						</div>
+					</template>
+				</div>
 			</div>
 		</div>
 
@@ -917,6 +992,14 @@ templ Layout(title string) {
 				sortOrder: 'desc',
 				uploadQueue: [],
 				isProcessingQueue: false,
+				transfers: [],
+				isTransferMinimized: false,
+				draggedFile: null,
+				dragTargetFolderId: null,
+				showMoveModal: false,
+				fileToMove: null,
+				targetMoveFolderId: '',
+				availableMoveFolders: [],
 				files: [],
 				folders: [],
 				selectedFile: null,
@@ -927,6 +1010,8 @@ templ Layout(title string) {
 				currentFolderId: '',
 				currentFolderName: '',
 				isUploading: false,
+				currentUploadTransferId: null,
+				currentUploadXhr: null,
 				uploadFileName: '',
 				uploadProgress: 0,
 				uploadStatusText: 'Status: Processing',
@@ -1056,14 +1141,363 @@ templ Layout(title string) {
 					}
 				},
 
+				getTransferSummaryText() {
+					const active = this.transfers.filter(t => t.status === 'active');
+					if (active.length === 0) {
+						const completed = this.transfers.filter(t => t.status === 'completed');
+						if (completed.length > 0) return `${completed.length} transfer selesai`;
+						return 'Tidak ada transfer aktif';
+					}
+					const activeDownloads = active.filter(t => t.type === 'download').length;
+					const activeUploads = active.filter(t => t.type === 'upload').length;
+					let parts = [];
+					if (activeDownloads > 0) parts.push(`${activeDownloads} unduhan`);
+					if (activeUploads > 0) parts.push(`${activeUploads} unggahan`);
+					const spd = this.currentSpeedText && this.currentSpeedText !== 'Idle' ? ` • ${this.currentSpeedText}` : '';
+					return `${parts.join(', ')} berjalan${spd}`;
+				},
+
+				dismissAllTransfers() {
+					for (const t of this.transfers) {
+						if (t.type === 'download' && (t.status === 'completed' || t.status === 'failed' || t.status === 'cancelled')) {
+							fetch(`/api/downloads/${t.id}/dismiss`, {
+								method: 'DELETE',
+								headers: { 'X-CSRF-Token': this.getCsrfToken() }
+							}).catch(() => {});
+						}
+					}
+					this.transfers = [];
+					this.saveTransfersToStorage();
+				},
+
+				saveTransfersToStorage() {
+					try {
+						const toSave = this.transfers.slice(0, 15).map(t => ({
+							id: t.id,
+							type: t.type,
+							name: t.name,
+							size: t.size,
+							progress: t.progress,
+							loaded: t.loaded,
+							total: t.total,
+							speed: t.speed,
+							eta: t.eta,
+							status: t.status,
+							statusText: t.statusText,
+							error: t.error,
+							folderId: t.folderId,
+							createdAt: t.createdAt
+						}));
+						localStorage.setItem('hornetz_active_transfers', JSON.stringify(toSave));
+					} catch(e) {}
+				},
+
+				loadTransfersFromStorage() {
+					try {
+						const raw = localStorage.getItem('hornetz_active_transfers');
+						if (raw) {
+							const parsed = JSON.parse(raw);
+							if (Array.isArray(parsed)) {
+								this.transfers = parsed;
+							}
+						}
+					} catch(e) {}
+				},
+
+				async syncServerDownloads() {
+					try {
+						const res = await fetch('/api/downloads');
+						if (!res.ok) return;
+						const tasks = await res.json();
+						if (!Array.isArray(tasks)) return;
+
+						let hasChanges = false;
+						for (const task of tasks) {
+							let existing = this.transfers.find(t => t.id === task.id);
+							const taskStatus = task.status === 'completed' ? 'completed' 
+								: (task.status === 'failed' ? 'failed' 
+								: (task.status === 'cancelled' ? 'cancelled' : 'active'));
+
+							if (!existing) {
+								existing = {
+									id: task.id,
+									type: 'download',
+									name: task.filename || 'Unduhan Jarak Jauh',
+									size: task.total || 0,
+									progress: task.progress || 0,
+									loaded: task.downloaded || 0,
+									total: task.total || 0,
+									speed: task.speed_text || 'Menghubungkan...',
+									eta: '-',
+									status: taskStatus,
+									statusText: task.status_text || (taskStatus === 'completed' ? 'Selesai' : 'Mengunduh...'),
+									error: task.error_message || '',
+									folderId: task.folder_id || '',
+									createdAt: Date.now()
+								};
+								this.transfers.unshift(existing);
+								hasChanges = true;
+							} else {
+								if (existing.status !== taskStatus || existing.progress !== task.progress || existing.speed !== task.speed_text) {
+									existing.status = taskStatus;
+									existing.name = task.filename || existing.name;
+									existing.progress = task.progress !== undefined ? task.progress : existing.progress;
+									existing.loaded = task.downloaded !== undefined ? task.downloaded : existing.loaded;
+									existing.total = task.total !== undefined ? task.total : existing.total;
+									existing.speed = task.speed_text || existing.speed;
+									existing.statusText = task.status_text || (taskStatus === 'completed' ? 'Selesai' : existing.statusText);
+									existing.error = task.error_message || existing.error;
+									hasChanges = true;
+								}
+							}
+
+							if (task.status === 'completed' && !existing._refreshed) {
+								existing._refreshed = true;
+								this.fetchFiles();
+								this.fetchFolders();
+								this.fetchStorageStats();
+							}
+						}
+
+						if (hasChanges) {
+							this.saveTransfersToStorage();
+						}
+					} catch(e) {
+						console.warn("Failed to sync server downloads:", e);
+					}
+				},
+
+				async cancelTransfer(id) {
+					const t = this.transfers.find(x => x.id === id);
+					if (!t) return;
+					if (t.type === 'download') {
+						try {
+							await fetch(`/api/downloads/${id}`, {
+								method: 'DELETE',
+								headers: { 'X-CSRF-Token': this.getCsrfToken() }
+							});
+						} catch(e) {}
+						t.status = 'cancelled';
+						t.statusText = 'Dibatalkan';
+					} else if (t.type === 'upload') {
+						t.status = 'cancelled';
+						t.statusText = 'Dibatalkan';
+						this.uploadQueue = this.uploadQueue.filter(f => f.transferId !== id);
+						if (this.currentUploadTransferId === id && this.currentUploadXhr) {
+							try {
+								this.currentUploadXhr.abort();
+							} catch(e) {}
+						}
+					}
+					this.saveTransfersToStorage();
+				},
+
+				async dismissTransfer(id) {
+					const t = this.transfers.find(x => x.id === id);
+					if (t && t.type === 'download') {
+						try {
+							await fetch(`/api/downloads/${id}/dismiss`, {
+								method: 'DELETE',
+								headers: { 'X-CSRF-Token': this.getCsrfToken() }
+							});
+						} catch(e) {}
+					}
+					this.transfers = this.transfers.filter(x => x.id !== id);
+					this.saveTransfersToStorage();
+				},
+
+				clearCompletedTransfers() {
+					const completed = this.transfers.filter(x => x.status === 'completed' || x.status === 'failed' || x.status === 'cancelled');
+					for (const c of completed) {
+						if (c.type === 'download') {
+							fetch(`/api/downloads/${c.id}/dismiss`, {
+								method: 'DELETE',
+								headers: { 'X-CSRF-Token': this.getCsrfToken() }
+							}).catch(() => {});
+						}
+					}
+					this.transfers = this.transfers.filter(x => x.status === 'active' || x.status === 'queued');
+					this.saveTransfersToStorage();
+				},
+
+				updateUrlHistory(push = true) {
+					if (!window.history || !window.history.pushState) return;
+					const params = new URLSearchParams();
+					if (this.activeTab && this.activeTab !== 'storage') {
+						params.set('tab', this.activeTab);
+					}
+					if (this.currentFolderId) {
+						params.set('folder', this.currentFolderId);
+					}
+					const q = params.toString();
+					const newUrl = q ? `/app?${q}` : '/app';
+					const state = {
+						tab: this.activeTab,
+						folderId: this.currentFolderId,
+						folderName: this.currentFolderName,
+						folderHistory: JSON.parse(JSON.stringify(this.folderHistory))
+					};
+					if (push) {
+						window.history.pushState(state, '', newUrl);
+					} else {
+						window.history.replaceState(state, '', newUrl);
+					}
+				},
+
+				handlePopState(e) {
+					if (e && e.state) {
+						const st = e.state;
+						this.activeTab = st.tab || 'storage';
+						this.currentFolderId = st.folderId || '';
+						this.currentFolderName = st.folderName || '';
+						this.folderHistory = st.folderHistory || [];
+						this.fetchFolders();
+						this.fetchFiles();
+						this.dismissModals();
+					} else {
+						const params = new URLSearchParams(window.location.search);
+						this.activeTab = params.get('tab') || 'storage';
+						this.currentFolderId = params.get('folder') || '';
+						this.currentFolderName = '';
+						this.folderHistory = [];
+						this.fetchFolders();
+						this.fetchFiles();
+						this.dismissModals();
+					}
+				},
+
+				handleMouseUp(e) {
+					if (e && e.button === 3) {
+						if (this.currentFolderId || this.folderHistory.length > 0 || this.activeTab !== 'storage') {
+							e.preventDefault();
+							e.stopPropagation();
+							window.history.back();
+						}
+					}
+				},
+
+				handleFileDragStart(event, file) {
+					if (!file) return;
+					this.draggedFile = file;
+					if (event.dataTransfer) {
+						event.dataTransfer.setData('application/x-hornetz-file-id', file.id);
+						event.dataTransfer.effectAllowed = 'move';
+					}
+				},
+
+				handleFileDragEnd(event) {
+					this.draggedFile = null;
+					this.dragTargetFolderId = null;
+				},
+
+				handleFolderDragOver(event, folder) {
+					if (!folder) return;
+					const targetFolder = (folder.id === 'root') ? '' : folder.id;
+					if (this.draggedFile && this.draggedFile.folder_id === targetFolder) {
+						return;
+					}
+					event.preventDefault();
+					if (event.dataTransfer) {
+						event.dataTransfer.dropEffect = 'move';
+					}
+					this.dragTargetFolderId = folder.id;
+				},
+
+				handleFolderDragLeave(event, folder) {
+					if (this.dragTargetFolderId === folder.id) {
+						this.dragTargetFolderId = null;
+					}
+				},
+
+				async handleFolderDrop(event, folder) {
+					event.preventDefault();
+					event.stopPropagation();
+					const targetId = (folder && folder.id !== 'root') ? folder.id : '';
+					const fileId = (event.dataTransfer && event.dataTransfer.getData('application/x-hornetz-file-id')) || (this.draggedFile ? this.draggedFile.id : null);
+					this.draggedFile = null;
+					this.dragTargetFolderId = null;
+
+					if (fileId) {
+						await this.moveFile(fileId, targetId);
+					}
+				},
+
+				openMoveModal(file) {
+					if (!file) return;
+					this.fileToMove = file;
+					this.targetMoveFolderId = file.folder_id || '';
+					this.availableMoveFolders = this.folders.filter(f => f.id !== file.folder_id);
+					this.showMoveModal = true;
+				},
+
+				async executeMoveFile() {
+					if (!this.fileToMove) return;
+					const fileId = this.fileToMove.id;
+					const targetFolderId = this.targetMoveFolderId;
+					this.showMoveModal = false;
+					await this.moveFile(fileId, targetFolderId);
+				},
+
+				async moveFile(fileId, targetFolderId) {
+					try {
+						const res = await fetch(`/api/files/${fileId}/move`, {
+							method: 'PATCH',
+							headers: {
+								'Content-Type': 'application/json',
+								'X-CSRF-Token': this.getCsrfToken()
+							},
+							body: JSON.stringify({ folder_id: targetFolderId })
+						});
+
+						if (res.ok) {
+							await this.fetchFiles();
+							await this.fetchFolders();
+							await this.fetchStorageStats();
+							if (this.selectedFile && this.selectedFile.id === fileId) {
+								this.selectedFile.folder_id = targetFolderId;
+							}
+						} else {
+							const err = await res.json().catch(() => ({}));
+							alert(err.message || 'Gagal memindahkan berkas');
+						}
+					} catch(e) {
+						alert('Gagal memindahkan berkas: ' + e.message);
+					}
+				},
+
 				init() {
+					const params = new URLSearchParams(window.location.search);
+					const initialTab = params.get('tab');
+					const initialFolder = params.get('folder');
+					if (initialTab && ['storage', 'vault', 'recent', 'starred', 'trash'].includes(initialTab)) {
+						this.activeTab = initialTab;
+					}
+					if (initialFolder) {
+						this.currentFolderId = initialFolder;
+					}
+
+					this.updateUrlHistory(false);
+					window.addEventListener('popstate', (e) => this.handlePopState(e));
+
+					this.loadTransfersFromStorage();
+					this.syncServerDownloads();
+
 					this.fetchFolders();
 					this.fetchFiles();
 					this.fetchStorageStats();
+
+					setInterval(() => {
+						const hasActiveDownloads = this.transfers.some(t => t.type === 'download' && t.status === 'active');
+						if (hasActiveDownloads) {
+							this.syncServerDownloads();
+						}
+					}, 2000);
+
 					try {
 						const sse = new EventSource('/sse?topic=nest:user_1');
 						sse.onmessage = () => {
 							this.fetchStorageStats();
+							this.syncServerDownloads();
 						};
 					} catch(e) {}
 				},
@@ -1087,6 +1521,7 @@ templ Layout(title string) {
 					this.showCreateFolderModal = false;
 					this.showPurgeConfirmModal = false;
 					this.showAddDownloadModal = false;
+					this.showMoveModal = false;
 					this.closeFileModal();
 					this.isMobileMenuOpen = false;
 				},
@@ -1148,7 +1583,7 @@ templ Layout(title string) {
 					this.filePreviewLoading = false;
 				},
 
-				setTab(tab) {
+				setTab(tab, pushState = true) {
 					this.isMobileMenuOpen = false;
 					if (tab === 'vault' && !this.isVaultUnlocked) {
 						this.showVaultPasswordModal = true;
@@ -1162,11 +1597,14 @@ templ Layout(title string) {
 					this.folderHistory = [];
 					this.currentFolderId = '';
 					this.currentFolderName = '';
+					if (pushState) {
+						this.updateUrlHistory(true);
+					}
 					this.fetchFolders();
 					this.fetchFiles();
 				},
 
-				openFolder(folder) {
+				openFolder(folder, pushState = true) {
 					if (!folder) return;
 					const existingIdx = this.folderHistory.findIndex(f => f.id === folder.id);
 					if (existingIdx !== -1) {
@@ -1176,24 +1614,33 @@ templ Layout(title string) {
 					}
 					this.currentFolderId = folder.id;
 					this.currentFolderName = folder.name;
+					if (pushState) {
+						this.updateUrlHistory(true);
+					}
 					this.fetchFiles();
 					this.fetchFolders();
 				},
 
-				clearFolder() {
+				clearFolder(pushState = true) {
 					this.folderHistory = [];
 					this.currentFolderId = '';
 					this.currentFolderName = '';
+					if (pushState) {
+						this.updateUrlHistory(true);
+					}
 					this.fetchFiles();
 					this.fetchFolders();
 				},
 
-				navigateToBreadcrumb(index) {
+				navigateToBreadcrumb(index, pushState = true) {
 					if (index < 0 || index >= this.folderHistory.length) return;
 					this.folderHistory = this.folderHistory.slice(0, index + 1);
 					const target = this.folderHistory[index];
 					this.currentFolderId = target.id;
 					this.currentFolderName = target.name;
+					if (pushState) {
+						this.updateUrlHistory(true);
+					}
 					this.fetchFiles();
 					this.fetchFolders();
 				},
@@ -1371,6 +1818,26 @@ templ Layout(title string) {
 					this.transferDirection = 'download';
 					this.currentSpeedText = 'Memproses...';
 
+					const batchTransferItem = {
+						id: 'batch_' + Date.now(),
+						type: 'download',
+						name: 'Antrean Unduhan Massal',
+						size: 0,
+						progress: 15,
+						loaded: 0,
+						total: 0,
+						speed: 'Memproses...',
+						eta: '-',
+						status: 'active',
+						statusText: 'Menginisiasi antrean...',
+						error: '',
+						folderId: targetFolderId,
+						createdAt: Date.now()
+					};
+					this.transfers.unshift(batchTransferItem);
+					this.isTransferMinimized = false;
+					this.saveTransfersToStorage();
+
 					try {
 						const res = await fetch('/api/downloads/batch', {
 							method: 'POST',
@@ -1395,67 +1862,37 @@ templ Layout(title string) {
 							throw new Error("Tidak ada tugas unduhan yang dibuat");
 						}
 
-						const taskIds = tasks.map(t => t.id);
-						let completedCount = 0;
-						let failedCount = 0;
-						let pollCount = 0;
-						const maxPolls = 600;
-
-						while (pollCount < maxPolls && (completedCount + failedCount) < taskIds.length) {
-							await new Promise(r => setTimeout(r, 600));
-							pollCount++;
-							completedCount = 0;
-							failedCount = 0;
-
-							for (const tId of taskIds) {
-								try {
-									const sRes = await fetch(`/api/downloads/${tId}`);
-									if (sRes.ok) {
-										const sData = await sRes.json();
-										if (sData.status === 'completed') completedCount++;
-										else if (sData.status === 'failed' || sData.status === 'cancelled') failedCount++;
-									}
-								} catch (e) {}
-							}
-
-							const done = completedCount + failedCount;
-							this.uploadProgress = Math.min(95, Math.max(15, Math.round((done / taskIds.length) * 100)));
-							this.uploadStatusText = `Status: ${completedCount}/${taskIds.length} selesai (${failedCount} gagal)`;
-							this.currentSpeedText = `${done}/${taskIds.length}`;
+						this.transfers = this.transfers.filter(t => t.id !== batchTransferItem.id);
+						for (const task of tasks) {
+							this.transfers.unshift({
+								id: task.id,
+								type: 'download',
+								name: task.filename || 'Unduhan Berkas',
+								size: task.total || 0,
+								progress: 10,
+								loaded: 0,
+								total: task.total || 0,
+								speed: 'Menghubungkan...',
+								eta: '-',
+								status: 'active',
+								statusText: 'Menghubungkan...',
+								error: '',
+								folderId: targetFolderId,
+								createdAt: Date.now()
+							});
 						}
+						this.saveTransfersToStorage();
+						this.syncServerDownloads();
 
-						await this.fetchFiles();
-						await this.fetchFolders();
-						await this.fetchStorageStats();
-
-						if (failedCount === 0) {
-							this.uploadProgress = 100;
-							this.uploadStatusText = `Status: Semua ${taskIds.length} berkas selesai diunduh`;
-							this.currentSpeedText = 'Selesai';
-							await new Promise(r => setTimeout(r, 1200));
-						} else {
-							this.uploadStatusText = `Status: Selesai (${completedCount} berhasil, ${failedCount} gagal)`;
-							this.currentSpeedText = failedCount > 0 ? 'Gagal sebagian' : 'Selesai';
-							await new Promise(r => setTimeout(r, 4500));
-						}
 					} catch (err) {
 						console.error("Batch download error:", err);
-						this.uploadStatusText = 'Status: Gagal - ' + err.message;
-						this.currentSpeedText = 'Gagal';
-						this.uploadProgress = 0;
-						await new Promise(r => setTimeout(r, 4500));
+						batchTransferItem.status = 'failed';
+						batchTransferItem.statusText = 'Gagal: ' + err.message;
+						batchTransferItem.error = err.message;
+						this.saveTransfersToStorage();
 					} finally {
 						this.isUploading = false;
 						this.isTransferring = false;
-						this.transferDirection = 'idle';
-						this.currentSpeedText = 'Idle';
-						this.uploadProgress = 0;
-						this.uploadStatusText = 'Status: Processing';
-						this.transferBytesLoaded = 0;
-						this.transferBytesTotal = 0;
-						this.transferChunkCurrent = 0;
-						this.transferChunkTotal = 0;
-						this.transferEtaText = '-';
 					}
 				},
 
@@ -1487,18 +1924,34 @@ templ Layout(title string) {
 
 					const previewName = filenameOverride || this.getLinkPreviewName(cleanLink) || 'Berkas Unduhan';
 					this.searchQuery = '';
+
+					const tempId = 'dl_' + Date.now();
+					const transferItem = {
+						id: tempId,
+						type: 'download',
+						name: previewName,
+						size: 0,
+						progress: 10,
+						loaded: 0,
+						total: 0,
+						speed: 'Menghubungkan...',
+						eta: '-',
+						status: 'active',
+						statusText: 'Menginisiasi Unduhan...',
+						error: '',
+						folderId: targetFolderId,
+						createdAt: Date.now()
+					};
+					this.transfers.unshift(transferItem);
+					this.isTransferMinimized = false;
+					this.saveTransfersToStorage();
+
 					this.uploadFileName = previewName;
 					this.uploadProgress = 10;
 					this.uploadStatusText = 'Status: Menginisiasi Unduhan...';
 					this.isUploading = true;
 					this.isTransferring = true;
 					this.transferDirection = 'download';
-					this.transferBytesLoaded = 0;
-					this.transferBytesTotal = 0;
-					this.transferChunkCurrent = 0;
-					this.transferChunkTotal = 0;
-					this.transferEtaText = '-';
-					this.currentSpeedText = 'Menghubungkan...';
 
 					try {
 						const res = await fetch('/api/downloads', {
@@ -1520,80 +1973,26 @@ templ Layout(title string) {
 						}
 
 						const task = await res.json();
-						const taskId = task.id;
+						transferItem.id = task.id;
 						if (task.filename) {
+							transferItem.name = task.filename;
 							this.uploadFileName = task.filename;
 						}
+						this.saveTransfersToStorage();
 
-						const pollInterval = 400;
-						const maxPolls = 600;
-						let pollCount = 0;
+						// Synchronize and start tracking
+						this.syncServerDownloads();
 
-						while (pollCount < maxPolls) {
-							await new Promise(r => setTimeout(r, pollInterval));
-							pollCount++;
-
-							try {
-								const sRes = await fetch(`/api/downloads/${taskId}`);
-								if (!sRes.ok) continue;
-								const sData = await sRes.json();
-
-								if (sData.filename) {
-									this.uploadFileName = sData.filename;
-								}
-								if (typeof sData.progress === 'number') {
-									this.uploadProgress = Math.max(this.uploadProgress, sData.progress);
-								}
-								if (typeof sData.downloaded === 'number') {
-									this.transferBytesLoaded = sData.downloaded;
-								}
-								if (typeof sData.total === 'number') {
-									this.transferBytesTotal = sData.total;
-								}
-								if (sData.speed_text) {
-									this.currentSpeedText = sData.speed_text;
-								}
-								if (sData.status_text) {
-									this.uploadStatusText = `Status: ${sData.status_text}`;
-								}
-
-								if (sData.status === 'completed') {
-									this.uploadProgress = 100;
-									this.uploadStatusText = 'Status: Selesai';
-									this.currentSpeedText = 'Selesai';
-									await this.fetchFiles();
-									await this.fetchFolders();
-									await this.fetchStorageStats();
-									await new Promise(r => setTimeout(r, 800));
-									break;
-								}
-
-								if (sData.status === 'failed' || sData.status === 'cancelled') {
-									throw new Error(sData.error_message || 'Unduhan gagal atau dibatalkan');
-								}
-							} catch (pollErr) {
-								throw pollErr;
-							}
-						}
 					} catch (err) {
 						console.error("Link download error:", err);
+						transferItem.status = 'failed';
+						transferItem.statusText = 'Gagal: ' + err.message;
+						transferItem.error = err.message;
 						this.uploadStatusText = 'Status: Gagal - ' + err.message;
-						this.currentSpeedText = 'Gagal';
-						this.uploadProgress = 0;
-						// Retain failure status on overlay for user visibility before dismissing
-						await new Promise(r => setTimeout(r, 4500));
+						this.saveTransfersToStorage();
 					} finally {
 						this.isUploading = false;
 						this.isTransferring = false;
-						this.transferDirection = 'idle';
-						this.currentSpeedText = 'Idle';
-						this.uploadProgress = 0;
-						this.uploadStatusText = 'Status: Processing';
-						this.transferBytesLoaded = 0;
-						this.transferBytesTotal = 0;
-						this.transferChunkCurrent = 0;
-						this.transferChunkTotal = 0;
-						this.transferEtaText = '-';
 					}
 				},
 
@@ -1834,12 +2233,42 @@ templ Layout(title string) {
 					const dt = event.dataTransfer;
 					if (!dt) return;
 
+					// If dragging internal file, skip OS upload
+					if (this.draggedFile || (dt.types && Array.from(dt.types).includes('application/x-hornetz-file-id'))) {
+						this.draggedFile = null;
+						this.dragTargetFolderId = null;
+						return;
+					}
+
 					let targetFolderId = this.currentFolderId;
 					if (!targetFolderId) {
 						targetFolderId = (this.activeTab === 'vault') ? 'f2' : '';
 					}
 
-					// 1. Process items using FileSystem Entry API if supported
+				queueFileUpload(file, targetFolderId) {
+					file.targetFolderId = targetFolderId;
+					const tId = 'up-' + Date.now() + '-' + Math.random().toString(36).substr(2, 6);
+					file.transferId = tId;
+					this.transfers.unshift({
+						id: tId,
+						name: file.name,
+						type: 'upload',
+						size: file.size,
+						progress: 0,
+						loaded: 0,
+						total: file.size,
+						speed: '-',
+						eta: '-',
+						status: 'queued',
+						statusText: 'Dalam antrean',
+						error: '',
+						folderId: targetFolderId,
+						createdAt: Date.now()
+					});
+					this.uploadQueue.push(file);
+				},
+
+				// 1. Process items using FileSystem Entry API if supported
 					if (dt.items && dt.items.length > 0 && typeof dt.items[0].webkitGetAsEntry === 'function') {
 						const entries = [];
 						for (let i = 0; i < dt.items.length; i++) {
@@ -1854,8 +2283,10 @@ templ Layout(title string) {
 
 						if (filesToUpload.length > 0) {
 							for (const file of filesToUpload) {
-								this.uploadQueue.push(file);
+								this.queueFileUpload(file, file.targetFolderId || targetFolderId);
 							}
+							this.isTransferMinimized = false;
+							this.saveTransfersToStorage();
 							this.processUploadQueue();
 							return;
 						}
@@ -1870,9 +2301,10 @@ templ Layout(title string) {
 								alert(`"${file.name}" terdeteksi sebagai folder. Silakan gunakan tombol "Folder" untuk mengunggah folder beserta isinya.`);
 								continue;
 							}
-							file.targetFolderId = targetFolderId;
-							this.uploadQueue.push(file);
+							this.queueFileUpload(file, targetFolderId);
 						}
+						this.isTransferMinimized = false;
+						this.saveTransfersToStorage();
 						this.processUploadQueue();
 					}
 				},
@@ -1885,10 +2317,10 @@ templ Layout(title string) {
 					}
 					if (files && files.length > 0) {
 						for (let i = 0; i < files.length; i++) {
-							const file = files[i];
-							file.targetFolderId = targetFolderId;
-							this.uploadQueue.push(file);
+							this.queueFileUpload(files[i], targetFolderId);
 						}
+						this.isTransferMinimized = false;
+						this.saveTransfersToStorage();
 						this.processUploadQueue();
 					}
 					if (event.target) {
@@ -1930,10 +2362,11 @@ templ Layout(title string) {
 							}
 						}
 
-						file.targetFolderId = currentParentId;
-						this.uploadQueue.push(file);
+						this.queueFileUpload(file, currentParentId);
 					}
 
+					this.isTransferMinimized = false;
+					this.saveTransfersToStorage();
 					this.processUploadQueue();
 					if (event.target) event.target.value = "";
 				},
@@ -1945,9 +2378,15 @@ templ Layout(title string) {
 					try {
 						while (this.uploadQueue.length > 0) {
 							const file = this.uploadQueue.shift();
+							if (file && file.transferId) {
+								const t = this.transfers.find(x => x.id === file.transferId);
+								if (t && t.status === 'cancelled') {
+									continue;
+								}
+							}
 							await this.executeUpload(file);
 						}
-						await new Promise(r => setTimeout(r, 1000));
+						await new Promise(r => setTimeout(r, 600));
 					} finally {
 						this.stopTransferWatchdog();
 						this.transferDirection = 'idle';
@@ -1982,6 +2421,44 @@ templ Layout(title string) {
 				async executeUpload(file) {
 					if (!file) return;
 
+					let targetFolderId = (file.targetFolderId !== undefined) ? file.targetFolderId : this.currentFolderId;
+					if (!targetFolderId) {
+						targetFolderId = (this.activeTab === 'vault') ? 'f2' : '';
+					}
+
+					let uploadTransfer = null;
+					if (file.transferId) {
+						uploadTransfer = this.transfers.find(t => t.id === file.transferId);
+					}
+					if (!uploadTransfer) {
+						const tId = file.transferId || ('up-' + Date.now() + '-' + Math.random().toString(36).substr(2, 6));
+						uploadTransfer = {
+							id: tId,
+							name: file.name,
+							type: 'upload',
+							size: file.size,
+							progress: 5,
+							loaded: 0,
+							total: file.size,
+							speed: 'Menghubungkan...',
+							eta: '-',
+							status: 'active',
+							statusText: 'Inisiasi Sesi...',
+							error: '',
+							folderId: targetFolderId,
+							createdAt: Date.now()
+						};
+						this.transfers.unshift(uploadTransfer);
+					} else {
+						uploadTransfer.status = 'active';
+						uploadTransfer.statusText = 'Inisiasi Sesi...';
+						uploadTransfer.progress = 5;
+						uploadTransfer.speed = 'Menghubungkan...';
+					}
+					this.currentUploadTransferId = uploadTransfer.id;
+					this.isTransferMinimized = false;
+					this.saveTransfersToStorage();
+
 					this.uploadFileName = file.name;
 					this.uploadProgress = 5;
 					this.uploadStatusText = 'Status: Inisiasi Sesi';
@@ -2000,12 +2477,8 @@ templ Layout(title string) {
 					let clientCasHash = "";
 					if (file.size <= 100 * 1024 * 1024) {
 						this.uploadStatusText = 'Status: Menghitung SHA-256';
+						uploadTransfer.statusText = 'Menghitung SHA-256...';
 						clientCasHash = await this.computeSha256(file) || "";
-					}
-
-					let targetFolderId = (file.targetFolderId !== undefined) ? file.targetFolderId : this.currentFolderId;
-					if (!targetFolderId) {
-						targetFolderId = (this.activeTab === 'vault') ? 'f2' : '';
 					}
 
 					try {
@@ -2092,6 +2565,13 @@ templ Layout(title string) {
 										this.transferBytesLoaded = file.size;
 										this.uploadStatusText = 'Status: Instan (CAS)';
 										this.currentSpeedText = 'Instan (CAS)';
+										uploadTransfer.progress = 100;
+										uploadTransfer.loaded = file.size;
+										uploadTransfer.status = 'completed';
+										uploadTransfer.statusText = 'Instan (CAS)';
+										uploadTransfer.speed = 'Instan (CAS)';
+										uploadTransfer.eta = '0s';
+										this.saveTransfersToStorage();
 										await new Promise(r => setTimeout(r, 600));
 										return;
 									}
@@ -2127,6 +2607,13 @@ templ Layout(title string) {
 							this.transferBytesLoaded = file.size;
 							this.uploadStatusText = 'Status: Instan (CAS)';
 							this.currentSpeedText = 'Instan (CAS)';
+							uploadTransfer.progress = 100;
+							uploadTransfer.loaded = file.size;
+							uploadTransfer.status = 'completed';
+							uploadTransfer.statusText = 'Instan (CAS)';
+							uploadTransfer.speed = 'Instan (CAS)';
+							uploadTransfer.eta = '0s';
+							this.saveTransfersToStorage();
 							await new Promise(r => setTimeout(r, 600));
 							return;
 						}
@@ -2154,6 +2641,9 @@ templ Layout(title string) {
 
 						let zeroByteDone = false;
 						while (offset < totalSize || (totalSize === 0 && !zeroByteDone)) {
+							if (uploadTransfer.status === 'cancelled') {
+								break;
+							}
 							const end = Math.min(offset + chunkSize, totalSize);
 							const chunk = file.slice(offset, end);
 							const currentOffset = offset;
@@ -2164,6 +2654,9 @@ templ Layout(title string) {
 							this.uploadProgress = currentProgressPercent;
 							const currentDisplayPct = Math.round((offset / Math.max(totalSize, 1)) * 100);
 							this.uploadStatusText = `Status: Mengunggah chunk ${currentChunkIndex}/${this.transferChunkTotal} (${currentDisplayPct}%)`;
+							uploadTransfer.progress = currentProgressPercent;
+							uploadTransfer.loaded = offset;
+							uploadTransfer.statusText = `Mengunggah chunk ${currentChunkIndex}/${this.transferChunkTotal} (${currentDisplayPct}%)`;
 
 							let chunkSuccess = false;
 							let offsetResynced = false;
@@ -2208,6 +2701,7 @@ templ Layout(title string) {
 
 									await new Promise((resolve, reject) => {
 										const xhr = new XMLHttpRequest();
+										this.currentUploadXhr = xhr;
 										xhr.open("PUT", `/upload/${sessionId}`);
 										xhr.setRequestHeader("X-CSRF-Token", this.getCsrfToken());
 										xhr.setRequestHeader("Content-Type", "application/octet-stream");
@@ -2220,14 +2714,24 @@ templ Layout(title string) {
 												this.recordTransferProgress(Math.min(loadedTotal, totalSize));
 												const streamPercent = 5 + Math.round((loadedTotal / Math.max(totalSize, 1)) * 90);
 												this.uploadProgress = Math.max(this.uploadProgress, Math.min(streamPercent, 95));
+												uploadTransfer.progress = this.uploadProgress;
+												uploadTransfer.loaded = Math.min(loadedTotal, totalSize);
+												uploadTransfer.speed = this.currentSpeedText;
+												uploadTransfer.eta = this.transferEtaText;
+												uploadTransfer.statusText = `Mengunggah chunk ${currentChunkIndex}/${this.transferChunkTotal}`;
 											}
 										};
 
 										xhr.onload = () => {
+											this.currentUploadXhr = null;
 											if (xhr.status >= 200 && xhr.status < 300) {
 												this.recordTransferProgress(end);
 												const chunkDonePct = Math.round((end / Math.max(totalSize, 1)) * 100);
 												this.uploadStatusText = `Status: Mengunggah chunk ${currentChunkIndex}/${this.transferChunkTotal} (${chunkDonePct}%)`;
+												uploadTransfer.progress = this.uploadProgress;
+												uploadTransfer.loaded = end;
+												uploadTransfer.speed = this.currentSpeedText;
+												uploadTransfer.eta = this.transferEtaText;
 												resolve(xhr.response);
 											} else if (xhr.status === 409) {
 												let expectedOffset = null;
@@ -2262,8 +2766,8 @@ templ Layout(title string) {
 											}
 										};
 
-										xhr.onerror = () => reject(new Error("Network transfer error during upload"));
-										xhr.ontimeout = () => reject(new Error("Network timeout during upload"));
+										xhr.onerror = () => { this.currentUploadXhr = null; reject(new Error("Network transfer error during upload")); };
+										xhr.ontimeout = () => { this.currentUploadXhr = null; reject(new Error("Network timeout during upload")); };
 										xhr.send(chunk);
 									});
 
@@ -2302,6 +2806,14 @@ templ Layout(title string) {
 						this.transferEtaText = '0s';
 						this.uploadStatusText = 'Status: Selesai';
 
+						uploadTransfer.progress = 100;
+						uploadTransfer.loaded = file.size;
+						uploadTransfer.status = 'completed';
+						uploadTransfer.statusText = 'Selesai';
+						uploadTransfer.speed = this.currentSpeedText;
+						uploadTransfer.eta = '0s';
+						this.saveTransfersToStorage();
+
 						await this.fetchFiles();
 						await this.fetchFolders();
 						await this.fetchStorageStats();
@@ -2319,7 +2831,20 @@ templ Layout(title string) {
 						this.currentSpeedText = 'Gagal';
 						this.uploadStatusText = 'Status: Gagal';
 						this.transferEtaText = '-';
-						alert("Gagal mengunggah berkas: " + err.message);
+						if (uploadTransfer && uploadTransfer.status === 'cancelled') {
+							// Cancelled by user, ignore
+						} else {
+							if (uploadTransfer) {
+								uploadTransfer.status = 'failed';
+								uploadTransfer.statusText = 'Gagal';
+								uploadTransfer.error = err.message || 'Gagal mengunggah berkas';
+								this.saveTransfersToStorage();
+							}
+							alert("Gagal mengunggah berkas: " + err.message);
+						}
+					} finally {
+						this.currentUploadTransferId = null;
+						this.currentUploadXhr = null;
 					}
 				},
 

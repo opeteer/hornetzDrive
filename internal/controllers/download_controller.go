@@ -186,7 +186,17 @@ func (dc *DownloadController) GetDownloadStatus(c *echo.Context) error {
 	return c.JSON(http.StatusOK, task)
 }
 
-// CancelDownload cancels an in-progress download task.
+// ListDownloads returns all active and recent download tasks for the current user.
+func (dc *DownloadController) ListDownloads(c *echo.Context) error {
+	userID := int(auth.GetUserID(c))
+	tasks := dc.Manager.ListTasks(userID)
+	if tasks == nil {
+		tasks = []*download.DownloadTask{}
+	}
+	return c.JSON(http.StatusOK, tasks)
+}
+
+// CancelDownload cancels an in-progress download task, or dismisses it if already finished.
 func (dc *DownloadController) CancelDownload(c *echo.Context) error {
 	id := c.Param("id")
 	task, found := dc.Manager.GetTask(id)
@@ -196,12 +206,39 @@ func (dc *DownloadController) CancelDownload(c *echo.Context) error {
 	if uid, ok := c.Get("user_id").(int); ok && uid > 0 && task.OwnerID != 0 && task.OwnerID != uid {
 		return echo.NewHTTPError(http.StatusForbidden, "forbidden: cannot cancel another user's download task")
 	}
+	// If task is completed, failed, or cancelled, or if dismiss flag is set, dismiss it
+	if c.QueryParam("dismiss") == "true" || task.Status == download.StatusCompleted || task.Status == download.StatusFailed || task.Status == download.StatusCancelled {
+		dc.Manager.DismissTask(id, task.OwnerID)
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"status":  "dismissed",
+			"message": "download task dismissed",
+		})
+	}
 	if !dc.Manager.CancelTask(id) {
 		return echo.NewHTTPError(http.StatusBadRequest, "download task cannot be cancelled (may be already completed)")
 	}
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"status":  "cancelled",
 		"message": "download cancelled successfully",
+	})
+}
+
+// DismissDownload removes a finished download task from the manager.
+func (dc *DownloadController) DismissDownload(c *echo.Context) error {
+	id := c.Param("id")
+	task, found := dc.Manager.GetTask(id)
+	if !found {
+		return echo.NewHTTPError(http.StatusNotFound, "download task not found")
+	}
+	if uid, ok := c.Get("user_id").(int); ok && uid > 0 && task.OwnerID != 0 && task.OwnerID != uid {
+		return echo.NewHTTPError(http.StatusForbidden, "forbidden: cannot dismiss another user's download task")
+	}
+	if !dc.Manager.DismissTask(id, task.OwnerID) {
+		return echo.NewHTTPError(http.StatusBadRequest, "download task cannot be dismissed while still active")
+	}
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"status":  "dismissed",
+		"message": "download task dismissed",
 	})
 }
 

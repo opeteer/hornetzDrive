@@ -3,6 +3,7 @@ package controllers
 import (
 	"archive/zip"
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -1642,6 +1643,109 @@ func TestGetFiles_RootFolder_DoesNotContainSubfolderFiles(t *testing.T) {
 	json.Unmarshal(rec.Body.Bytes(), &files)
 	if len(files) != 1 || files[0].ID != "file_root" {
 		t.Fatalf("Expected ONLY root file (file_root) in root file list, but got %d files: %+v", len(files), files)
+	}
+}
+
+func TestFileController_MoveFile(t *testing.T) {
+	e := echo.New()
+	dbEngine, err := data.NewDBEngine("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to create memory DB: %v", err)
+	}
+	defer dbEngine.Close()
+
+	_, err = dbEngine.SQL.Exec(`
+		CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, salt BLOB NOT NULL, encrypted_vault_key BLOB NOT NULL);
+		CREATE TABLE folders (id TEXT PRIMARY KEY, owner_id INTEGER NOT NULL, parent_id TEXT, name TEXT NOT NULL);
+		CREATE TABLE files (id TEXT PRIMARY KEY, owner_id INTEGER NOT NULL, folder_id TEXT, name TEXT NOT NULL, mime_type TEXT NOT NULL, size BIGINT NOT NULL, cas_hash TEXT NOT NULL, is_starred BOOLEAN DEFAULT FALSE, is_deleted BOOLEAN DEFAULT FALSE, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+		INSERT INTO users (id, email, password_hash, salt, encrypted_vault_key) VALUES (1, 'user@test.io', 'pass', 'salt', 'key');
+		INSERT INTO folders (id, owner_id, parent_id, name) VALUES 
+			('f1', 1, NULL, 'Folder A'),
+			('f2_normal', 1, NULL, 'Folder B');
+		INSERT INTO files (id, owner_id, folder_id, name, mime_type, size, cas_hash) VALUES 
+			('file_1', 1, NULL, 'document.pdf', 'application/pdf', 100, 'hash1'),
+			('file_2', 1, 'f1', 'photo.png', 'image/png', 200, 'hash2'),
+			('file_conflict', 1, 'f2_normal', 'document.pdf', 'application/pdf', 100, 'hash3');
+	`)
+	if err != nil {
+		t.Fatalf("DB setup failed: %v", err)
+	}
+
+	casEngine, _ := storage.NewCASEngine(t.TempDir())
+	fileCtrl := &FileController{DB: dbEngine, CAS: casEngine}
+
+	authMiddleware := func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c *echo.Context) error {
+			c.Set("user_id", int64(1))
+			return next(c)
+		}
+	}
+	e.PATCH("/api/files/:id/move", fileCtrl.MoveFile, authMiddleware)
+	e.POST("/api/files/move-batch", fileCtrl.MoveFilesBatch, authMiddleware)
+
+	// 1. Move file_1 from root to f1
+	movePayload, _ := json.Marshal(map[string]string{"folder_id": "f1"})
+	req1 := httptest.NewRequest(http.MethodPatch, "/api/files/file_1/move", bytes.NewReader(movePayload))
+	req1.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec1 := httptest.NewRecorder()
+	e.ServeHTTP(rec1, req1)
+
+	if rec1.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK for move, got %d: %s", rec1.Code, rec1.Body.String())
+	}
+
+	// Verify file_1 is now in f1
+	var folderID sql.NullString
+	_ = dbEngine.SQL.QueryRow("SELECT folder_id FROM files WHERE id = 'file_1'").Scan(&folderID)
+	if !folderID.Valid || folderID.String != "f1" {
+		t.Fatalf("Expected file_1 to be in f1, got %v", folderID)
+	}
+
+	// 2. Move file_1 from f1 to non-existent folder -> 400 Bad Request
+	badPayload, _ := json.Marshal(map[string]string{"folder_id": "non_existent"})
+	reqBad := httptest.NewRequest(http.MethodPatch, "/api/files/file_1/move", bytes.NewReader(badPayload))
+	reqBad.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	recBad := httptest.NewRecorder()
+	e.ServeHTTP(recBad, reqBad)
+	if recBad.Code != http.StatusBadRequest {
+		t.Fatalf("Expected 400 Bad Request for non-existent target folder, got %d", recBad.Code)
+	}
+
+	// 3. Move file_1 to f2_normal where 'document.pdf' already exists -> 409 Conflict
+	conflictPayload, _ := json.Marshal(map[string]string{"folder_id": "f2_normal"})
+	reqConf := httptest.NewRequest(http.MethodPatch, "/api/files/file_1/move", bytes.NewReader(conflictPayload))
+	reqConf.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	recConf := httptest.NewRecorder()
+	e.ServeHTTP(recConf, reqConf)
+	if recConf.Code != http.StatusConflict {
+		t.Fatalf("Expected 409 Conflict for duplicate filename, got %d", recConf.Code)
+	}
+
+	// 4. Move file_1 back to root using "root"
+	rootPayload, _ := json.Marshal(map[string]string{"folder_id": "root"})
+	reqRoot := httptest.NewRequest(http.MethodPatch, "/api/files/file_1/move", bytes.NewReader(rootPayload))
+	reqRoot.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	recRoot := httptest.NewRecorder()
+	e.ServeHTTP(recRoot, reqRoot)
+	if recRoot.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK for move to root, got %d: %s", recRoot.Code, recRoot.Body.String())
+	}
+	_ = dbEngine.SQL.QueryRow("SELECT folder_id FROM files WHERE id = 'file_1'").Scan(&folderID)
+	if folderID.Valid && folderID.String != "" {
+		t.Fatalf("Expected file_1 to be in root (NULL or empty), got %v", folderID.String)
+	}
+
+	// 5. Batch move
+	batchPayload, _ := json.Marshal(map[string]interface{}{
+		"file_ids":  []string{"file_1", "file_2"},
+		"folder_id": "f2_normal",
+	})
+	reqBatch := httptest.NewRequest(http.MethodPost, "/api/files/move-batch", bytes.NewReader(batchPayload))
+	reqBatch.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	recBatch := httptest.NewRecorder()
+	e.ServeHTTP(recBatch, reqBatch)
+	if recBatch.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK for batch move, got %d", recBatch.Code)
 	}
 }
 

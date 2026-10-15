@@ -1959,4 +1959,307 @@ func (fc *FileController) RenameFile(c *echo.Context) error {
 	})
 }
 
+// MoveFile handles moving a single file to a target folder (or root if empty/"root").
+func (fc *FileController) MoveFile(c *echo.Context) error {
+	id := c.Param("id")
+	userID := auth.GetUserID(c)
+
+	var req struct {
+		FolderID string `json:"folder_id"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid request body")
+	}
+
+	targetFolderID := strings.TrimSpace(req.FolderID)
+	if targetFolderID == "root" {
+		targetFolderID = ""
+	}
+
+	// 1. Fetch current file
+	var currentFolderID sql.NullString
+	var fileName, casHash, mimeType string
+	var size int64
+	query := fc.DB.Rebind("SELECT folder_id, name, cas_hash, mime_type, size FROM files WHERE id = ? AND owner_id = ? AND is_deleted = FALSE")
+	err := fc.DB.SQL.QueryRow(query, id, userID).Scan(&currentFolderID, &fileName, &casHash, &mimeType, &size)
+	if err == sql.ErrNoRows {
+		return echo.NewHTTPError(http.StatusNotFound, "File not found")
+	} else if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "Database error: "+err.Error())
+	}
+
+	srcFolderID := ""
+	if currentFolderID.Valid {
+		srcFolderID = currentFolderID.String
+	}
+
+	// If source and target are the same, no-op success
+	if srcFolderID == targetFolderID {
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"status":    "file_moved",
+			"id":        id,
+			"name":      fileName,
+			"folder_id": targetFolderID,
+		})
+	}
+
+	// 2. Validate target folder if non-empty
+	if targetFolderID != "" {
+		var folderExists bool
+		err = fc.DB.SQL.QueryRow(fc.DB.Rebind("SELECT EXISTS(SELECT 1 FROM folders WHERE id = ? AND owner_id = ?)"), targetFolderID, userID).Scan(&folderExists)
+		if err != nil || !folderExists {
+			return echo.NewHTTPError(http.StatusBadRequest, "Target folder does not exist")
+		}
+	}
+
+	// 3. Check for filename collision in target folder
+	var collision bool
+	if targetFolderID != "" {
+		_ = fc.DB.SQL.QueryRow(fc.DB.Rebind("SELECT EXISTS(SELECT 1 FROM files WHERE folder_id = ? AND name = ? AND id != ? AND owner_id = ? AND is_deleted = FALSE)"), targetFolderID, fileName, id, userID).Scan(&collision)
+	} else {
+		_ = fc.DB.SQL.QueryRow(fc.DB.Rebind("SELECT EXISTS(SELECT 1 FROM files WHERE (folder_id IS NULL OR folder_id = '') AND name = ? AND id != ? AND owner_id = ? AND is_deleted = FALSE)"), fileName, id, userID).Scan(&collision)
+	}
+	if collision {
+		return echo.NewHTTPError(http.StatusConflict, fmt.Sprintf("A file named '%s' already exists in the target folder", fileName))
+	}
+
+	// 4. Handle encryption domain crossing (Standard <-> Vault)
+	isSrcVault := fc.IsVaultFolder(srcFolderID)
+	isDstVault := fc.IsVaultFolder(targetFolderID)
+
+	newCasHash := casHash
+	if isSrcVault != isDstVault {
+		if !fc.isVaultUnlocked(c) {
+			return echo.NewHTTPError(http.StatusUnauthorized, "Vault locked. Master password required to move files to/from vault.")
+		}
+
+		var vaultKey []byte
+		if cookie, err := c.Cookie("swarm_session"); err == nil && cookie != nil {
+			if key, exists := auth.GlobalSessionStore.GetKey(cookie.Value); exists {
+				vaultKey = key
+			}
+		}
+		if len(vaultKey) == 0 {
+			return echo.NewHTTPError(http.StatusUnauthorized, "Vault key not found in active session.")
+		}
+
+		var srcKey, dstKey []byte
+		if isSrcVault {
+			srcKey = vaultKey
+			dstKey = crypto.GetStandardStorageKey()
+		} else {
+			srcKey = crypto.GetStandardStorageKey()
+			dstKey = vaultKey
+		}
+
+		casPath := fc.CAS.Path(casHash)
+		srcFile, err := os.Open(casPath)
+		if err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, "Failed to read file from storage: "+err.Error())
+		}
+		defer srcFile.Close()
+
+		decStream, err := crypto.NewDecryptStream(srcFile, srcKey)
+		if err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, "Failed to decrypt file for re-encryption: "+err.Error())
+		}
+
+		tmpReEnc := filepath.Join(os.TempDir(), fmt.Sprintf("reenc_%s_%d.tmp", id, time.Now().UnixNano()))
+		tmpF, err := os.OpenFile(tmpReEnc, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0600)
+		if err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, "Failed to create temp file: "+err.Error())
+		}
+
+		encStream, err := crypto.NewEncryptStream(tmpF, dstKey)
+		if err != nil {
+			tmpF.Close()
+			os.Remove(tmpReEnc)
+			return echo.NewHTTPError(http.StatusInternalServerError, "Failed to create encrypt stream: "+err.Error())
+		}
+
+		if _, err := io.Copy(encStream, decStream); err != nil {
+			tmpF.Close()
+			os.Remove(tmpReEnc)
+			return echo.NewHTTPError(http.StatusInternalServerError, "Failed to re-encrypt payload: "+err.Error())
+		}
+		tmpF.Close()
+
+		addedCasHash, _, err := fc.CAS.MoveToCASWithStatus(tmpReEnc)
+		if err != nil {
+			os.Remove(tmpReEnc)
+			return echo.NewHTTPError(http.StatusInternalServerError, "Failed to store re-encrypted payload in CAS: "+err.Error())
+		}
+		newCasHash = addedCasHash
+	}
+
+	// 5. Update DB
+	var dbTargetFolder interface{} = nil
+	if targetFolderID != "" {
+		dbTargetFolder = targetFolderID
+	}
+
+	updateQuery := fc.DB.Rebind("UPDATE files SET folder_id = ?, cas_hash = ? WHERE id = ? AND owner_id = ?")
+	_, err = fc.DB.SQL.Exec(updateQuery, dbTargetFolder, newCasHash, id, userID)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to move file: "+err.Error())
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"status":    "file_moved",
+		"id":        id,
+		"name":      fileName,
+		"folder_id": targetFolderID,
+		"cas_hash":  newCasHash,
+	})
+}
+
+// MoveFilesBatch moves multiple files to a target folder in one call.
+func (fc *FileController) MoveFilesBatch(c *echo.Context) error {
+	userID := auth.GetUserID(c)
+
+	var req struct {
+		FileIDs  []string `json:"file_ids"`
+		FolderID string   `json:"folder_id"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid request body")
+	}
+
+	if len(req.FileIDs) == 0 {
+		return echo.NewHTTPError(http.StatusBadRequest, "No file IDs provided")
+	}
+
+	targetFolderID := strings.TrimSpace(req.FolderID)
+	if targetFolderID == "root" {
+		targetFolderID = ""
+	}
+
+	if targetFolderID != "" {
+		var folderExists bool
+		err := fc.DB.SQL.QueryRow(fc.DB.Rebind("SELECT EXISTS(SELECT 1 FROM folders WHERE id = ? AND owner_id = ?)"), targetFolderID, userID).Scan(&folderExists)
+		if err != nil || !folderExists {
+			return echo.NewHTTPError(http.StatusBadRequest, "Target folder does not exist")
+		}
+	}
+
+	var movedCount int
+	var errorsList []string
+
+	for _, fileID := range req.FileIDs {
+		var currentFolderID sql.NullString
+		var fileName, casHash string
+		err := fc.DB.SQL.QueryRow(fc.DB.Rebind("SELECT folder_id, name, cas_hash FROM files WHERE id = ? AND owner_id = ? AND is_deleted = FALSE"), fileID, userID).Scan(&currentFolderID, &fileName, &casHash)
+		if err != nil {
+			errorsList = append(errorsList, fmt.Sprintf("%s: not found", fileID))
+			continue
+		}
+
+		srcFolderID := ""
+		if currentFolderID.Valid {
+			srcFolderID = currentFolderID.String
+		}
+		if srcFolderID == targetFolderID {
+			movedCount++
+			continue
+		}
+
+		var collision bool
+		if targetFolderID != "" {
+			_ = fc.DB.SQL.QueryRow(fc.DB.Rebind("SELECT EXISTS(SELECT 1 FROM files WHERE folder_id = ? AND name = ? AND id != ? AND owner_id = ? AND is_deleted = FALSE)"), targetFolderID, fileName, fileID, userID).Scan(&collision)
+		} else {
+			_ = fc.DB.SQL.QueryRow(fc.DB.Rebind("SELECT EXISTS(SELECT 1 FROM files WHERE (folder_id IS NULL OR folder_id = '') AND name = ? AND id != ? AND owner_id = ? AND is_deleted = FALSE)"), fileName, fileID, userID).Scan(&collision)
+		}
+		if collision {
+			errorsList = append(errorsList, fmt.Sprintf("%s: name conflict with '%s'", fileID, fileName))
+			continue
+		}
+
+		isSrcVault := fc.IsVaultFolder(srcFolderID)
+		isDstVault := fc.IsVaultFolder(targetFolderID)
+		newCasHash := casHash
+
+		if isSrcVault != isDstVault {
+			if !fc.isVaultUnlocked(c) {
+				return echo.NewHTTPError(http.StatusUnauthorized, "Vault locked. Master password required.")
+			}
+			var vaultKey []byte
+			if cookie, err := c.Cookie("swarm_session"); err == nil && cookie != nil {
+				if key, exists := auth.GlobalSessionStore.GetKey(cookie.Value); exists {
+					vaultKey = key
+				}
+			}
+			var srcKey, dstKey []byte
+			if isSrcVault {
+				srcKey = vaultKey
+				dstKey = crypto.GetStandardStorageKey()
+			} else {
+				srcKey = crypto.GetStandardStorageKey()
+				dstKey = vaultKey
+			}
+
+			casPath := fc.CAS.Path(casHash)
+			srcFile, err := os.Open(casPath)
+			if err != nil {
+				errorsList = append(errorsList, fmt.Sprintf("%s: cannot open file", fileID))
+				continue
+			}
+			decStream, err := crypto.NewDecryptStream(srcFile, srcKey)
+			if err != nil {
+				srcFile.Close()
+				errorsList = append(errorsList, fmt.Sprintf("%s: decrypt error", fileID))
+				continue
+			}
+			tmpReEnc := filepath.Join(os.TempDir(), fmt.Sprintf("reenc_%s_%d.tmp", fileID, time.Now().UnixNano()))
+			tmpF, err := os.OpenFile(tmpReEnc, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0600)
+			if err != nil {
+				srcFile.Close()
+				errorsList = append(errorsList, fmt.Sprintf("%s: temp file error", fileID))
+				continue
+			}
+			encStream, err := crypto.NewEncryptStream(tmpF, dstKey)
+			if err != nil {
+				srcFile.Close()
+				tmpF.Close()
+				os.Remove(tmpReEnc)
+				errorsList = append(errorsList, fmt.Sprintf("%s: encrypt error", fileID))
+				continue
+			}
+			_, copyErr := io.Copy(encStream, decStream)
+			srcFile.Close()
+			tmpF.Close()
+			if copyErr != nil {
+				os.Remove(tmpReEnc)
+				errorsList = append(errorsList, fmt.Sprintf("%s: copy error", fileID))
+				continue
+			}
+			addedCasHash, _, err := fc.CAS.MoveToCASWithStatus(tmpReEnc)
+			if err != nil {
+				os.Remove(tmpReEnc)
+				errorsList = append(errorsList, fmt.Sprintf("%s: CAS move error", fileID))
+				continue
+			}
+			newCasHash = addedCasHash
+		}
+
+		var dbTargetFolder interface{} = nil
+		if targetFolderID != "" {
+			dbTargetFolder = targetFolderID
+		}
+		_, err = fc.DB.SQL.Exec(fc.DB.Rebind("UPDATE files SET folder_id = ?, cas_hash = ? WHERE id = ? AND owner_id = ?"), dbTargetFolder, newCasHash, fileID, userID)
+		if err == nil {
+			movedCount++
+		} else {
+			errorsList = append(errorsList, fmt.Sprintf("%s: db error %v", fileID, err))
+		}
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"status":      "batch_move_completed",
+		"moved_count": movedCount,
+		"errors":      errorsList,
+		"folder_id":   targetFolderID,
+	})
+}
+
+
 
