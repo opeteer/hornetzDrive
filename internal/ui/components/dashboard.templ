@@ -19,15 +19,17 @@ templ DashboardContent() {
 	<div id="dashboard-content" class="h-full flex flex-col" x-data>
 		
 		<!-- ACTION BAR & BREADCRUMBS -->
-		<div class="h-14 border-b border-white/[0.08] px-6 flex items-center justify-between hornetz-glass shrink-0 relative z-20">
+		<div class="h-14 border-b border-white/[0.08] px-4 sm:px-6 flex items-center justify-between hornetz-glass shrink-0 relative z-20">
 			<!-- Breadcrumbs Path -->
-			<div class="flex items-center gap-2 text-xs font-mono">
-				<span class="text-[#F5CE0D] font-bold cursor-pointer hover:underline" @click="$store.drive.setTab('storage')">Penyimpanan Saya</span>
-				<span class="text-[#86898B]/60">\</span>
+			<div class="flex items-center gap-2 text-xs font-sans">
+				<span class="text-[#94A3B8] font-semibold cursor-pointer hover:text-[#F5BA13] transition-colors" @click="$store.drive.setTab('storage')">Penyimpanan Saya</span>
+				<div class="text-[#94A3B8]/40 shrink-0">
+					@IconChevronRight("w-3.5 h-3.5")
+				</div>
 				<span 
 					:class="[
-						$store.drive.currentFolderId ? 'text-[#F5CE0D] cursor-pointer font-semibold hover:underline' : 'text-white font-semibold',
-						$store.drive.dragTargetFolderId === 'root' ? 'bg-[#F5CE0D]/20 px-2 py-0.5 rounded border border-[#F5CE0D] text-white font-bold' : ''
+						$store.drive.currentFolderId ? 'text-[#94A3B8] cursor-pointer font-semibold hover:text-[#F5BA13] transition-colors' : 'text-white font-bold',
+						$store.drive.dragTargetFolderId === 'root' ? 'bg-[#F5BA13]/20 px-2 py-0.5 rounded-lg border border-[#F5BA13] text-white font-bold' : ''
 					]"
 					@click="if ($store.drive.currentFolderId) $store.drive.clearFolder()"
 					@dragover.prevent.stop="$store.drive.handleFolderDragOver($event, { id: 'root', name: 'Utama' })"
@@ -42,11 +44,13 @@ templ DashboardContent() {
 				>Utama</span>
 				<template x-for="(crumb, idx) in $store.drive.folderHistory" :key="crumb.id">
 					<span class="flex items-center gap-2">
-						<span class="text-[#86898B]/60">\</span>
+						<div class="text-[#94A3B8]/40 shrink-0">
+							@IconChevronRight("w-3.5 h-3.5")
+						</div>
 						<span 
 							:class="[
-								idx === $store.drive.folderHistory.length - 1 ? 'text-white font-bold' : 'text-[#F5CE0D] cursor-pointer hover:underline font-semibold',
-								$store.drive.dragTargetFolderId === crumb.id ? 'bg-[#F5CE0D]/20 px-2 py-0.5 rounded border border-[#F5CE0D] text-white font-bold' : ''
+								idx === $store.drive.folderHistory.length - 1 ? 'text-white font-bold' : 'text-[#94A3B8] cursor-pointer hover:text-[#F5BA13] font-semibold transition-colors',
+								$store.drive.dragTargetFolderId === crumb.id ? 'bg-[#F5BA13]/20 px-2 py-0.5 rounded-lg border border-[#F5BA13] text-white font-bold' : ''
 							]" 
 							@click="if (idx < $store.drive.folderHistory.length - 1) $store.drive.navigateToBreadcrumb(idx)" 
 							@dragover.prevent.stop="$store.drive.handleFolderDragOver($event, crumb)"
@@ -59,12 +63,12 @@ templ DashboardContent() {
 			</div>
 
 			<!-- View Switcher & Action Controls -->
-			<div class="flex items-center gap-3">
+			<div class="flex items-center gap-2.5">
 				<!-- Empty Trash Button -->
 				<button 
 					x-show="$store.drive.activeTab === 'trash' && $store.drive.files.length > 0" 
 					@click="$store.drive.emptyTrash()" 
-					class="text-xs bg-red-500/15 hover:bg-red-500/25 text-red-400 border border-red-500/30 px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5 transition-all backdrop-blur-md"
+					class="text-xs bg-red-500/15 hover:bg-red-500/25 text-red-400 border border-red-500/30 px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5 transition-all backdrop-blur-md cursor-pointer"
 				>
 					@IconTrash("w-3.5 h-3.5")
 					<span>Kosongkan Sampah</span>
@@ -74,7 +78,7 @@ templ DashboardContent() {
 				<button 
 					x-show="$store.drive.activeTab === 'vault' && $store.drive.isVaultUnlocked" 
 					@click="$store.drive.lockVault()" 
-					class="text-xs bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/25 px-3 py-1.5 rounded-xl font-bold flex items-center gap-2 transition-all backdrop-blur-md"
+					class="text-xs bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/25 px-3 py-1.5 rounded-xl font-bold flex items-center gap-2 transition-all backdrop-blur-md cursor-pointer"
 				>
 					@IconLock("w-3.5 h-3.5")
 					<span>Kunci Vault</span>
@@ -82,61 +86,67 @@ templ DashboardContent() {
 				
 				<!-- Sort Controls -->
 				<div class="relative z-30" x-data="{ sortOpen: false }">
-					<button @click="sortOpen = !sortOpen" class="text-xs bg-[#2E3137]/30 border border-[#3F4247]/50 hover:border-[#3F4247] text-[#86898B] hover:text-white px-3 py-1.5 rounded-xl flex items-center gap-1.5 font-mono backdrop-blur-md transition-all">
-						@IconArrowUpDown("w-3.5 h-3.5")
+					<button @click="sortOpen = !sortOpen" class="text-xs bg-white/[0.04] border border-white/[0.08] hover:border-white/[0.15] text-[#94A3B8] hover:text-white px-3 py-1.5 rounded-xl flex items-center gap-1.5 font-sans font-medium backdrop-blur-md transition-all cursor-pointer">
+						@IconArrowUpDown("w-3.5 h-3.5 text-[#F5BA13]")
 						<span>Urutkan</span>
 					</button>
-					<div x-show="sortOpen" @click.away="sortOpen = false" x-cloak style="display: none;" class="absolute right-0 mt-2 w-48 bg-[#121519]/90 backdrop-blur-2xl border border-[#3F4247]/60 rounded-2xl shadow-2xl py-2 z-50 font-mono text-xs divide-y divide-[#3F4247]/30">
-						<button @click="$store.drive.setSort('name', 'asc'); sortOpen = false" class="w-full text-left px-3.5 py-2 hover:bg-[#2E3137]/60 text-[#86898B] hover:text-[#F5CE0D] transition-colors">Nama (A-Z)</button>
-						<button @click="$store.drive.setSort('name', 'desc'); sortOpen = false" class="w-full text-left px-3.5 py-2 hover:bg-[#2E3137]/60 text-[#86898B] hover:text-[#F5CE0D] transition-colors">Nama (Z-A)</button>
-						<button @click="$store.drive.setSort('size', 'desc'); sortOpen = false" class="w-full text-left px-3.5 py-2 hover:bg-[#2E3137]/60 text-[#86898B] hover:text-[#F5CE0D] transition-colors">Ukuran (Terbesar)</button>
-						<button @click="$store.drive.setSort('size', 'asc'); sortOpen = false" class="w-full text-left px-3.5 py-2 hover:bg-[#2E3137]/60 text-[#86898B] hover:text-[#F5CE0D] transition-colors">Ukuran (Terkecil)</button>
-						<button @click="$store.drive.setSort('created_at', 'desc'); sortOpen = false" class="w-full text-left px-3.5 py-2 hover:bg-[#2E3137]/60 text-[#86898B] hover:text-[#F5CE0D] transition-colors">Waktu (Terbaru)</button>
-						<button @click="$store.drive.setSort('created_at', 'asc'); sortOpen = false" class="w-full text-left px-3.5 py-2 hover:bg-[#2E3137]/60 text-[#86898B] hover:text-[#F5CE0D] transition-colors">Waktu (Terlama)</button>
+					<div x-show="sortOpen" @click.away="sortOpen = false" x-cloak style="display: none;" class="absolute right-0 mt-2 w-48 bg-[#141824]/95 backdrop-blur-2xl border border-white/[0.1] rounded-2xl shadow-2xl py-1.5 z-50 font-sans text-xs divide-y divide-white/[0.06]">
+						<div class="py-1">
+							<button @click="$store.drive.setSort('name', 'asc'); sortOpen = false" class="w-full text-left px-3.5 py-1.5 hover:bg-white/[0.08] text-[#94A3B8] hover:text-white transition-colors cursor-pointer">Nama (A-Z)</button>
+							<button @click="$store.drive.setSort('name', 'desc'); sortOpen = false" class="w-full text-left px-3.5 py-1.5 hover:bg-white/[0.08] text-[#94A3B8] hover:text-white transition-colors cursor-pointer">Nama (Z-A)</button>
+						</div>
+						<div class="py-1">
+							<button @click="$store.drive.setSort('size', 'desc'); sortOpen = false" class="w-full text-left px-3.5 py-1.5 hover:bg-white/[0.08] text-[#94A3B8] hover:text-white transition-colors cursor-pointer">Ukuran (Terbesar)</button>
+							<button @click="$store.drive.setSort('size', 'asc'); sortOpen = false" class="w-full text-left px-3.5 py-1.5 hover:bg-white/[0.08] text-[#94A3B8] hover:text-white transition-colors cursor-pointer">Ukuran (Terkecil)</button>
+						</div>
+						<div class="py-1">
+							<button @click="$store.drive.setSort('created_at', 'desc'); sortOpen = false" class="w-full text-left px-3.5 py-1.5 hover:bg-white/[0.08] text-[#94A3B8] hover:text-white transition-colors cursor-pointer">Waktu (Terbaru)</button>
+							<button @click="$store.drive.setSort('created_at', 'asc'); sortOpen = false" class="w-full text-left px-3.5 py-1.5 hover:bg-white/[0.08] text-[#94A3B8] hover:text-white transition-colors cursor-pointer">Waktu (Terlama)</button>
+						</div>
 					</div>
 				</div>
 
-				<!-- View Mode Segmented Pill Switcher (Board/List Glass Style) -->
-				<div class="flex bg-[#2E3137]/30 border border-[#3F4247]/50 p-1 rounded-xl backdrop-blur-md">
+				<!-- View Mode Segmented Switcher (Icon Only) -->
+				<div class="flex items-center bg-white/[0.04] border border-white/[0.08] p-1 rounded-xl backdrop-blur-md">
 					<button 
 						@click="$store.drive.setViewMode('grid')" 
-						:class="$store.drive.viewMode === 'grid' ? 'bg-gradient-to-r from-[#F5CE0D] to-[#DDAC0D] text-[#121519] font-bold shadow-md' : 'text-[#86898B] hover:text-white'" 
-						class="px-3 py-1 text-xs rounded-lg transition-all flex items-center gap-1.5 font-medium"
+						:class="$store.drive.viewMode === 'grid' ? 'bg-[#F5BA13] text-[#0A0D14] font-bold shadow-md' : 'text-[#94A3B8] hover:text-white'" 
+						class="p-1.5 rounded-lg transition-all flex items-center justify-center cursor-pointer"
+						title="Tampilan Grid"
 					>
-						@IconGrid("w-3.5 h-3.5")
-						<span>Tampilan Grid</span>
+						@IconGrid("w-4 h-4")
 					</button>
 					<button 
 						@click="$store.drive.setViewMode('list')" 
-						:class="$store.drive.viewMode === 'list' ? 'bg-gradient-to-r from-[#F5CE0D] to-[#DDAC0D] text-[#121519] font-bold shadow-md' : 'text-[#86898B] hover:text-white'" 
-						class="px-3 py-1 text-xs rounded-lg transition-all flex items-center gap-1.5 font-medium"
+						:class="$store.drive.viewMode === 'list' ? 'bg-[#F5BA13] text-[#0A0D14] font-bold shadow-md' : 'text-[#94A3B8] hover:text-white'" 
+						class="p-1.5 rounded-lg transition-all flex items-center justify-center cursor-pointer"
+						title="Tampilan Daftar"
 					>
-						@IconList("w-3.5 h-3.5")
-						<span>Tampilan Daftar</span>
+						@IconList("w-4 h-4")
 					</button>
 				</div>
 			</div>
 		</div>
 
 		<!-- WORKSPACE CONTENT AREA -->
-		<div class="flex-1 overflow-y-auto p-6 space-y-8 relative z-10">
+		<div class="flex-1 overflow-y-auto p-4 sm:p-6 space-y-7 relative z-10">
 
 			<!-- SECTION 1: FOLDERS / CELLS -->
-			<div x-show="($store.drive.activeTab === 'storage' || $store.drive.activeTab === 'vault') && ($store.drive.folders.length > 0 || !$store.drive.currentFolderId)" class="space-y-4">
+			<div x-show="($store.drive.activeTab === 'storage' || $store.drive.activeTab === 'vault') && ($store.drive.folders.length > 0 || !$store.drive.currentFolderId)" class="space-y-3.5">
 				<div class="flex justify-between items-center">
-					<h3 class="text-xs font-mono text-[#F5CE0D] uppercase tracking-wider font-bold flex items-center gap-2">
+					<h3 class="text-sm font-bold text-white flex items-center gap-2">
 						<template x-if="$store.drive.activeTab === 'vault'">
-							@IconShieldCheck("w-4 h-4")
+							@IconShieldCheck("w-4 h-4 text-[#F5BA13]")
 						</template>
 						<template x-if="$store.drive.activeTab !== 'vault'">
-							@IconFolder("w-4 h-4")
+							@IconFolder("w-4 h-4 text-[#F5BA13]")
 						</template>
-						<span x-text="$store.drive.currentFolderId ? 'SUBFOLDER' : ($store.drive.activeTab === 'vault' ? 'VAULT CELLS TERENKRIPSI' : 'FOLDER UTAMA')"></span>
+						<span x-text="$store.drive.currentFolderId ? 'Subfolder' : ($store.drive.activeTab === 'vault' ? 'Vault Cells Terenkripsi' : 'Folder')"></span>
 					</h3>
 					<div class="flex items-center gap-2">
 						<button 
 							@click="$store.drive.openAddDownloadModal()" 
-							class="text-xs bg-[#F5CE0D]/10 hover:bg-[#F5CE0D]/20 text-[#F5CE0D] border border-[#F5CE0D]/30 px-3.5 py-1.5 rounded-xl font-bold flex items-center gap-1.5 transition-all backdrop-blur-md shadow-sm cursor-pointer"
+							class="text-xs bg-[#F5BA13]/10 hover:bg-[#F5BA13]/20 text-[#F5BA13] border border-[#F5BA13]/30 px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5 transition-all backdrop-blur-md shadow-sm cursor-pointer"
 							title="Unduh berkas dari tautan web atau magnet"
 						>
 							@IconDownload("w-3.5 h-3.5")
@@ -144,14 +154,14 @@ templ DashboardContent() {
 						</button>
 						<button 
 							@click="$store.drive.showCreateFolderModal = true" 
-							class="text-xs bg-[#2E3137]/30 hover:bg-[#2E3137]/60 text-[#F5CE0D] border border-[#F5CE0D]/30 px-3.5 py-1.5 rounded-xl font-bold flex items-center gap-1.5 transition-all backdrop-blur-md shadow-sm cursor-pointer"
+							class="text-xs bg-white/[0.04] hover:bg-white/[0.08] text-white hover:text-[#F5BA13] border border-white/[0.08] px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5 transition-all backdrop-blur-md shadow-sm cursor-pointer"
 						>
 							@IconPlus("w-3.5 h-3.5")
-							<span>Buat Folder Baru</span>
+							<span>Buat Folder</span>
 						</button>
 					</div>
 				</div>
-				<div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+				<div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3.5">
 					<template x-for="folder in $store.drive.folders" :key="folder.id">
 						<div 
 							@click="$store.drive.openFolder(folder)" 
@@ -160,13 +170,13 @@ templ DashboardContent() {
 							@drop.prevent.stop="$store.drive.handleFolderDrop($event, folder)"
 							:class="[
 								$store.drive.dragTargetFolderId === folder.id 
-									? 'border-[#F5CE0D] ring-2 ring-[#F5CE0D]/60 scale-[1.02] bg-[#2E3137]/80 shadow-2xl' 
-									: 'border-[#3F4247]/60 hover:border-[#F5CE0D]/50 bg-[#2E3137]/30 hover:bg-[#2E3137]/50'
+									? 'border-[#F5BA13] ring-2 ring-[#F5BA13]/60 scale-[1.02] bg-[#1E2638] shadow-2xl' 
+									: 'border-white/[0.07] hover:border-[#F5BA13]/40 bg-[#141824]/60 hover:bg-[#1A2030]/80'
 							]"
 							class="p-4 rounded-2xl cursor-pointer group transition-all shadow-sm hover:shadow-xl hover:-translate-y-0.5 relative backdrop-blur-md"
 						>
 							<div class="flex justify-between items-start mb-3">
-								<div class="w-10 h-10 rounded-xl bg-[#2E3137] border border-[#3F4247]/60 text-[#F5CE0D] flex items-center justify-center group-hover:bg-gradient-to-br group-hover:from-[#F5CE0D] group-hover:to-[#DDAC0D] group-hover:text-[#121519] transition-all shadow-sm">
+								<div class="w-10 h-10 rounded-xl bg-gradient-to-br from-[#1E2638] to-[#141824] border border-white/[0.08] text-[#F5BA13] flex items-center justify-center group-hover:bg-gradient-to-br group-hover:from-[#F5BA13] group-hover:to-[#D97706] group-hover:text-[#0A0D14] transition-all shadow-sm">
 									<template x-if="$store.drive.activeTab === 'vault'">
 										@IconShieldCheck("w-5 h-5")
 									</template>
@@ -178,36 +188,51 @@ templ DashboardContent() {
 									<template x-if="$store.drive.activeTab === 'vault'">
 										<span class="text-[9px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20 font-bold">TERENKRIPSI</span>
 									</template>
-									<template x-if="$store.drive.activeTab === 'storage'">
-										<span class="text-[9px] font-mono text-[#F5CE0D] bg-[#F5CE0D]/10 px-2 py-0.5 rounded-md border border-[#F5CE0D]/20 font-bold">STANDAR</span>
-									</template>
-									<button 
-										@click.stop="$store.drive.renameFolder(folder)" 
-										title="Ubah Nama Folder"
-										class="opacity-0 group-hover:opacity-100 text-[#86898B] hover:text-[#F5CE0D] p-1.5 rounded-lg hover:bg-[#2E3137]/60 transition-all"
-									>
-										@IconEdit("w-3.5 h-3.5")
-									</button>
-									<button 
-										@click.stop="$store.drive.deleteFolder(folder)" 
-										title="Hapus Folder" 
-										class="opacity-0 group-hover:opacity-100 text-[#86898B] hover:text-red-400 p-1.5 rounded-lg hover:bg-red-500/10 transition-all"
-									>
-										@IconTrash("w-3.5 h-3.5")
-									</button>
+									<!-- Context 3-dot dropdown menu for folder -->
+									<div class="relative" x-data="{ menuOpen: false }" @click.stop>
+										<button 
+											@click.stop="menuOpen = !menuOpen" 
+											title="Opsi Folder"
+											class="p-1.5 text-[#94A3B8] hover:text-white hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
+										>
+											@IconMoreVertical("w-4 h-4")
+										</button>
+										<div 
+											x-show="menuOpen" 
+											@click.away="menuOpen = false" 
+											x-cloak
+											style="display: none;"
+											class="absolute right-0 top-full mt-1 w-36 bg-[#141824]/95 backdrop-blur-xl border border-white/[0.1] rounded-xl shadow-xl p-1 z-30 font-sans text-xs space-y-0.5"
+										>
+											<button 
+												@click.stop="$store.drive.renameFolder(folder); menuOpen = false" 
+												class="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-white/[0.08] text-white hover:text-[#F5BA13] flex items-center gap-2 transition-colors cursor-pointer"
+											>
+												@IconEdit("w-3.5 h-3.5")
+												<span>Ubah Nama</span>
+											</button>
+											<button 
+												@click.stop="$store.drive.deleteFolder(folder); menuOpen = false" 
+												class="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-red-500/15 text-red-400 flex items-center gap-2 transition-colors cursor-pointer"
+											>
+												@IconTrash("w-3.5 h-3.5")
+												<span>Hapus</span>
+											</button>
+										</div>
+									</div>
 								</div>
 							</div>
-							<div class="font-bold text-sm text-white group-hover:text-[#F5CE0D] transition-colors truncate" x-text="folder.name"></div>
-							<div class="text-[11px] text-[#86898B] font-mono mt-1" x-text="$store.drive.activeTab === 'vault' ? `${folder.file_count || 0} Berkas • AES-256-GCM` : `${folder.file_count || 0} Berkas • Standar`"></div>
+							<div class="font-bold text-sm text-white group-hover:text-[#F5BA13] transition-colors truncate" x-text="folder.name"></div>
+							<div class="text-[11px] text-[#94A3B8] mt-1 font-sans" x-text="$store.drive.activeTab === 'vault' ? `${folder.file_count || 0} Berkas • AES-256-GCM` : `${folder.file_count || 0} Berkas`"></div>
 						</div>
 					</template>
 				</div>
 			</div>
 
 			<!-- SECTION 2: FILES LIST / GRID -->
-			<div class="space-y-4">
+			<div class="space-y-3.5">
 				<div class="flex justify-between items-center">
-					<h3 class="text-xs font-mono text-[#86898B] uppercase tracking-wider font-bold flex items-center gap-2">
+					<h3 class="text-sm font-bold text-white flex items-center gap-2">
 						<template x-if="$store.drive.activeTab === 'vault'">
 							@IconShield("w-4 h-4 text-emerald-400")
 						</template>
@@ -215,84 +240,121 @@ templ DashboardContent() {
 							@IconTrash("w-4 h-4 text-red-400")
 						</template>
 						<template x-if="$store.drive.activeTab === 'starred'">
-							@IconStar("w-4 h-4 text-[#F5CE0D]", true)
+							@IconStar("w-4 h-4 text-[#F5BA13]", true)
 						</template>
 						<template x-if="$store.drive.activeTab === 'recent'">
 							@IconClock("w-4 h-4 text-blue-400")
 						</template>
 						<template x-if="$store.drive.activeTab === 'storage'">
-							@IconHardDrive("w-4 h-4 text-[#F5CE0D]")
+							@IconHardDrive("w-4 h-4 text-[#F5BA13]")
 						</template>
-						<span x-text="$store.drive.searchQuery ? `HASIL PENCARIAN BERKAS (${$store.drive.files.length})` : ($store.drive.activeTab === 'vault' ? 'DAFTAR BERKAS TERENKRIPSI VAULT' : ($store.drive.activeTab === 'trash' ? 'DAFTAR BERKAS DI SAMPAH' : ($store.drive.activeTab === 'starred' ? 'DAFTAR BERKAS BERBINTANG' : ($store.drive.activeTab === 'recent' ? 'DAFTAR BERKAS TERBARU' : 'DAFTAR BERKAS TERSINKRON'))))"></span>
+						<span x-text="$store.drive.searchQuery ? `Hasil Pencarian (${$store.drive.files.length})` : ($store.drive.activeTab === 'vault' ? 'Berkas Terenkripsi Vault' : ($store.drive.activeTab === 'trash' ? 'Berkas di Tempat Sampah' : ($store.drive.activeTab === 'starred' ? 'Berkas Berbintang' : ($store.drive.activeTab === 'recent' ? 'Berkas Terbaru' : 'Berkas Tersinkron'))))"></span>
 					</h3>
-					<span class="text-xs text-[#86898B]/70 font-mono" x-text="`Menampilkan ${$store.drive.files.length} berkas`"></span>
+					<span class="text-xs text-[#94A3B8] font-sans" x-text="`Menampilkan ${$store.drive.files.length} berkas`"></span>
 				</div>
 
-				<div x-show="$store.drive.files.length === 0" class="text-center py-16 border border-dashed border-[#3F4247]/60 rounded-2xl text-[#86898B] font-mono text-sm bg-[#2E3137]/20 backdrop-blur-md flex flex-col items-center justify-center space-y-3">
+				<!-- EMPTY STATE / HERO DROPZONE -->
+				<div 
+					x-show="$store.drive.files.length === 0" 
+					class="text-center py-14 px-6 border-2 border-dashed border-white/[0.1] hover:border-[#F5BA13]/40 rounded-3xl bg-gradient-to-b from-[#141824]/40 to-[#0B0E14]/60 backdrop-blur-md flex flex-col items-center justify-center transition-all"
+				>
 					<template x-if="$store.drive.searchQuery && $store.drive.searchQuery.trim().length > 0">
-						<div class="flex flex-col items-center space-y-2">
-							<div class="w-12 h-12 rounded-full bg-[#2E3137] text-[#86898B] flex items-center justify-center border border-[#3F4247]/40">
+						<div class="flex flex-col items-center space-y-3 max-w-sm">
+							<div class="w-14 h-14 rounded-2xl bg-white/[0.04] text-[#94A3B8] flex items-center justify-center border border-white/[0.08] shadow-inner">
 								@IconSearch("w-6 h-6")
 							</div>
-							<span class="text-white">Tidak ditemukan berkas yang cocok dengan <span class="text-[#F5CE0D] font-bold" x-text="'“' + $store.drive.searchQuery + '”'"></span></span>
+							<div class="space-y-1">
+								<h4 class="text-white font-bold text-sm">Tidak Ditemukan</h4>
+								<p class="text-xs text-[#94A3B8]">Tidak ada berkas yang cocok dengan <span class="text-[#F5BA13] font-bold" x-text="'“' + $store.drive.searchQuery + '”'"></span></p>
+							</div>
 							<button 
 								type="button" 
 								@click="$store.drive.clearSearch()" 
-								class="text-xs text-[#F5CE0D] hover:underline font-mono mt-1"
+								class="text-xs text-[#F5BA13] hover:underline font-medium mt-1 cursor-pointer"
 							>
 								Bersihkan Pencarian
 							</button>
 						</div>
 					</template>
 					<template x-if="!$store.drive.searchQuery && $store.drive.activeTab === 'trash'">
-						<div class="flex flex-col items-center space-y-2">
-							<div class="w-12 h-12 rounded-full bg-red-500/10 text-red-400 flex items-center justify-center">
-								@IconTrash("w-6 h-6")
+						<div class="flex flex-col items-center space-y-3 max-w-sm">
+							<div class="w-14 h-14 rounded-2xl bg-red-500/10 text-red-400 flex items-center justify-center border border-red-500/20 shadow-inner">
+								@IconTrash("w-7 h-7")
 							</div>
-							<span>Tempat sampah kosong. Tidak ada berkas yang dihapus.</span>
+							<div class="space-y-1">
+								<h4 class="text-white font-bold text-sm">Tempat Sampah Kosong</h4>
+								<p class="text-xs text-[#94A3B8]">Tidak ada berkas yang dihapus saat ini.</p>
+							</div>
 						</div>
 					</template>
 					<template x-if="!$store.drive.searchQuery && $store.drive.activeTab === 'starred'">
-						<div class="flex flex-col items-center space-y-2">
-							<div class="w-12 h-12 rounded-full bg-[#F5CE0D]/10 text-[#F5CE0D] flex items-center justify-center">
-								@IconStar("w-6 h-6", false)
+						<div class="flex flex-col items-center space-y-3 max-w-sm">
+							<div class="w-14 h-14 rounded-2xl bg-[#F5BA13]/10 text-[#F5BA13] flex items-center justify-center border border-[#F5BA13]/25 shadow-inner">
+								@IconStar("w-7 h-7", false)
 							</div>
-							<span>Belum ada berkas berbintang. Tandai berkas favorit Anda dengan bintang.</span>
+							<div class="space-y-1">
+								<h4 class="text-white font-bold text-sm">Belum Ada Berkas Berbintang</h4>
+								<p class="text-xs text-[#94A3B8]">Tandai berkas favorit Anda dengan bintang untuk akses cepat di sini.</p>
+							</div>
 						</div>
 					</template>
 					<template x-if="!$store.drive.searchQuery && $store.drive.activeTab === 'recent'">
-						<div class="flex flex-col items-center space-y-2">
-							<div class="w-12 h-12 rounded-full bg-blue-500/10 text-blue-400 flex items-center justify-center">
-								@IconClock("w-6 h-6")
+						<div class="flex flex-col items-center space-y-3 max-w-sm">
+							<div class="w-14 h-14 rounded-2xl bg-blue-500/10 text-blue-400 flex items-center justify-center border border-blue-500/20 shadow-inner">
+								@IconClock("w-7 h-7")
 							</div>
-							<span>Belum ada riwayat berkas terbaru.</span>
+							<div class="space-y-1">
+								<h4 class="text-white font-bold text-sm">Belum Ada Berkas Terbaru</h4>
+								<p class="text-xs text-[#94A3B8]">Riwayat berkas yang baru dibuka atau diunggah akan muncul di sini.</p>
+							</div>
 						</div>
 					</template>
 					<template x-if="!$store.drive.searchQuery && $store.drive.activeTab !== 'trash' && $store.drive.activeTab !== 'starred' && $store.drive.activeTab !== 'recent'">
-						<div class="flex flex-col items-center space-y-2">
-							<div class="w-12 h-12 rounded-full bg-[#2E3137] text-[#86898B] flex items-center justify-center border border-[#3F4247]/40">
-								@IconFolder("w-6 h-6")
+						<div class="flex flex-col items-center space-y-3 max-w-md">
+							<div class="w-16 h-16 rounded-3xl bg-gradient-to-br from-[#F5BA13]/15 to-[#F5BA13]/5 text-[#F5BA13] flex items-center justify-center border border-[#F5BA13]/25 shadow-lg shadow-[#F5BA13]/10">
+								@IconUploadCloud("w-8 h-8")
 							</div>
-							<span>Belum ada berkas di kategori ini. Klik "+ Unggah Berkas" untuk mengunggah berkas baru.</span>
+							<div class="space-y-1 text-center">
+								<h4 class="text-white font-bold text-base">Belum Ada Berkas di Folder Ini</h4>
+								<p class="text-xs text-[#94A3B8] leading-relaxed">Tarik dan lepas berkas ke mana saja di layar ini, atau pilih salah satu tombol aksi di bawah untuk menambahkan berkas baru.</p>
+							</div>
+							<div class="flex flex-wrap items-center justify-center gap-3 pt-2">
+								<button 
+									type="button" 
+									@click="$refs.fileInput.click()" 
+									class="hornetz-btn px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer shadow-md"
+								>
+									@IconUploadCloud("w-4 h-4")
+									<span>Unggah Berkas</span>
+								</button>
+								<button 
+									type="button" 
+									@click="$store.drive.openAddDownloadModal()" 
+									class="px-4 py-2.5 rounded-xl text-xs font-semibold text-white bg-white/[0.05] hover:bg-white/[0.09] border border-white/[0.1] flex items-center gap-2 transition-all cursor-pointer"
+								>
+									@IconDownload("w-4 h-4 text-[#F5BA13]")
+									<span>Unduh dari Tautan</span>
+								</button>
+							</div>
 						</div>
 					</template>
 				</div>
 
 				<!-- GRID VIEW -->
-				<div x-show="$store.drive.viewMode === 'grid' && $store.drive.files.length > 0" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
+				<div x-show="$store.drive.viewMode === 'grid' && $store.drive.files.length > 0" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3.5">
 					<template x-for="file in $store.drive.files" :key="file.id">
 						<div 
 							@click="$store.drive.selectFile(file)" 
-							draggable="true"
+							draggable="true" 
 							@dragstart="$store.drive.handleFileDragStart($event, file)"
 							@dragend="$store.drive.handleFileDragEnd($event)"
-							:class="$store.drive.draggedFile && $store.drive.draggedFile.id === file.id ? 'opacity-40 scale-95 border-[#F5CE0D]' : ''"
-							class="bg-[#2E3137]/30 hover:bg-[#2E3137]/50 border border-[#3F4247]/60 hover:border-[#F5CE0D]/50 p-3 rounded-2xl cursor-pointer group transition-all flex flex-col justify-between h-52 shadow-sm hover:shadow-xl hover:-translate-y-0.5 relative backdrop-blur-md select-none"
+							:class="$store.drive.draggedFile && $store.drive.draggedFile.id === file.id ? 'opacity-40 scale-95 border-[#F5BA13]' : ''"
+							class="bg-[#141824]/60 hover:bg-[#1A2030]/80 border border-white/[0.07] hover:border-[#F5BA13]/40 p-3 rounded-2xl cursor-pointer group transition-all flex flex-col justify-between h-52 shadow-sm hover:shadow-xl hover:-translate-y-0.5 relative backdrop-blur-md select-none"
 						>
-							<div class="h-28 bg-[#121519]/70 border border-[#3F4247]/40 rounded-xl flex items-center justify-center text-[#F5CE0D] relative overflow-hidden group-hover:border-[#F5CE0D]/30 transition-all backdrop-blur-sm">
+							<div class="h-28 bg-[#0D1017]/80 border border-white/[0.06] rounded-xl flex items-center justify-center text-[#F5BA13] relative overflow-hidden group-hover:border-[#F5BA13]/30 transition-all backdrop-blur-sm">
 								<!-- Preview for readable files (PDFs, images, documents, text) -->
 								<template x-if="file.has_preview">
-									<div class="w-full h-full flex items-center justify-center relative overflow-hidden bg-[#0F1215]/80 p-1.5">
+									<div class="w-full h-full flex items-center justify-center relative overflow-hidden bg-[#0A0D14]/80 p-1.5">
 										<template x-if="file.mime_type && file.mime_type.startsWith('image/')">
 											<img 
 												:src="'/api/files/' + file.id + '/thumbnail'" 
@@ -309,7 +371,7 @@ templ DashboardContent() {
 												loading="lazy" 
 											/>
 										</template>
-										<div class="absolute bottom-1.5 right-1.5 text-[9px] bg-[#121519]/90 border border-[#3F4247]/60 text-[#EDEBE8] font-mono px-1.5 py-0.5 rounded-md font-bold uppercase truncate max-w-[55px] shadow-sm backdrop-blur-sm" x-text="(file.ext || 'FILE').slice(0, 4)"></div>
+										<div class="absolute bottom-1.5 right-1.5 text-[9px] bg-[#0A0D14]/90 border border-white/[0.1] text-white font-mono px-1.5 py-0.5 rounded-md font-bold uppercase truncate max-w-[55px] shadow-sm backdrop-blur-sm" x-text="(file.ext || 'FILE').slice(0, 4)"></div>
 									</div>
 								</template>
 
@@ -317,20 +379,20 @@ templ DashboardContent() {
 								<template x-if="!file.has_preview">
 									<div class="w-full h-full flex items-center justify-center relative">
 										<div x-html="$store.drive.getFileIconSvg(file.icon, 'w-10 h-10')"></div>
-										<div class="absolute bottom-1.5 right-1.5 text-[9px] bg-gradient-to-r from-[#F5CE0D] to-[#DDAC0D] text-[#121519] font-mono px-2 py-0.5 rounded-md font-bold uppercase truncate max-w-[55px] shadow-sm" x-text="(file.ext || 'FILE').slice(0, 4)"></div>
+										<div class="absolute bottom-1.5 right-1.5 text-[9px] bg-gradient-to-r from-[#F5BA13] to-[#D97706] text-[#0A0D14] font-mono px-2 py-0.5 rounded-md font-bold uppercase truncate max-w-[55px] shadow-sm" x-text="(file.ext || 'FILE').slice(0, 4)"></div>
 									</div>
 								</template>
 							</div>
 							<div class="mt-2">
-								<div class="font-semibold text-xs text-white truncate group-hover:text-[#F5CE0D] transition-colors" :title="file.name" x-text="file.name"></div>
-								<div class="flex justify-between items-center text-[10px] text-[#86898B] font-mono mt-1">
+								<div class="font-semibold text-xs text-white truncate group-hover:text-[#F5BA13] transition-colors" :title="file.name" x-text="file.name"></div>
+								<div class="flex justify-between items-center text-[10px] text-[#94A3B8] font-mono mt-1">
 									<span x-text="(file.size >= 1073741824) ? (file.size / 1073741824).toFixed(2) + ' GB' : (file.size >= 1048576) ? (file.size / 1048576).toFixed(1) + ' MB' : (file.size >= 1024) ? (file.size / 1024).toFixed(1) + ' KB' : file.size + ' B'"></span>
 									<span :class="file.is_deleted ? 'text-red-400' : 'text-emerald-400'" class="flex items-center gap-1 font-semibold text-[9px]">
 										<span class="w-1.5 h-1.5 rounded-full" :class="file.is_deleted ? 'bg-red-400' : 'bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.6)]'"></span>
 										<span x-text="file.is_deleted ? 'DI SAMPAH' : 'TERSINKRON'"></span>
 									</span>
 								</div>
-								<div class="text-[9px] text-[#86898B]/60 font-mono truncate mt-0.5" x-text="file.created_at ? new Date(file.created_at).toLocaleDateString('id-ID') : ''"></div>
+								<div class="text-[9px] text-[#94A3B8]/60 font-mono truncate mt-0.5" x-text="file.created_at ? new Date(file.created_at).toLocaleDateString('id-ID') : ''"></div>
 							</div>
 						</div>
 					</template>
@@ -339,32 +401,32 @@ templ DashboardContent() {
 				<!-- DENSE LIST VIEW -->
 				<div 
 					x-show="$store.drive.viewMode === 'list' && $store.drive.files.length > 0" 
-					class="border border-[#3F4247]/60 rounded-2xl overflow-hidden bg-[#2E3137]/20 backdrop-blur-xl divide-y divide-[#3F4247]/40"
+					class="border border-white/[0.08] rounded-2xl overflow-hidden bg-[#141824]/40 backdrop-blur-xl divide-y divide-white/[0.06]"
 				>
 					<template x-for="file in $store.drive.files" :key="file.id">
 						<div 
 							@click="$store.drive.selectFile(file)" 
-							draggable="true"
+							draggable="true" 
 							@dragstart="$store.drive.handleFileDragStart($event, file)"
 							@dragend="$store.drive.handleFileDragEnd($event)"
-							:class="$store.drive.draggedFile && $store.drive.draggedFile.id === file.id ? 'opacity-40 border-[#F5CE0D] bg-[#2E3137]/60' : ''"
-							class="flex items-center justify-between px-4 py-3 hover:bg-[#2E3137]/40 cursor-pointer transition-colors group select-none"
+							:class="$store.drive.draggedFile && $store.drive.draggedFile.id === file.id ? 'opacity-40 border-[#F5BA13] bg-[#1E2638]' : ''"
+							class="flex items-center justify-between px-4 py-3 hover:bg-white/[0.05] cursor-pointer transition-colors group select-none"
 						>
 							<div class="flex items-center gap-3">
-								<div class="w-8 h-8 rounded-lg bg-[#2E3137] border border-[#3F4247]/60 flex items-center justify-center text-[#F5CE0D] shrink-0" x-html="$store.drive.getFileIconSvg(file.icon, 'w-4 h-4')"></div>
+								<div class="w-8 h-8 rounded-lg bg-white/[0.05] border border-white/[0.08] flex items-center justify-center text-[#F5BA13] shrink-0" x-html="$store.drive.getFileIconSvg(file.icon, 'w-4 h-4')"></div>
 								<div>
-									<div class="font-bold text-sm text-white group-hover:text-[#F5CE0D] transition-colors" :title="file.name" x-text="file.name"></div>
-									<div class="text-[11px] text-[#86898B] font-mono" x-text="`SHA-256: ${file.cas_hash}`"></div>
+									<div class="font-bold text-sm text-white group-hover:text-[#F5BA13] transition-colors" :title="file.name" x-text="file.name"></div>
+									<div class="text-[11px] text-[#94A3B8] font-mono" x-text="`SHA-256: ${file.cas_hash}`"></div>
 								</div>
 							</div>
 							<div class="flex items-center gap-6 text-xs font-mono">
-								<span class="text-[#86898B]/60 text-[11px] hidden sm:inline" x-text="file.created_at ? new Date(file.created_at).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' }) : ''"></span>
-								<span class="text-[#86898B]" x-text="(file.size >= 1073741824) ? (file.size / 1073741824).toFixed(2) + ' GB' : (file.size >= 1048576) ? (file.size / 1048576).toFixed(1) + ' MB' : (file.size >= 1024) ? (file.size / 1024).toFixed(1) + ' KB' : file.size + ' B'"></span>
+								<span class="text-[#94A3B8]/60 text-[11px] hidden sm:inline" x-text="file.created_at ? new Date(file.created_at).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' }) : ''"></span>
+								<span class="text-[#94A3B8]" x-text="(file.size >= 1073741824) ? (file.size / 1073741824).toFixed(2) + ' GB' : (file.size >= 1048576) ? (file.size / 1048576).toFixed(1) + ' MB' : (file.size >= 1024) ? (file.size / 1024).toFixed(1) + ' KB' : file.size + ' B'"></span>
 								<span :class="file.is_deleted ? 'bg-red-500/10 text-red-400 border-red-500/20' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'" class="px-2.5 py-0.5 border rounded-md font-semibold text-[10px] flex items-center gap-1">
 									<span class="w-1.5 h-1.5 rounded-full" :class="file.is_deleted ? 'bg-red-400' : 'bg-emerald-400'"></span>
 									<span x-text="file.is_deleted ? 'DI SAMPAH' : 'TERSINKRON'"></span>
 								</span>
-								<button class="text-[#F5CE0D] hover:underline font-bold">Detail →</button>
+								<button class="text-[#F5BA13] hover:underline font-bold">Detail →</button>
 							</div>
 						</div>
 					</template>
