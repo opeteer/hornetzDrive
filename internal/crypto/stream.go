@@ -145,6 +145,26 @@ func (s *DecryptStream) Read(p []byte) (n int, err error) {
 	return n, nil
 }
 
+// PreloadFirstChunk attempts to decrypt the first chunk of the stream into s.buf without advancing the readable stream position.
+// This allows verifying encryption keys and chunk integrity before committing HTTP response headers.
+func (s *DecryptStream) PreloadFirstChunk() error {
+	if len(s.buf) > 0 {
+		return nil
+	}
+	var p [1]byte
+	n, err := s.Read(p[:])
+	if err != nil && err != io.EOF {
+		return err
+	}
+	if n > 0 {
+		newBuf := make([]byte, n+len(s.buf))
+		copy(newBuf, p[:n])
+		copy(newBuf[n:], s.buf)
+		s.buf = newBuf
+	}
+	return nil
+}
+
 // SeekTo skips forward to the requested plaintext byte offset in the stream.
 // If the underlying reader implements io.ReadSeeker, preceding chunks are skipped
 // on disk without decrypting them, eliminating sequential decryption DoS.

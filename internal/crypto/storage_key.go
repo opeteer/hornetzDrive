@@ -91,3 +91,12 @@ func copyKey(in []byte) []byte {
 	copy(out, in)
 	return out
 }
+
+// LegacyStorageKey is the hardcoded fallback key used prior to BUG-SEC-03.
+var LegacyStorageKey = []byte("0123456789abcdef0123456789abcdef")
+
+// GetLegacyStorageKey returns the legacy 32-byte key for backwards-compatibility.
+func GetLegacyStorageKey() []byte {
+	return copyKey(LegacyStorageKey)
+}
+

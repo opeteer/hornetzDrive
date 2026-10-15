@@ -1749,6 +1749,140 @@ func TestFileController_MoveFile(t *testing.T) {
 	}
 }
 
+func TestFileController_LegacyDecryptionAndRawFallback(t *testing.T) {
+	e := echo.New()
+	dbEngine, err := data.NewDBEngine("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to create memory DB: %v", err)
+	}
+	defer dbEngine.Close()
+
+	_, _ = dbEngine.SQL.Exec(`
+		CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, salt BLOB NOT NULL, encrypted_vault_key BLOB NOT NULL);
+		CREATE TABLE folders (id TEXT PRIMARY KEY, owner_id INTEGER NOT NULL, parent_id TEXT, name TEXT NOT NULL);
+		CREATE TABLE files (id TEXT PRIMARY KEY, owner_id INTEGER NOT NULL, folder_id TEXT, name TEXT NOT NULL, mime_type TEXT NOT NULL, size BIGINT NOT NULL, cas_hash TEXT NOT NULL, is_starred BOOLEAN DEFAULT FALSE, is_deleted BOOLEAN DEFAULT FALSE, created_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+		INSERT INTO users (id, email, password_hash, salt, encrypted_vault_key) VALUES (1, 'u', 'p', 's', 'k');
+	`)
+
+	tempCAS := t.TempDir()
+	casEngine, err := storage.NewCASEngine(tempCAS)
+	if err != nil {
+		t.Fatalf("Failed to create CAS engine: %v", err)
+	}
+
+	fileCtrl := &FileController{
+		DB:  dbEngine,
+		CAS: casEngine,
+	}
+
+	e.GET("/api/files/:id/preview", fileCtrl.PreviewFile)
+	e.GET("/api/files/:id/download", fileCtrl.DownloadFile)
+
+	// Ensure active standard key is set to something other than the legacy key
+	crypto.InitStandardStorageKey("test-non-legacy-key-999999999999", t.TempDir())
+
+	// Case 1: File encrypted with legacy key
+	legacyContent := []byte("%PDF-1.4 Legacy encrypted content that spans across multiple chunks to test seek and preview. Hello Hornetz Drive!")
+	tempLegacyFile := filepath.Join(t.TempDir(), "temp_legacy.dat")
+	legacyF, err := os.Create(tempLegacyFile)
+	if err != nil {
+		t.Fatalf("Failed to create temp legacy file: %v", err)
+	}
+	encStream, err := crypto.NewEncryptStream(legacyF, crypto.GetLegacyStorageKey())
+	if err != nil {
+		t.Fatalf("Failed to create encStream: %v", err)
+	}
+	if _, err := encStream.Write(legacyContent); err != nil {
+		t.Fatalf("Failed to write to encStream: %v", err)
+	}
+	_ = legacyF.Close()
+
+	legacyHash, err := casEngine.MoveToCAS(tempLegacyFile)
+	if err != nil {
+		t.Fatalf("Failed to store legacy blob: %v", err)
+	}
+
+	_, _ = dbEngine.SQL.Exec(`
+		INSERT INTO files (id, owner_id, folder_id, name, mime_type, size, cas_hash)
+		VALUES ('legacy_pdf', 1, NULL, 'document.pdf', 'application/pdf', ?, ?)
+	`, len(legacyContent), legacyHash)
+
+	// 1a. Preview legacy file without range
+	reqPrev := httptest.NewRequest(http.MethodGet, "/api/files/legacy_pdf/preview", nil)
+	recPrev := httptest.NewRecorder()
+	e.ServeHTTP(recPrev, reqPrev)
+	if recPrev.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK for legacy preview, got %d: %s", recPrev.Code, recPrev.Body.String())
+	}
+	if !bytes.Equal(recPrev.Body.Bytes(), legacyContent) {
+		t.Fatalf("Legacy preview body mismatch: got %q, want %q", recPrev.Body.String(), string(legacyContent))
+	}
+
+	// 1b. Preview legacy file with Range header (Firefox xref seek)
+	reqPrevRange := httptest.NewRequest(http.MethodGet, "/api/files/legacy_pdf/preview", nil)
+	reqPrevRange.Header.Set("Range", "bytes=10-25")
+	recPrevRange := httptest.NewRecorder()
+	e.ServeHTTP(recPrevRange, reqPrevRange)
+	if recPrevRange.Code != http.StatusPartialContent {
+		t.Fatalf("Expected 206 Partial Content for legacy preview range, got %d: %s", recPrevRange.Code, recPrevRange.Body.String())
+	}
+	expectedRange := legacyContent[10 : 25+1]
+	if !bytes.Equal(recPrevRange.Body.Bytes(), expectedRange) {
+		t.Fatalf("Legacy range mismatch: got %q, want %q", recPrevRange.Body.String(), string(expectedRange))
+	}
+
+	// 1c. Download legacy file
+	reqDl := httptest.NewRequest(http.MethodGet, "/api/files/legacy_pdf/download", nil)
+	recDl := httptest.NewRecorder()
+	e.ServeHTTP(recDl, reqDl)
+	if recDl.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK for legacy download, got %d", recDl.Code)
+	}
+	if !bytes.Equal(recDl.Body.Bytes(), legacyContent) {
+		t.Fatalf("Legacy download body mismatch")
+	}
+
+	// Case 2: Raw / unencrypted PDF file
+	rawContent := []byte("%PDF-1.7 Plain unencrypted PDF file content that starts with magic bytes.")
+	tempRawFile := filepath.Join(t.TempDir(), "temp_raw.dat")
+	if err := os.WriteFile(tempRawFile, rawContent, 0600); err != nil {
+		t.Fatalf("Failed to write raw temp file: %v", err)
+	}
+	rawHash, err := casEngine.MoveToCAS(tempRawFile)
+	if err != nil {
+		t.Fatalf("Failed to store raw blob: %v", err)
+	}
+	_, _ = dbEngine.SQL.Exec(`
+		INSERT INTO files (id, owner_id, folder_id, name, mime_type, size, cas_hash)
+		VALUES ('raw_pdf', 1, NULL, 'raw.pdf', 'application/pdf', ?, ?)
+	`, len(rawContent), rawHash)
+
+	// 2a. Preview raw file without range
+	reqRaw := httptest.NewRequest(http.MethodGet, "/api/files/raw_pdf/preview", nil)
+	recRaw := httptest.NewRecorder()
+	e.ServeHTTP(recRaw, reqRaw)
+	if recRaw.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK for raw preview, got %d: %s", recRaw.Code, recRaw.Body.String())
+	}
+	if !bytes.Equal(recRaw.Body.Bytes(), rawContent) {
+		t.Fatalf("Raw preview body mismatch: got %q, want %q", recRaw.Body.String(), string(rawContent))
+	}
+
+	// 2b. Preview raw file with Range header
+	reqRawRange := httptest.NewRequest(http.MethodGet, "/api/files/raw_pdf/preview", nil)
+	reqRawRange.Header.Set("Range", "bytes=5-20")
+	recRawRange := httptest.NewRecorder()
+	e.ServeHTTP(recRawRange, reqRawRange)
+	if recRawRange.Code != http.StatusPartialContent {
+		t.Fatalf("Expected 206 Partial Content for raw preview range, got %d: %s", recRawRange.Code, recRawRange.Body.String())
+	}
+	expectedRawRange := rawContent[5 : 20+1]
+	if !bytes.Equal(recRawRange.Body.Bytes(), expectedRawRange) {
+		t.Fatalf("Raw range mismatch: got %q, want %q", recRawRange.Body.String(), string(expectedRawRange))
+	}
+}
+
+
 
 
 

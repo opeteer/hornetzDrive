@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"crypto/rand"
 	"database/sql"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -577,6 +578,62 @@ func parseRangeHeader(rangeHeader string, totalSize int64) (start int64, end int
 	return start, end, true, true
 }
 
+// openContentReader opens a decrypted stream or raw reader for a file stored in CAS.
+// It handles backwards-compatibility with legacy keys and raw unencrypted fallback.
+func (fc *FileController) openContentReader(file *os.File, isVault bool, vk []byte, start int64) (io.Reader, error) {
+	// 1. Check if the file is raw unencrypted data (e.g. raw PDF starting with %PDF)
+	var headerBuf [4]byte
+	if _, err := file.ReadAt(headerBuf[:], 0); err == nil {
+		chunkLen := binary.BigEndian.Uint32(headerBuf[:])
+		if chunkLen < crypto.TagSize || chunkLen > 50*1024*1024 {
+			if _, err := file.Seek(start, io.SeekStart); err != nil {
+				return nil, err
+			}
+			return file, nil
+		}
+	}
+
+	// 2. Try decrypting with active key (vk)
+	if _, err := file.Seek(0, io.SeekStart); err == nil {
+		decStream, err := crypto.NewDecryptStream(file, vk)
+		if err == nil {
+			if pErr := decStream.PreloadFirstChunk(); pErr == nil {
+				if start == 0 {
+					return decStream, nil
+				}
+				if sErr := decStream.SeekTo(start); sErr == nil {
+					return decStream, nil
+				}
+			}
+		}
+	}
+
+	// 3. For non-vault storage, try legacy static master key for backwards compatibility
+	if !isVault {
+		legacyKey := crypto.GetLegacyStorageKey()
+		if _, err := file.Seek(0, io.SeekStart); err == nil {
+			decStream, err := crypto.NewDecryptStream(file, legacyKey)
+			if err == nil {
+				if pErr := decStream.PreloadFirstChunk(); pErr == nil {
+					if start == 0 {
+						return decStream, nil
+					}
+					if sErr := decStream.SeekTo(start); sErr == nil {
+						return decStream, nil
+					}
+				}
+			}
+		}
+
+		// 4. Fallback to raw file stream if decryption fails
+		if _, err := file.Seek(start, io.SeekStart); err == nil {
+			return file, nil
+		}
+	}
+
+	return nil, errors.New("failed to decrypt file content")
+}
+
 func (fc *FileController) DownloadFile(c *echo.Context) error {
 	id := c.Param("id")
 	userID := auth.GetUserID(c)
@@ -595,7 +652,8 @@ func (fc *FileController) DownloadFile(c *echo.Context) error {
 	}
 
 	// Protect confidential Vault files: require active unlocked vault session
-	if fc.IsVaultFolder(f.FolderID) {
+	isVault := fc.IsVaultFolder(f.FolderID)
+	if isVault {
 		if !fc.isVaultUnlocked(c) {
 			return echo.NewHTTPError(http.StatusUnauthorized, "Vault locked. Master password required to download this file.")
 		}
@@ -680,7 +738,7 @@ func (fc *FileController) DownloadFile(c *echo.Context) error {
 	defer file.Close()
 
 	var vk []byte
-	if fc.IsVaultFolder(f.FolderID) {
+	if isVault {
 		if cookie, err := c.Cookie("swarm_session"); err == nil && cookie != nil {
 			if key, exists := auth.GlobalSessionStore.GetKey(cookie.Value); exists {
 				vk = key
@@ -693,39 +751,44 @@ func (fc *FileController) DownloadFile(c *echo.Context) error {
 		vk = crypto.GetStandardStorageKey()
 	}
 
-	decStream, err := crypto.NewDecryptStream(file, vk)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "Decryption error")
-	}
-
 	c.Response().Header().Set("Content-Type", f.MimeType)
 	c.Response().Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", safeName))
 
-	// RFC 7233 Range request handling for decrypted stream
+	start := int64(0)
+	chunkLen := f.Size
+	isPartial := false
+
+	// RFC 7233 Range request handling
 	if rangeHeader != "" && rangeAllowed {
-		start, end, satisfiable, isRange := parseRangeHeader(rangeHeader, f.Size)
+		s, end, satisfiable, isRange := parseRangeHeader(rangeHeader, f.Size)
 		if isRange {
 			if !satisfiable {
 				c.Response().Header().Set("Content-Range", fmt.Sprintf("bytes */%d", f.Size))
 				return c.NoContent(http.StatusRequestedRangeNotSatisfiable)
 			}
-			if start > 0 {
-				if err := decStream.SeekTo(start); err != nil {
-					return echo.NewHTTPError(http.StatusInternalServerError, "failed to seek in encrypted stream")
-				}
-			}
-			chunkLen := end - start + 1
+			start = s
+			chunkLen = end - start + 1
+			isPartial = true
 			c.Response().Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, f.Size))
-			c.Response().Header().Set("Content-Length", strconv.FormatInt(chunkLen, 10))
-			c.Response().WriteHeader(http.StatusPartialContent)
-			_, err = io.CopyN(c.Response(), decStream, chunkLen)
-			return err
 		}
 	}
 
-	// Always set Content-Length (including 0 for empty files)
-	c.Response().Header().Set("Content-Length", strconv.FormatInt(f.Size, 10))
-	_, err = io.Copy(c.Response(), decStream)
+	reader, err := fc.openContentReader(file, isVault, vk, start)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "Decryption error")
+	}
+
+	c.Response().Header().Set("Content-Length", strconv.FormatInt(chunkLen, 10))
+	if isPartial {
+		c.Response().WriteHeader(http.StatusPartialContent)
+		_, err = io.CopyN(c.Response(), reader, chunkLen)
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+		return err
+	}
+
+	_, err = io.Copy(c.Response(), reader)
 	return err
 }
 
@@ -739,7 +802,8 @@ func (fc *FileController) PreviewFile(c *echo.Context) error {
 		return echo.NewHTTPError(http.StatusNotFound, "File not found")
 	}
 
-	if fc.IsVaultFolder(f.FolderID) {
+	isVault := fc.IsVaultFolder(f.FolderID)
+	if isVault {
 		if !fc.isVaultUnlocked(c) {
 			return echo.NewHTTPError(http.StatusUnauthorized, "Vault locked. Master password required to preview this file.")
 		}
@@ -751,7 +815,7 @@ func (fc *FileController) PreviewFile(c *echo.Context) error {
 	safeName = strings.ReplaceAll(safeName, "\n", "")
 
 	c.Response().Header().Set("Accept-Ranges", "bytes")
-	if fc.IsVaultFolder(f.FolderID) {
+	if isVault {
 		c.Response().Header().Set("Cache-Control", "private, no-store, no-cache, must-revalidate")
 		c.Response().Header().Set("Pragma", "no-cache")
 	} else {
@@ -792,7 +856,7 @@ func (fc *FileController) PreviewFile(c *echo.Context) error {
 	defer file.Close()
 
 	var vk []byte
-	if fc.IsVaultFolder(f.FolderID) {
+	if isVault {
 		if cookie, err := c.Cookie("swarm_session"); err == nil && cookie != nil {
 			if key, exists := auth.GlobalSessionStore.GetKey(cookie.Value); exists {
 				vk = key
@@ -805,37 +869,43 @@ func (fc *FileController) PreviewFile(c *echo.Context) error {
 		vk = crypto.GetStandardStorageKey()
 	}
 
-	decStream, err := crypto.NewDecryptStream(file, vk)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "Decryption error")
-	}
-
 	c.Response().Header().Set("Content-Type", f.MimeType)
 	c.Response().Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", safeName))
 
+	start := int64(0)
+	chunkLen := f.Size
+	isPartial := false
+
 	if rangeHeader := c.Request().Header.Get("Range"); rangeHeader != "" {
-		start, end, satisfiable, isRange := parseRangeHeader(rangeHeader, f.Size)
+		s, end, satisfiable, isRange := parseRangeHeader(rangeHeader, f.Size)
 		if isRange {
 			if !satisfiable {
 				c.Response().Header().Set("Content-Range", fmt.Sprintf("bytes */%d", f.Size))
 				return c.NoContent(http.StatusRequestedRangeNotSatisfiable)
 			}
-			if start > 0 {
-				if err := decStream.SeekTo(start); err != nil {
-					return echo.NewHTTPError(http.StatusInternalServerError, "failed to seek in encrypted stream")
-				}
-			}
-			chunkLen := end - start + 1
+			start = s
+			chunkLen = end - start + 1
+			isPartial = true
 			c.Response().Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, f.Size))
-			c.Response().Header().Set("Content-Length", strconv.FormatInt(chunkLen, 10))
-			c.Response().WriteHeader(http.StatusPartialContent)
-			_, err = io.CopyN(c.Response(), decStream, chunkLen)
-			return err
 		}
 	}
 
-	c.Response().Header().Set("Content-Length", strconv.FormatInt(f.Size, 10))
-	_, err = io.Copy(c.Response(), decStream)
+	reader, err := fc.openContentReader(file, isVault, vk, start)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "Decryption error")
+	}
+
+	c.Response().Header().Set("Content-Length", strconv.FormatInt(chunkLen, 10))
+	if isPartial {
+		c.Response().WriteHeader(http.StatusPartialContent)
+		_, err = io.CopyN(c.Response(), reader, chunkLen)
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+		return err
+	}
+
+	_, err = io.Copy(c.Response(), reader)
 	return err
 }
 
