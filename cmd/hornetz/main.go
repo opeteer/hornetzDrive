@@ -55,8 +55,8 @@ func main() {
 	cfg := ztatic.DefaultConfig()
 	// Disable automatic per-request nonce injection so browsers respect 'unsafe-inline' for Alpine.js store scripts
 	cfg.Security.Headers.EnableCSPNonce = false
-	// Set hardened Content-Security-Policy with default-src 'self' while allowing required frontend CDNs
-	cfg.Security.Headers.ContentSecurityPolicy = "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://cdn.tailwindcss.com https://cdn.skypack.dev https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' blob:; worker-src 'self' blob:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self';"
+	// Set hardened Content-Security-Policy with default-src 'self' while allowing required frontend CDNs and same-origin preview framing
+	cfg.Security.Headers.ContentSecurityPolicy = "default-src 'self'; frame-src 'self' blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://cdn.tailwindcss.com https://cdn.skypack.dev https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' blob:; worker-src 'self' blob:; object-src 'none'; frame-ancestors 'self'; base-uri 'self'; form-action 'self';"
 	// Allow client-side JavaScript (Alpine.js) to read _csrf cookie with SameSite protection
 	cfg.Security.CSRF.CookieHTTPOnly = false
 	cfg.Security.CSRF.CookieSameSite = http.SameSiteLaxMode

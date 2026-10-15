@@ -7,7 +7,9 @@ import (
 	"testing"
 
 	"github.com/labstack/echo/v5"
+	"ztatic-go-framework"
 	"ztatic-go-framework/internal/ui/components"
+	"ztatic-go-framework/security/web"
 )
 
 func setupTestApp() *echo.Echo {
@@ -158,6 +160,33 @@ func TestRoutes_GzipCompression(t *testing.T) {
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("Expected 200 OK for '/app', got %d", rec.Code)
+	}
+}
+
+func TestRoutes_SecurityHeaders_CSP(t *testing.T) {
+	cfg := ztatic.DefaultConfig()
+	cfg.Security.Headers.EnableCSPNonce = false
+	cfg.Security.Headers.ContentSecurityPolicy = "default-src 'self'; frame-src 'self' blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://cdn.tailwindcss.com https://cdn.skypack.dev https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' blob:; worker-src 'self' blob:; object-src 'none'; frame-ancestors 'self'; base-uri 'self'; form-action 'self';"
+
+	e := echo.New()
+	e.Use(web.SecureHeadersWithConfig(cfg.Security.Headers))
+	e.GET("/api/files/test/preview", func(c *echo.Context) error {
+		return c.String(http.StatusOK, "pdf-content")
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/files/test/preview", nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	csp := rec.Header().Get("Content-Security-Policy")
+	if !strings.Contains(csp, "frame-ancestors 'self'") {
+		t.Errorf("Expected CSP to contain \"frame-ancestors 'self'\", got %q", csp)
+	}
+	if strings.Contains(csp, "frame-ancestors 'none'") {
+		t.Errorf("CSP should not contain \"frame-ancestors 'none'\", got %q", csp)
+	}
+	if !strings.Contains(csp, "frame-src 'self'") {
+		t.Errorf("Expected CSP to contain \"frame-src 'self'\", got %q", csp)
 	}
 }
 
