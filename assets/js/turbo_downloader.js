@@ -17,11 +17,9 @@ class TurboDownloader {
      */
     computeBlockSize(totalSize) {
         if (!totalSize || totalSize <= 0) return this.minBlockSize;
-        const targetBlocks = 32;
-        let blockSize = Math.floor(totalSize / targetBlocks);
-        if (blockSize < this.minBlockSize) blockSize = this.minBlockSize;
-        if (blockSize > this.maxBlockSize) blockSize = this.maxBlockSize;
-        return blockSize;
+        if (totalSize <= 16 * 1024 * 1024) return 2 * 1024 * 1024; // 2MB for small files
+        if (totalSize <= 64 * 1024 * 1024) return 4 * 1024 * 1024; // 4MB for medium files
+        return this.maxBlockSize; // 8MB for large files
     }
 
     /**
@@ -38,7 +36,7 @@ class TurboDownloader {
         this.isDownloading = true;
 
         try {
-            // 1. Preflight check if size is unknown
+            // 1. Preflight capability and size check if size is unknown
             let knownSize = totalSize;
             if (!knownSize || knownSize <= 0) {
                 const headResp = await fetch(url, {
@@ -59,7 +57,21 @@ class TurboDownloader {
                 }
             }
 
-            // 2. Prepare Pieces
+            // 2. Direct-to-Disk streaming check (File System Access API for files >= 20MB)
+            let directWritable = null;
+            if (window.showSaveFilePicker && knownSize >= 20 * 1024 * 1024) {
+                try {
+                    const handle = await window.showSaveFilePicker({
+                        suggestedName: filename || 'download'
+                    });
+                    directWritable = await handle.createWritable();
+                } catch (e) {
+                    // User dismissed picker or permission denied; gracefully fallback to in-memory Blob
+                    directWritable = null;
+                }
+            }
+
+            // 3. Prepare Pieces
             const blockSize = this.computeBlockSize(knownSize);
             const totalPieces = Math.ceil(knownSize / blockSize);
             const pieces = [];
@@ -86,7 +98,7 @@ class TurboDownloader {
             const updateSpeed = () => {
                 const now = performance.now();
                 const elapsedSec = (now - lastSpeedTime) / 1000;
-                if (elapsedSec >= 0.3) {
+                if (elapsedSec >= 0.25) {
                     const deltaBytes = downloadedBytes - lastSpeedBytes;
                     const mbps = (deltaBytes / (1024 * 1024)) / elapsedSec;
                     if (mbps < 0.1) {
@@ -116,7 +128,7 @@ class TurboDownloader {
                 }
             };
 
-            // 3. Worker Pool with Dynamic Queue
+            // 4. Worker Pool with Dynamic Queue & Per-Chunk Retry
             let nextPieceIndex = 0;
             const workerCount = Math.min(this.concurrency, totalPieces);
 
@@ -130,23 +142,61 @@ class TurboDownloader {
                     reportProgress();
 
                     try {
-                        const rangeHdr = `bytes=${piece.start}-${piece.end}`;
-                        const resp = await fetch(url, {
-                            headers: {
-                                'Range': rangeHdr,
-                                'Accept': '*/*'
-                            },
-                            signal: this.abortController.signal
-                        });
+                        let attempts = 0;
+                        const maxRetries = 3;
+                        while (attempts < maxRetries) {
+                            if (this.abortController.signal.aborted) return;
+                            try {
+                                const rangeHdr = `bytes=${piece.start}-${piece.end}`;
+                                const resp = await fetch(url, {
+                                    headers: {
+                                        'Range': rangeHdr,
+                                        'Accept': '*/*'
+                                    },
+                                    signal: this.abortController.signal
+                                });
 
-                        if (resp.status !== 206) {
-                            throw new Error(`Server returned HTTP ${resp.status} for range ${rangeHdr}`);
+                                if (resp.status !== 206) {
+                                    throw new Error(`Server returned HTTP ${resp.status} for range ${rangeHdr}`);
+                                }
+
+                                // Stream response chunks incrementally for butter-smooth progress updates
+                                const reader = resp.body.getReader();
+                                const chunks = [];
+                                while (true) {
+                                    const { done, value } = await reader.read();
+                                    if (done) break;
+                                    chunks.push(value);
+                                    downloadedBytes += value.length;
+                                    reportProgress();
+                                }
+
+                                // Assemble piece buffer
+                                const pieceData = new Uint8Array(piece.length);
+                                let offset = 0;
+                                for (const chunk of chunks) {
+                                    pieceData.set(chunk, offset);
+                                    offset += chunk.length;
+                                }
+
+                                if (directWritable) {
+                                    await directWritable.seek(piece.start);
+                                    await directWritable.write(pieceData);
+                                    piece.data = null; // Zero browser RAM overhead!
+                                } else {
+                                    piece.data = pieceData;
+                                }
+                                piece.completed = true;
+                                break; // Chunk completed successfully
+                            } catch (pieceErr) {
+                                attempts++;
+                                if (this.abortController.signal.aborted || attempts >= maxRetries) {
+                                    throw pieceErr;
+                                }
+                                // Exponential backoff before retry (250ms, 500ms, 1000ms)
+                                await new Promise(r => setTimeout(r, attempts * 250));
+                            }
                         }
-
-                        const arrayBuf = await resp.arrayBuffer();
-                        piece.data = new Uint8Array(arrayBuf);
-                        piece.completed = true;
-                        downloadedBytes += piece.length;
                     } finally {
                         activeConnections--;
                         reportProgress();
@@ -162,10 +212,13 @@ class TurboDownloader {
             await Promise.all(workers);
 
             if (this.abortController.signal.aborted) {
+                if (directWritable) {
+                    await directWritable.abort().catch(() => {});
+                }
                 return;
             }
 
-            // 4. Assemble Blobs Sequentially & Trigger Save
+            // 5. Finalize Download
             if (onProgress) {
                 onProgress({
                     downloadedBytes: knownSize,
@@ -178,18 +231,23 @@ class TurboDownloader {
                 });
             }
 
-            const blobParts = pieces.map(p => p.data);
-            const fullBlob = new Blob(blobParts, { type: 'application/octet-stream' });
-            const blobUrl = URL.createObjectURL(fullBlob);
+            if (directWritable) {
+                await directWritable.close();
+            } else {
+                // In-memory Blob assembly fallback
+                const blobParts = pieces.map(p => p.data);
+                const fullBlob = new Blob(blobParts, { type: 'application/octet-stream' });
+                const blobUrl = URL.createObjectURL(fullBlob);
 
-            const a = document.createElement('a');
-            a.href = blobUrl;
-            a.download = filename || 'download';
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
+                const a = document.createElement('a');
+                a.href = blobUrl;
+                a.download = filename || 'download';
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
 
-            setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+                setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+            }
 
             this.isDownloading = false;
             if (onComplete) {

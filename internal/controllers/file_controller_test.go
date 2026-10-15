@@ -1882,6 +1882,113 @@ func TestFileController_LegacyDecryptionAndRawFallback(t *testing.T) {
 	}
 }
 
+func TestFileController_DownloadFile_HEAD_And_ConditionalGET(t *testing.T) {
+	e := echo.New()
+	dbEngine, err := data.NewDBEngine("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to create memory DB: %v", err)
+	}
+	defer dbEngine.Close()
+
+	_, _ = dbEngine.SQL.Exec(`
+		CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT NOT NULL, password_hash TEXT, salt BLOB, encrypted_vault_key BLOB);
+		CREATE TABLE folders (id TEXT PRIMARY KEY, owner_id INTEGER, parent_id TEXT, name TEXT);
+		CREATE TABLE files (id TEXT PRIMARY KEY, owner_id INTEGER, folder_id TEXT, name TEXT, mime_type TEXT, size BIGINT, cas_hash TEXT, is_deleted BOOLEAN DEFAULT FALSE, created_at DATETIME DEFAULT '2026-06-01 12:00:00');
+		INSERT INTO files (id, owner_id, folder_id, name, mime_type, size, cas_hash, is_deleted) VALUES 
+			('head_doc', 1, 'f1', 'rfc_head.pdf', 'application/pdf', 1048576, 'cas_etag_head_999', FALSE);
+	`)
+
+	fileCtrl := &FileController{DB: dbEngine}
+	e.GET("/api/files/:id/download", fileCtrl.DownloadFile)
+	e.HEAD("/api/files/:id/download", fileCtrl.DownloadFile)
+
+	// 1. HEAD request: should return HTTP 200 with headers and 0-byte body
+	reqHEAD := httptest.NewRequest(http.MethodHead, "/api/files/head_doc/download", nil)
+	recHEAD := httptest.NewRecorder()
+	e.ServeHTTP(recHEAD, reqHEAD)
+
+	if recHEAD.Code != http.StatusOK {
+		t.Fatalf("Expected HTTP 200 for HEAD, got %d", recHEAD.Code)
+	}
+	if recHEAD.Header().Get("Content-Length") != "1048576" {
+		t.Fatalf("Expected Content-Length 1048576, got %q", recHEAD.Header().Get("Content-Length"))
+	}
+	if recHEAD.Header().Get("Accept-Ranges") != "bytes" {
+		t.Fatalf("Expected Accept-Ranges bytes, got %q", recHEAD.Header().Get("Accept-Ranges"))
+	}
+	if recHEAD.Header().Get("ETag") != `"cas_etag_head_999"` {
+		t.Fatalf("Expected ETag \"cas_etag_head_999\", got %q", recHEAD.Header().Get("ETag"))
+	}
+	if recHEAD.Body.Len() != 0 {
+		t.Fatalf("Expected 0-byte body for HEAD request, got %d bytes", recHEAD.Body.Len())
+	}
+
+	// 2. Conditional GET: If-None-Match matching ETag -> 304 Not Modified
+	reqNoneMatch := httptest.NewRequest(http.MethodGet, "/api/files/head_doc/download", nil)
+	reqNoneMatch.Header.Set("If-None-Match", `"cas_etag_head_999"`)
+	recNoneMatch := httptest.NewRecorder()
+	e.ServeHTTP(recNoneMatch, reqNoneMatch)
+
+	if recNoneMatch.Code != http.StatusNotModified {
+		t.Fatalf("Expected HTTP 304 Not Modified for matching If-None-Match, got %d", recNoneMatch.Code)
+	}
+	if recNoneMatch.Body.Len() != 0 {
+		t.Fatalf("Expected empty body for 304 response, got %d bytes", recNoneMatch.Body.Len())
+	}
+
+	// 3. Conditional GET: If-None-Match with weak prefix W/"..." -> 304 Not Modified
+	reqWeak := httptest.NewRequest(http.MethodGet, "/api/files/head_doc/download", nil)
+	reqWeak.Header.Set("If-None-Match", `W/"cas_etag_head_999"`)
+	recWeak := httptest.NewRecorder()
+	e.ServeHTTP(recWeak, reqWeak)
+
+	if recWeak.Code != http.StatusNotModified {
+		t.Fatalf("Expected HTTP 304 Not Modified for weak If-None-Match, got %d", recWeak.Code)
+	}
+
+	// 4. Conditional GET: If-Modified-Since in future -> 304 Not Modified
+	reqModSince := httptest.NewRequest(http.MethodGet, "/api/files/head_doc/download", nil)
+	reqModSince.Header.Set("If-Modified-Since", "Sun, 01 Jun 2030 12:00:00 GMT")
+	recModSince := httptest.NewRecorder()
+	e.ServeHTTP(recModSince, reqModSince)
+
+	if recModSince.Code != http.StatusNotModified {
+		t.Fatalf("Expected HTTP 304 Not Modified for fresh If-Modified-Since, got %d", recModSince.Code)
+	}
+}
+
+func TestFileController_DownloadFile_CacheControlHeaders(t *testing.T) {
+	e := echo.New()
+	dbEngine, err := data.NewDBEngine("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to create memory DB: %v", err)
+	}
+	defer dbEngine.Close()
+
+	_, _ = dbEngine.SQL.Exec(`
+		CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT NOT NULL, password_hash TEXT, salt BLOB, encrypted_vault_key BLOB);
+		CREATE TABLE folders (id TEXT PRIMARY KEY, owner_id INTEGER, parent_id TEXT, name TEXT);
+		CREATE TABLE files (id TEXT PRIMARY KEY, owner_id INTEGER, folder_id TEXT, name TEXT, mime_type TEXT, size BIGINT, cas_hash TEXT, is_deleted BOOLEAN DEFAULT FALSE);
+		INSERT INTO files (id, owner_id, folder_id, name, mime_type, size, cas_hash, is_deleted) VALUES 
+			('std_file', 1, 'f1', 'standard.txt', 'text/plain', 100, 'cas_std_123', FALSE);
+	`)
+
+	fileCtrl := &FileController{DB: dbEngine}
+	e.GET("/api/files/:id/download", fileCtrl.DownloadFile)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/files/std_file/download", nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK, got %d", rec.Code)
+	}
+	cc := rec.Header().Get("Cache-Control")
+	if !strings.Contains(cc, "private") || !strings.Contains(cc, "no-transform") {
+		t.Fatalf("Expected Cache-Control with 'private' and 'no-transform', got %q", cc)
+	}
+}
+
 
 
 

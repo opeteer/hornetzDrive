@@ -29,6 +29,13 @@ import (
 	"ztatic-go-framework/internal/upload"
 )
 
+var downloadBufPool = sync.Pool{
+	New: func() interface{} {
+		b := make([]byte, 256*1024) // 256 KB high-throughput transfer buffer
+		return &b
+	},
+}
+
 type FileController struct {
 	DB              *data.DBEngine
 	CAS             *storage.CASEngine
@@ -597,10 +604,12 @@ func (fc *FileController) openContentReader(file *os.File, isVault bool, vk []by
 	if _, err := file.Seek(0, io.SeekStart); err == nil {
 		decStream, err := crypto.NewDecryptStream(file, vk)
 		if err == nil {
-			if pErr := decStream.PreloadFirstChunk(); pErr == nil {
-				if start == 0 {
+			if start == 0 {
+				if pErr := decStream.PreloadFirstChunk(); pErr == nil {
 					return decStream, nil
 				}
+			} else {
+				// Fast direct seek: decrypts target chunk directly, eliminating chunk 0 decryption overhead
 				if sErr := decStream.SeekTo(start); sErr == nil {
 					return decStream, nil
 				}
@@ -614,10 +623,11 @@ func (fc *FileController) openContentReader(file *os.File, isVault bool, vk []by
 		if _, err := file.Seek(0, io.SeekStart); err == nil {
 			decStream, err := crypto.NewDecryptStream(file, legacyKey)
 			if err == nil {
-				if pErr := decStream.PreloadFirstChunk(); pErr == nil {
-					if start == 0 {
+				if start == 0 {
+					if pErr := decStream.PreloadFirstChunk(); pErr == nil {
 						return decStream, nil
 					}
+				} else {
 					if sErr := decStream.SeekTo(start); sErr == nil {
 						return decStream, nil
 					}
@@ -667,6 +677,15 @@ func (fc *FileController) DownloadFile(c *echo.Context) error {
 	etag := fmt.Sprintf("\"%s\"", f.CasHash)
 	c.Response().Header().Set("ETag", etag)
 	c.Response().Header().Set("Accept-Ranges", "bytes")
+	c.Response().Header().Set("Content-Type", f.MimeType)
+	c.Response().Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", safeName))
+
+	if isVault {
+		c.Response().Header().Set("Cache-Control", "private, no-store, no-cache, must-revalidate")
+		c.Response().Header().Set("Pragma", "no-cache")
+	} else {
+		c.Response().Header().Set("Cache-Control", "private, no-transform, max-age=86400, must-revalidate")
+	}
 
 	var lastModTime time.Time
 	if f.CreatedAt != "" {
@@ -680,6 +699,27 @@ func (fc *FileController) DownloadFile(c *echo.Context) error {
 	}
 	if !lastModTime.IsZero() {
 		c.Response().Header().Set("Last-Modified", lastModTime.UTC().Format(http.TimeFormat))
+	}
+
+	// RFC 7232 conditional headers evaluation for 0-second 304 Not Modified
+	ifNoneMatch := c.Request().Header.Get("If-None-Match")
+	if ifNoneMatch != "" {
+		cleanNoneMatch := strings.TrimPrefix(ifNoneMatch, "W/")
+		if cleanNoneMatch == etag || ifNoneMatch == "*" {
+			return c.NoContent(http.StatusNotModified)
+		}
+	} else if ifModSince := c.Request().Header.Get("If-Modified-Since"); ifModSince != "" && !lastModTime.IsZero() {
+		if t, err := http.ParseTime(ifModSince); err == nil {
+			if !lastModTime.Truncate(time.Second).After(t) {
+				return c.NoContent(http.StatusNotModified)
+			}
+		}
+	}
+
+	// Instant HEAD request support: emit headers without disk decryption
+	if c.Request().Method == http.MethodHead {
+		c.Response().Header().Set("Content-Length", strconv.FormatInt(f.Size, 10))
+		return c.NoContent(http.StatusOK)
 	}
 
 	// RFC 7233 If-Range validation: only evaluate Range if validator matches
@@ -751,9 +791,6 @@ func (fc *FileController) DownloadFile(c *echo.Context) error {
 		vk = crypto.GetStandardStorageKey()
 	}
 
-	c.Response().Header().Set("Content-Type", f.MimeType)
-	c.Response().Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", safeName))
-
 	start := int64(0)
 	chunkLen := f.Size
 	isPartial := false
@@ -778,17 +815,20 @@ func (fc *FileController) DownloadFile(c *echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "Decryption error")
 	}
 
+	bufPtr := downloadBufPool.Get().(*[]byte)
+	defer downloadBufPool.Put(bufPtr)
+
 	c.Response().Header().Set("Content-Length", strconv.FormatInt(chunkLen, 10))
 	if isPartial {
 		c.Response().WriteHeader(http.StatusPartialContent)
-		_, err = io.CopyN(c.Response(), reader, chunkLen)
+		_, err = io.CopyBuffer(c.Response(), io.LimitReader(reader, chunkLen), *bufPtr)
 		if errors.Is(err, io.EOF) {
 			return nil
 		}
 		return err
 	}
 
-	_, err = io.Copy(c.Response(), reader)
+	_, err = io.CopyBuffer(c.Response(), reader, *bufPtr)
 	return err
 }
 
@@ -814,12 +854,52 @@ func (fc *FileController) PreviewFile(c *echo.Context) error {
 	safeName = strings.ReplaceAll(safeName, "\r", "")
 	safeName = strings.ReplaceAll(safeName, "\n", "")
 
+	etag := fmt.Sprintf("\"%s\"", f.CasHash)
+	c.Response().Header().Set("ETag", etag)
 	c.Response().Header().Set("Accept-Ranges", "bytes")
+	c.Response().Header().Set("Content-Type", f.MimeType)
+	c.Response().Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", safeName))
+
 	if isVault {
 		c.Response().Header().Set("Cache-Control", "private, no-store, no-cache, must-revalidate")
 		c.Response().Header().Set("Pragma", "no-cache")
 	} else {
-		c.Response().Header().Set("Cache-Control", "private, max-age=3600")
+		c.Response().Header().Set("Cache-Control", "private, no-transform, max-age=3600, must-revalidate")
+	}
+
+	var lastModTime time.Time
+	if f.CreatedAt != "" {
+		if t, err := time.Parse(time.RFC3339, f.CreatedAt); err == nil {
+			lastModTime = t
+		} else if t, err := time.Parse("2006-01-02 15:04:05", f.CreatedAt); err == nil {
+			lastModTime = t
+		} else if t, err := time.Parse("2006-01-02T15:04:05Z", f.CreatedAt); err == nil {
+			lastModTime = t
+		}
+	}
+	if !lastModTime.IsZero() {
+		c.Response().Header().Set("Last-Modified", lastModTime.UTC().Format(http.TimeFormat))
+	}
+
+	// RFC 7232 conditional headers evaluation for 0-second 304 Not Modified
+	ifNoneMatch := c.Request().Header.Get("If-None-Match")
+	if ifNoneMatch != "" {
+		cleanNoneMatch := strings.TrimPrefix(ifNoneMatch, "W/")
+		if cleanNoneMatch == etag || ifNoneMatch == "*" {
+			return c.NoContent(http.StatusNotModified)
+		}
+	} else if ifModSince := c.Request().Header.Get("If-Modified-Since"); ifModSince != "" && !lastModTime.IsZero() {
+		if t, err := http.ParseTime(ifModSince); err == nil {
+			if !lastModTime.Truncate(time.Second).After(t) {
+				return c.NoContent(http.StatusNotModified)
+			}
+		}
+	}
+
+	// Instant HEAD request support: emit headers without disk decryption
+	if c.Request().Method == http.MethodHead {
+		c.Response().Header().Set("Content-Length", strconv.FormatInt(f.Size, 10))
+		return c.NoContent(http.StatusOK)
 	}
 
 	var file *os.File
@@ -832,8 +912,6 @@ func (fc *FileController) PreviewFile(c *echo.Context) error {
 	if err != nil {
 		mockBody := []byte("Content of " + f.Name)
 		totalSize := int64(len(mockBody))
-		c.Response().Header().Set("Content-Type", f.MimeType)
-		c.Response().Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", safeName))
 
 		if rangeHeader := c.Request().Header.Get("Range"); rangeHeader != "" {
 			start, end, satisfiable, isRange := parseRangeHeader(rangeHeader, totalSize)
@@ -869,9 +947,6 @@ func (fc *FileController) PreviewFile(c *echo.Context) error {
 		vk = crypto.GetStandardStorageKey()
 	}
 
-	c.Response().Header().Set("Content-Type", f.MimeType)
-	c.Response().Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", safeName))
-
 	start := int64(0)
 	chunkLen := f.Size
 	isPartial := false
@@ -895,17 +970,20 @@ func (fc *FileController) PreviewFile(c *echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "Decryption error")
 	}
 
+	bufPtr := downloadBufPool.Get().(*[]byte)
+	defer downloadBufPool.Put(bufPtr)
+
 	c.Response().Header().Set("Content-Length", strconv.FormatInt(chunkLen, 10))
 	if isPartial {
 		c.Response().WriteHeader(http.StatusPartialContent)
-		_, err = io.CopyN(c.Response(), reader, chunkLen)
+		_, err = io.CopyBuffer(c.Response(), io.LimitReader(reader, chunkLen), *bufPtr)
 		if errors.Is(err, io.EOF) {
 			return nil
 		}
 		return err
 	}
 
-	_, err = io.Copy(c.Response(), reader)
+	_, err = io.CopyBuffer(c.Response(), reader, *bufPtr)
 	return err
 }
 

@@ -3,6 +3,7 @@ package crypto
 import (
 	"bytes"
 	"io"
+	"os"
 	"testing"
 )
 
@@ -306,6 +307,108 @@ func BenchmarkStreamDecrypt(b *testing.B) {
 		if _, err := io.ReadFull(decStream, readBuf); err != nil {
 			b.Fatalf("ReadFull failed: %v", err)
 		}
+	}
+}
+
+func TestDecryptStream_PreloadFirstChunk(t *testing.T) {
+	vk := DummyVK()
+	rawPayload := []byte("Hello, Hornetz Zero-Alloc Preload Test!")
+	var encBuf bytes.Buffer
+	encStream, err := NewEncryptStream(&encBuf, vk)
+	if err != nil {
+		t.Fatalf("NewEncryptStream failed: %v", err)
+	}
+	if _, err := encStream.Write(rawPayload); err != nil {
+		t.Fatalf("Write failed: %v", err)
+	}
+
+	reader := bytes.NewReader(encBuf.Bytes())
+	decStream, err := NewDecryptStream(reader, vk)
+	if err != nil {
+		t.Fatalf("NewDecryptStream failed: %v", err)
+	}
+
+	// 1. Preload first chunk
+	if err := decStream.PreloadFirstChunk(); err != nil {
+		t.Fatalf("PreloadFirstChunk failed: %v", err)
+	}
+
+	// 2. Preload again should be a no-op idempotent call
+	if err := decStream.PreloadFirstChunk(); err != nil {
+		t.Fatalf("Second PreloadFirstChunk failed: %v", err)
+	}
+
+	// 3. Read stream completely and verify content matches
+	out, err := io.ReadAll(decStream)
+	if err != nil {
+		t.Fatalf("ReadAll failed: %v", err)
+	}
+	if !bytes.Equal(out, rawPayload) {
+		t.Fatalf("Expected %q, got %q", string(rawPayload), string(out))
+	}
+}
+
+func TestDecryptStream_SeekTo_WithReaderAt(t *testing.T) {
+	vk := DummyVK()
+	tmpFile, err := os.CreateTemp("", "seek_readerat_*.bin")
+	if err != nil {
+		t.Fatalf("CreateTemp failed: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+	defer tmpFile.Close()
+
+	encStream, err := NewEncryptStream(tmpFile, vk)
+	if err != nil {
+		t.Fatalf("NewEncryptStream failed: %v", err)
+	}
+
+	chunk1 := bytes.Repeat([]byte("A"), 1024)
+	chunk2 := bytes.Repeat([]byte("B"), 2048)
+	chunk3 := bytes.Repeat([]byte("C"), 4096)
+
+	if _, err := encStream.Write(chunk1); err != nil {
+		t.Fatalf("Write chunk 1 failed: %v", err)
+	}
+	if _, err := encStream.Write(chunk2); err != nil {
+		t.Fatalf("Write chunk 2 failed: %v", err)
+	}
+	if _, err := encStream.Write(chunk3); err != nil {
+		t.Fatalf("Write chunk 3 failed: %v", err)
+	}
+
+	// Open read handle which implements io.ReaderAt and io.ReadSeeker
+	readFile, err := os.Open(tmpFile.Name())
+	if err != nil {
+		t.Fatalf("os.Open failed: %v", err)
+	}
+	defer readFile.Close()
+
+	decStream, err := NewDecryptStream(readFile, vk)
+	if err != nil {
+		t.Fatalf("NewDecryptStream failed: %v", err)
+	}
+
+	// Seek directly into chunk 2 at offset 1500 (chunk 1 is 1024 bytes)
+	if err := decStream.SeekTo(1500); err != nil {
+		t.Fatalf("SeekTo(1500) failed: %v", err)
+	}
+	buf := make([]byte, 10)
+	if _, err := io.ReadFull(decStream, buf); err != nil {
+		t.Fatalf("ReadFull failed: %v", err)
+	}
+	if string(buf) != "BBBBBBBBBB" {
+		t.Fatalf("Expected 'BBBBBBBBBB', got %q", string(buf))
+	}
+
+	// Seek forward into chunk 3 at offset 3500 (1024 + 2048 = 3072)
+	if err := decStream.SeekTo(3500); err != nil {
+		t.Fatalf("SeekTo(3500) failed: %v", err)
+	}
+	if _, err := io.ReadFull(decStream, buf); err != nil {
+		t.Fatalf("ReadFull failed: %v", err)
+	}
+	if string(buf) != "CCCCCCCCCC" {
+		t.Fatalf("Expected 'CCCCCCCCCC', got %q", string(buf))
 	}
 }
 
