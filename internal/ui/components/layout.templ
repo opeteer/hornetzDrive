@@ -999,6 +999,8 @@ templ Layout(title string) {
 				showMoveModal: false,
 				fileToMove: null,
 				targetMoveFolderId: '',
+				allMoveFolders: [],
+				expandedMoveFolderIds: [],
 				availableMoveFolders: [],
 				files: [],
 				folders: [],
@@ -1394,6 +1396,8 @@ templ Layout(title string) {
 				handleFileDragStart(event, file) {
 					if (!file) return;
 					this.draggedFile = file;
+					this.isDragging = false;
+					this.dragCounter = 0;
 					if (event.dataTransfer) {
 						event.dataTransfer.setData('application/x-hornetz-file-id', file.id);
 						event.dataTransfer.effectAllowed = 'move';
@@ -1403,6 +1407,8 @@ templ Layout(title string) {
 				handleFileDragEnd(event) {
 					this.draggedFile = null;
 					this.dragTargetFolderId = null;
+					this.dragCounter = 0;
+					this.isDragging = false;
 				},
 
 				handleFolderDragOver(event, folder) {
@@ -1431,6 +1437,8 @@ templ Layout(title string) {
 					const fileId = (event.dataTransfer && event.dataTransfer.getData('application/x-hornetz-file-id')) || (this.draggedFile ? this.draggedFile.id : null);
 					this.draggedFile = null;
 					this.dragTargetFolderId = null;
+					this.isDragging = false;
+					this.dragCounter = 0;
 
 					if (fileId) {
 						await this.moveFile(fileId, targetId);
@@ -1441,24 +1449,108 @@ templ Layout(title string) {
 					if (!file) return;
 					this.fileToMove = file;
 					this.targetMoveFolderId = file.folder_id || '';
+					this.expandedMoveFolderIds = [];
 					try {
 						const res = await fetch('/api/folders?all=true');
 						if (res.ok) {
-							const all = await res.json();
-							this.availableMoveFolders = all.filter(f => f.id !== file.folder_id);
+							this.allMoveFolders = await res.json();
 						} else {
-							this.availableMoveFolders = this.folders.filter(f => f.id !== file.folder_id);
+							this.allMoveFolders = this.folders ? [...this.folders] : [];
 						}
 					} catch(e) {
-						this.availableMoveFolders = this.folders.filter(f => f.id !== file.folder_id);
+						this.allMoveFolders = this.folders ? [...this.folders] : [];
+					}
+					// If currently inside a subfolder, expand its ancestor chain so current location is visible in tree
+					if (file.folder_id) {
+						let cur = this.allMoveFolders.find(f => f.id === file.folder_id);
+						while (cur && cur.parent_id && cur.parent_id !== 'root') {
+							if (!this.expandedMoveFolderIds.includes(cur.parent_id)) {
+								this.expandedMoveFolderIds.push(cur.parent_id);
+							}
+							cur = this.allMoveFolders.find(f => f.id === cur.parent_id);
+						}
 					}
 					this.showMoveModal = true;
+				},
+
+				toggleMoveFolderExpand(folderId, event) {
+					if (event) {
+						event.preventDefault();
+						event.stopPropagation();
+					}
+					const idx = this.expandedMoveFolderIds.indexOf(folderId);
+					if (idx !== -1) {
+						this.expandedMoveFolderIds.splice(idx, 1);
+					} else {
+						this.expandedMoveFolderIds.push(folderId);
+					}
+				},
+
+				isMoveFolderExpanded(folderId) {
+					return this.expandedMoveFolderIds.includes(folderId);
+				},
+
+				getMoveTreeNodes() {
+					if (!this.allMoveFolders || this.allMoveFolders.length === 0) return [];
+					
+					const childrenMap = new Map();
+					for (const f of this.allMoveFolders) {
+						const pid = (f.parent_id && f.parent_id !== 'root') ? f.parent_id : '';
+						if (!childrenMap.has(pid)) {
+							childrenMap.set(pid, []);
+						}
+						childrenMap.get(pid).push(f);
+					}
+
+					for (const [k, list] of childrenMap.entries()) {
+						list.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+					}
+
+					const visibleNodes = [];
+					const addChildren = (parentId, level) => {
+						const list = childrenMap.get(parentId) || [];
+						for (const folder of list) {
+							const hasChildren = (childrenMap.get(folder.id) || []).length > 0;
+							const isExpanded = this.expandedMoveFolderIds.includes(folder.id);
+							visibleNodes.push({
+								...folder,
+								level: level,
+								hasChildren: hasChildren,
+								isExpanded: isExpanded
+							});
+							if (isExpanded && hasChildren) {
+								addChildren(folder.id, level + 1);
+							}
+						}
+					};
+
+					addChildren('', 0);
+					return visibleNodes;
+				},
+
+				getMoveTargetFolderPath() {
+					if (!this.targetMoveFolderId) {
+						return 'Penyimpanan Utama (Root)';
+					}
+					const segments = [];
+					let cur = (this.allMoveFolders || []).find(f => f.id === this.targetMoveFolderId);
+					while (cur) {
+						segments.unshift(cur.name);
+						cur = (cur.parent_id && cur.parent_id !== 'root') 
+							? this.allMoveFolders.find(f => f.id === cur.parent_id) 
+							: null;
+					}
+					return segments.length > 0 ? ('Penyimpanan Utama / ' + segments.join(' / ')) : 'Penyimpanan Utama (Root)';
 				},
 
 				async executeMoveFile() {
 					if (!this.fileToMove) return;
 					const fileId = this.fileToMove.id;
 					const targetFolderId = this.targetMoveFolderId;
+					if (targetFolderId === (this.fileToMove.folder_id || '')) {
+						alert('Berkas sudah berada di folder tujuan yang dipilih.');
+						return;
+					}
 					this.showMoveModal = false;
 					await this.moveFile(fileId, targetFolderId);
 				},
@@ -2137,13 +2229,24 @@ templ Layout(title string) {
 					return match ? decodeURIComponent(match[1]) : '';
 				},
 
+				isExternalFileDrag(event) {
+					if (this.draggedFile) return false;
+					const dt = event && event.dataTransfer;
+					if (!dt) return false;
+					const types = dt.types ? Array.from(dt.types) : [];
+					if (types.includes('application/x-hornetz-file-id')) return false;
+					return types.includes('Files');
+				},
+
 				handleDragEnter(event) {
+					if (!this.isExternalFileDrag(event)) return;
 					event.preventDefault();
 					this.dragCounter++;
 					this.isDragging = true;
 				},
 
 				handleDragLeave(event) {
+					if (!this.isExternalFileDrag(event)) return;
 					event.preventDefault();
 					this.dragCounter--;
 					if (this.dragCounter <= 0) {
@@ -2153,6 +2256,7 @@ templ Layout(title string) {
 				},
 
 				handleDragOver(event) {
+					if (!this.isExternalFileDrag(event)) return;
 					event.preventDefault();
 					this.isDragging = true;
 				},

@@ -614,43 +614,85 @@ templ DashboardContent() {
 					</button>
 				</div>
 
-				<div class="space-y-1">
-					<p class="text-xs text-[#86898B]">Pindahkan berkas berikut ke folder tujuan:</p>
-					<p class="text-xs font-bold text-[#F5CE0D] truncate font-mono" x-text="$store.drive.fileToMove ? $store.drive.fileToMove.name : ''"></p>
+				<div class="space-y-1 bg-[#2E3137]/30 border border-[#3F4247]/50 p-3 rounded-xl">
+					<div class="flex items-center justify-between text-xs">
+						<span class="text-[#86898B]">Berkas yang dipindah:</span>
+						<span class="font-bold text-white truncate max-w-[200px] font-mono" x-text="$store.drive.fileToMove ? $store.drive.fileToMove.name : ''"></span>
+					</div>
+					<div class="flex items-center justify-between text-xs pt-2 border-t border-white/[0.04]">
+						<span class="text-[#86898B]">Lokasi Tujuan:</span>
+						<span class="font-bold text-[#F5CE0D] truncate max-w-[220px] font-mono text-right" x-text="$store.drive.getMoveTargetFolderPath()"></span>
+					</div>
 				</div>
 
-				<!-- Target Folder Selection List -->
-				<div class="space-y-2 max-h-60 overflow-y-auto pr-1">
+				<!-- Target Folder Selection Directory Tree -->
+				<div class="space-y-1.5 max-h-64 overflow-y-auto pr-1 select-none">
 					<!-- Root Folder Option -->
 					<div 
 						@click="$store.drive.targetMoveFolderId = ''" 
-						:class="$store.drive.targetMoveFolderId === '' ? 'border-[#F5CE0D] bg-[#F5CE0D]/10 text-white font-bold' : 'border-[#3F4247]/50 hover:bg-[#2E3137]/40 text-[#86898B] hover:text-white'"
-						class="p-3 rounded-xl border flex items-center justify-between cursor-pointer transition-all"
+						:class="$store.drive.targetMoveFolderId === '' ? 'border-[#F5CE0D] bg-[#F5CE0D]/10 text-white font-bold shadow-sm' : 'border-[#3F4247]/50 hover:bg-[#2E3137]/40 text-[#86898B] hover:text-white'"
+						class="p-2.5 rounded-xl border flex items-center justify-between cursor-pointer transition-all"
 					>
-						<div class="flex items-center gap-2.5">
-							@IconHardDrive("w-4 h-4 text-[#F5CE0D]")
+						<div class="flex items-center gap-2">
+							<span class="w-5 h-5 flex items-center justify-center text-[#86898B]/50 shrink-0">
+								<span class="w-1.5 h-1.5 rounded-full bg-[#86898B]/60"></span>
+							</span>
+							<div class="text-[#F5CE0D] shrink-0">
+								@IconHardDrive("w-4 h-4")
+							</div>
 							<span class="text-xs font-semibold">Penyimpanan Utama (Root)</span>
+							<template x-if="$store.drive.fileToMove && (!$store.drive.fileToMove.folder_id || $store.drive.fileToMove.folder_id === '')">
+								<span class="text-[9px] text-[#86898B] font-mono bg-white/5 px-1.5 py-0.5 rounded border border-white/10 shrink-0">(Saat Ini)</span>
+							</template>
 						</div>
-						<span x-show="$store.drive.targetMoveFolderId === ''" class="text-[#F5CE0D] text-xs font-bold font-mono">Pilihan</span>
+						<span x-show="$store.drive.targetMoveFolderId === ''" class="text-[#F5CE0D] text-[11px] font-bold font-mono shrink-0">Pilihan</span>
 					</div>
 
-					<!-- Available Folders -->
-					<template x-for="f in $store.drive.availableMoveFolders" :key="f.id">
+					<!-- Directory Tree Nodes -->
+					<template x-for="node in $store.drive.getMoveTreeNodes()" :key="node.id">
 						<div 
-							@click="$store.drive.targetMoveFolderId = f.id" 
-							:class="$store.drive.targetMoveFolderId === f.id ? 'border-[#F5CE0D] bg-[#F5CE0D]/10 text-white font-bold' : 'border-[#3F4247]/50 hover:bg-[#2E3137]/40 text-[#86898B] hover:text-white'"
-							class="p-3 rounded-xl border flex items-center justify-between cursor-pointer transition-all"
+							@click="$store.drive.targetMoveFolderId = node.id" 
+							:style="'padding-left: ' + (10 + node.level * 22) + 'px'"
+							:class="[
+								$store.drive.targetMoveFolderId === node.id ? 'border-[#F5CE0D] bg-[#F5CE0D]/10 text-white font-bold shadow-sm' : 'border-[#3F4247]/40 hover:bg-[#2E3137]/40 text-[#86898B] hover:text-white',
+							]"
+							class="p-2 rounded-xl border flex items-center justify-between cursor-pointer transition-all relative group"
 						>
-							<div class="flex items-center gap-2.5 min-w-0">
+							<div class="flex items-center gap-2 min-w-0">
+								<!-- Expand / Collapse chevron toggle -->
+								<button 
+									type="button"
+									x-show="node.hasChildren"
+									@click.stop="$store.drive.toggleMoveFolderExpand(node.id, $event)"
+									class="w-5 h-5 flex items-center justify-center rounded hover:bg-white/10 text-[#86898B] hover:text-[#F5CE0D] transition-colors shrink-0"
+								>
+									<template x-if="node.isExpanded">
+										@IconChevronDown("w-3.5 h-3.5 text-[#F5CE0D]")
+									</template>
+									<template x-if="!node.isExpanded">
+										@IconChevronRight("w-3.5 h-3.5")
+									</template>
+								</button>
+								<span x-show="!node.hasChildren" class="w-5 h-5 flex items-center justify-center text-[#86898B]/40 shrink-0">
+									<span class="text-xs font-mono">└</span>
+								</span>
+
+								<!-- Folder Icon -->
 								<div class="text-[#F5CE0D] shrink-0">
 									@IconFolder("w-4 h-4")
 								</div>
-								<div class="min-w-0">
-									<div class="text-xs font-semibold truncate" x-text="f.name"></div>
-									<div class="text-[10px] text-[#86898B] font-mono" x-text="(f.file_count || 0) + ' berkas'"></div>
+
+								<!-- Name & count -->
+								<div class="min-w-0 flex items-center gap-1.5">
+									<span class="text-xs font-semibold truncate" x-text="node.name"></span>
+									<span class="text-[10px] text-[#86898B] font-mono shrink-0" x-text="'(' + (node.file_count || 0) + ')'"></span>
+									<template x-if="$store.drive.fileToMove && $store.drive.fileToMove.folder_id === node.id">
+										<span class="text-[9px] text-[#86898B] font-mono bg-white/5 px-1.5 py-0.5 rounded border border-white/10 shrink-0">(Saat Ini)</span>
+									</template>
 								</div>
 							</div>
-							<span x-show="$store.drive.targetMoveFolderId === f.id" class="text-[#F5CE0D] text-xs font-bold font-mono shrink-0">Pilihan</span>
+
+							<span x-show="$store.drive.targetMoveFolderId === node.id" class="text-[#F5CE0D] text-[11px] font-bold font-mono shrink-0 ml-2">Pilihan</span>
 						</div>
 					</template>
 				</div>
