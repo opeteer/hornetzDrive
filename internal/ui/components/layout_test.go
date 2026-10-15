@@ -138,3 +138,39 @@ func TestDashboard_SortDropdownZIndex(t *testing.T) {
 	}
 }
 
+func TestLayout_HeaderSearchReplacesLogo(t *testing.T) {
+	comp := Layout("Test Page")
+	var buf bytes.Buffer
+	err := comp.Render(context.Background(), &buf)
+	if err != nil {
+		t.Fatalf("Failed to render Layout: %v", err)
+	}
+
+	html := buf.String()
+
+	// Verify the HornetzDrive logo and subtitle have been removed from the application header
+	if strings.Contains(html, "v2.0 Cloud") {
+		t.Errorf("Layout header still contains 'v2.0 Cloud' logo badge")
+	}
+	if strings.Contains(html, "Penyimpanan Awan Terenkripsi Real-Time") {
+		t.Errorf("Layout header still contains 'Penyimpanan Awan Terenkripsi Real-Time' subtitle")
+	}
+
+	// Verify the search bar is present in the header
+	if !strings.Contains(html, `name="hornetz_search"`) {
+		t.Errorf("Layout header does not contain search input")
+	}
+	if !strings.Contains(html, `id="hornetz-search-input"`) {
+		t.Errorf("Layout header does not contain search input id")
+	}
+
+	// Verify right-side controls are present
+	if !strings.Contains(html, "Pengguna Utama") {
+		t.Errorf("Layout header missing user profile")
+	}
+	if !strings.Contains(html, "Beranda") {
+		t.Errorf("Layout header missing Beranda navigation link")
+	}
+}
+
+
