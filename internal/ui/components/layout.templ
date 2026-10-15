@@ -959,6 +959,7 @@ templ Layout(title string) {
 				transferEtaText: '-',
 				transferWatchdogTimer: null,
 				lastProgressTime: 0,
+				transferSamples: [],
 
 				formatBytes(bytes) {
 					if (bytes === undefined || bytes === null || isNaN(bytes) || bytes <= 0) return '0 B';
@@ -995,6 +996,33 @@ templ Layout(title string) {
 					}
 				},
 
+				recordTransferProgress(currentTotalBytesLoaded) {
+					if (typeof currentTotalBytesLoaded !== 'number' || isNaN(currentTotalBytesLoaded)) return;
+					const now = performance.now();
+					this.lastProgressTime = now;
+					this.transferBytesLoaded = currentTotalBytesLoaded;
+
+					this.transferSamples.push({ time: now, bytes: currentTotalBytesLoaded });
+					// Retain samples within a rolling 2500ms window
+					const windowStart = now - 2500;
+					while (this.transferSamples.length > 2 && this.transferSamples[0].time < windowStart) {
+						this.transferSamples.shift();
+					}
+
+					if (this.transferSamples.length >= 2) {
+						const oldest = this.transferSamples[0];
+						const latest = this.transferSamples[this.transferSamples.length - 1];
+						const timeDiffSec = (latest.time - oldest.time) / 1000;
+						const bytesDiff = latest.bytes - oldest.bytes;
+						if (timeDiffSec >= 0.25 && bytesDiff > 0) {
+							const speedBps = bytesDiff / timeDiffSec;
+							this.currentSpeedText = this.formatSpeed(speedBps);
+							const remainingBytes = Math.max(0, this.transferBytesTotal - currentTotalBytesLoaded);
+							this.updateTransferEta(remainingBytes, speedBps);
+						}
+					}
+				},
+
 				startTransferWatchdog() {
 					this.stopTransferWatchdog();
 					this.lastProgressTime = performance.now();
@@ -1005,11 +1033,13 @@ templ Layout(title string) {
 						}
 						const now = performance.now();
 						const idleTime = now - this.lastProgressTime;
-						if (idleTime > 1200) {
+						// Graceful 3.5s stall threshold to accommodate server AES encryption & disk flush latency
+						if (idleTime > 3500) {
 							if (this.transferDirection === 'upload') {
 								this.currentSpeedText = '0.0 KB/s';
 								this.transferEtaText = '-';
-								if (this.uploadStatusText && this.uploadStatusText.startsWith('Status: Mengunggah')) {
+								this.transferSamples = [];
+								if (this.uploadStatusText && !this.uploadStatusText.includes('Gangguan') && !this.uploadStatusText.includes('Gagal')) {
 									this.uploadStatusText = 'Status: Menunggu respons server...';
 								}
 							}
@@ -1926,6 +1956,7 @@ templ Layout(title string) {
 						this.transferChunkCurrent = 0;
 						this.transferChunkTotal = 0;
 						this.transferEtaText = '-';
+						this.transferSamples = [];
 						this.isProcessingQueue = false;
 					}
 				},
@@ -1956,6 +1987,7 @@ templ Layout(title string) {
 					this.transferChunkCurrent = 0;
 					this.transferChunkTotal = Math.max(1, Math.ceil(file.size / (2 * 1024 * 1024)));
 					this.transferEtaText = '-';
+					this.transferSamples = [];
 					this.currentSpeedText = 'Menghubungkan...';
 					this.startTransferWatchdog();
 					const uploadStartTime = performance.now();
@@ -2001,6 +2033,7 @@ templ Layout(title string) {
 
 						if (initData.status === "completed") {
 							this.stopTransferWatchdog();
+							this.transferSamples = [];
 							await this.fetchFiles();
 							await this.fetchFolders();
 							await this.fetchStorageStats();
@@ -2026,7 +2059,9 @@ templ Layout(title string) {
 							const resumedPct = Math.min(Math.round((offset / Math.max(totalSize, 1)) * 90) + 5, 95);
 							this.uploadProgress = resumedPct;
 							this.transferChunkCurrent = Math.min(Math.floor(offset / chunkSize) + 1, this.transferChunkTotal);
-							this.uploadStatusText = `Status: Melanjutkan Unggahan (${Math.round((offset / Math.max(totalSize, 1)) * 100)}%)`;
+							const resumeDisplayPct = Math.round((offset / Math.max(totalSize, 1)) * 100);
+							this.uploadStatusText = `Status: Melanjutkan Unggahan chunk ${this.transferChunkCurrent}/${this.transferChunkTotal} (${resumeDisplayPct}%)`;
+							this.recordTransferProgress(offset);
 						} else {
 							this.uploadStatusText = 'Status: Mengunggah';
 						}
@@ -2038,6 +2073,10 @@ templ Layout(title string) {
 							const currentChunkIndex = Math.min(Math.floor(offset / chunkSize) + 1, this.transferChunkTotal);
 							this.transferChunkCurrent = currentChunkIndex;
 							this.transferBytesLoaded = offset;
+							const currentProgressPercent = Math.min(95, Math.max(5, Math.round((offset / Math.max(totalSize, 1)) * 90) + 5));
+							this.uploadProgress = currentProgressPercent;
+							const currentDisplayPct = Math.round((offset / Math.max(totalSize, 1)) * 100);
+							this.uploadStatusText = `Status: Mengunggah chunk ${currentChunkIndex}/${this.transferChunkTotal} (${currentDisplayPct}%)`;
 
 							let chunkSuccess = false;
 							let retryCount = 0;
@@ -2062,12 +2101,14 @@ templ Layout(title string) {
 												if (checkData.status === 'completed') {
 													offset = totalSize;
 													this.transferBytesLoaded = totalSize;
+													this.recordTransferProgress(totalSize);
 													chunkSuccess = true;
 													break;
 												}
 												if (typeof checkData.uploaded === 'number' && checkData.uploaded !== currentOffset) {
 													offset = checkData.uploaded;
 													this.transferBytesLoaded = offset;
+													this.recordTransferProgress(offset);
 													break;
 												}
 											}
@@ -2084,34 +2125,20 @@ templ Layout(title string) {
 										xhr.setRequestHeader("Content-Range", `bytes ${currentOffset}-${end > 0 ? end - 1 : 0}/${totalSize}`);
 										xhr.timeout = 25000;
 
-										let lastLoaded = 0;
-										let lastTime = performance.now();
-
 										xhr.upload.onprogress = (event) => {
 											if (event.lengthComputable && event.total > 0) {
-												const now = performance.now();
-												this.lastProgressTime = now;
 												const loadedTotal = currentOffset + event.loaded;
-												this.transferBytesLoaded = Math.min(loadedTotal, totalSize);
-
-												const timeDiff = (now - lastTime) / 1000;
-												if (timeDiff >= 0.25) {
-													const bytesDiff = event.loaded - lastLoaded;
-													const speedBps = bytesDiff / timeDiff;
-													this.currentSpeedText = this.formatSpeed(speedBps);
-													const remainingBytes = Math.max(0, totalSize - loadedTotal);
-													this.updateTransferEta(remainingBytes, speedBps);
-													lastLoaded = event.loaded;
-													lastTime = now;
-												}
+												this.recordTransferProgress(Math.min(loadedTotal, totalSize));
 												const streamPercent = 5 + Math.round((loadedTotal / Math.max(totalSize, 1)) * 90);
 												this.uploadProgress = Math.max(this.uploadProgress, Math.min(streamPercent, 95));
 											}
 										};
 
 										xhr.onload = () => {
-											this.lastProgressTime = performance.now();
 											if (xhr.status >= 200 && xhr.status < 300) {
+												this.recordTransferProgress(end);
+												const chunkDonePct = Math.round((end / Math.max(totalSize, 1)) * 100);
+												this.uploadStatusText = `Status: Mengunggah chunk ${currentChunkIndex}/${this.transferChunkTotal} (${chunkDonePct}%)`;
 												resolve(xhr.response);
 											} else if (xhr.status === 409) {
 												try {
@@ -2119,6 +2146,7 @@ templ Layout(title string) {
 													if (typeof errJson.expected_offset === 'number') {
 														offset = errJson.expected_offset;
 														this.transferBytesLoaded = offset;
+														this.recordTransferProgress(offset);
 														resolve(xhr.response);
 														return;
 													}
@@ -2165,6 +2193,7 @@ templ Layout(title string) {
 						}
 
 						this.stopTransferWatchdog();
+						this.transferSamples = [];
 						const elapsedSec = (performance.now() - uploadStartTime) / 1000;
 						const avgSpeedBps = file.size / Math.max(elapsedSec, 0.05);
 						this.currentSpeedText = this.formatSpeed(avgSpeedBps);
@@ -2182,6 +2211,7 @@ templ Layout(title string) {
 					} catch (err) {
 						console.error("Upload error:", err);
 						this.stopTransferWatchdog();
+						this.transferSamples = [];
 						this.isTransferring = false;
 						this.isUploading = false;
 						this.transferDirection = 'idle';
