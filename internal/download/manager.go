@@ -208,7 +208,9 @@ func (dm *DownloadManager) executeDownload(ctx context.Context, task *DownloadTa
 
 		task.Mu.Lock()
 		task.DownloadedBytes = downloaded
-		task.TotalBytes = total
+		if total > 0 {
+			task.TotalBytes = total
+		}
 		task.SpeedText = speed
 		task.StatusText = "Mengunduh..."
 		if total > 0 {
@@ -224,7 +226,8 @@ func (dm *DownloadManager) executeDownload(ctx context.Context, task *DownloadTa
 		task.Mu.Unlock()
 
 		if dm.Broker != nil {
-			_ = dm.Broker.Publish(ctx, "nest:user_1", fullstack.TurboStreamItem{
+			userTopic := fmt.Sprintf("nest:user_%d", task.OwnerID)
+			_ = dm.Broker.Publish(ctx, userTopic, fullstack.TurboStreamItem{
 				Action:    fullstack.StreamUpdate,
 				Target:    "storage-refresh",
 				Component: ProgressComponent{Percentage: int64(task.Progress)},
@@ -236,7 +239,20 @@ func (dm *DownloadManager) executeDownload(ctx context.Context, task *DownloadTa
 	var finalFilename string
 
 	if task.Type == DownloadTypeDirect {
-		fileInfo, err := dm.DirectDownloader.DownloadDirect(ctx, task.URL, multiDest, onProgress)
+		fileInfo, err := dm.DirectDownloader.DownloadDirect(ctx, task.URL, multiDest, onProgress, func(meta *DirectFileInfo) {
+			task.Mu.Lock()
+			if !hasCustomName && meta.Filename != "" && !strings.HasPrefix(meta.Filename, "download_") {
+				task.Filename = meta.Filename
+			}
+			if meta.TotalBytes > 0 {
+				task.TotalBytes = meta.TotalBytes
+			}
+			if meta.MimeType != "" {
+				task.MimeType = meta.MimeType
+			}
+			task.StatusText = "Mengunduh..."
+			task.Mu.Unlock()
+		})
 		if err != nil {
 			if errors.Is(ctx.Err(), context.Canceled) {
 				dm.cancelTask(task)
@@ -332,7 +348,8 @@ func (dm *DownloadManager) executeDownload(ctx context.Context, task *DownloadTa
 	task.Mu.Unlock()
 
 	if dm.Broker != nil {
-		_ = dm.Broker.Publish(context.Background(), "nest:user_1", fullstack.TurboStreamItem{
+		userTopic := fmt.Sprintf("nest:user_%d", task.OwnerID)
+		_ = dm.Broker.Publish(context.Background(), userTopic, fullstack.TurboStreamItem{
 			Action:    fullstack.StreamUpdate,
 			Target:    "storage-refresh",
 			Component: ProgressComponent{Percentage: 100},

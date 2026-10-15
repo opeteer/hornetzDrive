@@ -477,8 +477,8 @@ func (tc *TorrentClient) downloadFromPeer(ctx context.Context, peerAddr string, 
 func streamWithProgress(ctx context.Context, src io.Reader, dst io.Writer, total int64, onProgress func(downloaded int64, total int64, speed string)) error {
 	buf := make([]byte, 64*1024)
 	var downloaded int64
-	startTime := time.Now()
 	lastUpdate := time.Now()
+	lastBytes := int64(0)
 
 	for {
 		select {
@@ -495,15 +495,23 @@ func streamWithProgress(ctx context.Context, src io.Reader, dst io.Writer, total
 			downloaded += int64(n)
 
 			now := time.Now()
-			if onProgress != nil && now.Sub(lastUpdate) >= 150*time.Millisecond {
-				elapsed := now.Sub(startTime).Seconds()
+			interval := now.Sub(lastUpdate)
+			if onProgress != nil && interval >= 350*time.Millisecond {
+				intervalSec := interval.Seconds()
+				intervalBytes := downloaded - lastBytes
 				speed := "0.0 MB/s"
-				if elapsed > 0.05 {
-					mbps := (float64(downloaded) / (1024 * 1024)) / elapsed
-					speed = fmt.Sprintf("%.1f MB/s", mbps)
+				if intervalSec > 0.05 && intervalBytes > 0 {
+					mbps := (float64(intervalBytes) / (1024 * 1024)) / intervalSec
+					if mbps < 0.1 {
+						kbps := (float64(intervalBytes) / 1024) / intervalSec
+						speed = fmt.Sprintf("%.1f KB/s", kbps)
+					} else {
+						speed = fmt.Sprintf("%.1f MB/s", mbps)
+					}
 				}
 				onProgress(downloaded, total, speed)
 				lastUpdate = now
+				lastBytes = downloaded
 			}
 		}
 
@@ -516,13 +524,7 @@ func streamWithProgress(ctx context.Context, src io.Reader, dst io.Writer, total
 	}
 
 	if onProgress != nil {
-		elapsed := time.Since(startTime).Seconds()
-		speed := "0.0 MB/s"
-		if elapsed > 0.05 {
-			mbps := (float64(downloaded) / (1024 * 1024)) / elapsed
-			speed = fmt.Sprintf("%.1f MB/s", mbps)
-		}
-		onProgress(downloaded, total, speed)
+		onProgress(downloaded, total, "Idle")
 	}
 
 	return nil

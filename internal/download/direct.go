@@ -82,7 +82,7 @@ func ParseFilenameFromHeaders(header string, rawURL string) string {
 }
 
 // DownloadDirect streams the remote HTTP payload into destWriter with domain resolution and magic byte sniffing.
-func (dd *DirectDownloader) DownloadDirect(ctx context.Context, targetURL string, destWriter io.Writer, onProgress func(downloaded int64, total int64, speed string)) (*DirectFileInfo, error) {
+func (dd *DirectDownloader) DownloadDirect(ctx context.Context, targetURL string, destWriter io.Writer, onProgress func(downloaded int64, total int64, speed string), onMeta ...func(meta *DirectFileInfo)) (*DirectFileInfo, error) {
 	resolved, err := ResolveLink(targetURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed resolving download link: %w", err)
@@ -166,7 +166,7 @@ func (dd *DirectDownloader) DownloadDirect(ctx context.Context, targetURL string
 
 			if recoveredURL != "" && recoveredURL != execURL {
 				// Retry with the recovered direct download link
-				return dd.DownloadDirect(ctx, recoveredURL, destWriter, onProgress)
+				return dd.DownloadDirect(ctx, recoveredURL, destWriter, onProgress, onMeta...)
 			}
 
 			return nil, fmt.Errorf("unduhan dibatalkan: tautan mengembalikan halaman web HTML (%s, %d bytes) alih-alih berkas biner %s. Tautan mungkin kedaluwarsa atau memerlukan otentikasi peramban", mimeType, int64(peekN)+int64(len(restOfHTML)), filename)
@@ -181,6 +181,15 @@ func (dd *DirectDownloader) DownloadDirect(ctx context.Context, targetURL string
 		Filename:   filename,
 		MimeType:   mimeType,
 		TotalBytes: totalBytes,
+	}
+
+	for _, fn := range onMeta {
+		if fn != nil {
+			fn(fileInfo)
+		}
+	}
+	if onProgress != nil {
+		onProgress(0, totalBytes, "Menghubungkan...")
 	}
 
 	if err := streamWithProgress(ctx, streamSrc, destWriter, totalBytes, onProgress); err != nil {

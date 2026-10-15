@@ -77,6 +77,51 @@ func TestDirectDownloader_DownloadDirect(t *testing.T) {
 	}
 }
 
+func TestDirectDownloader_DownloadDirect_WithOnMeta(t *testing.T) {
+	content := []byte("Testing early metadata resolution and streaming.")
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Disposition", `attachment; filename="early_meta.bin"`)
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.Header().Set("Content-Length", fmt.Sprintf("%d", len(content)))
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(content)
+	}))
+	defer ts.Close()
+
+	dd := NewDirectDownloader()
+	var dest bytes.Buffer
+	var metaCaptured bool
+	var initialProgressCaptured bool
+
+	info, err := dd.DownloadDirect(context.Background(), ts.URL+"/file", &dest, func(downloaded, total int64, speed string) {
+		if downloaded == 0 && total == int64(len(content)) {
+			initialProgressCaptured = true
+		}
+	}, func(meta *DirectFileInfo) {
+		metaCaptured = true
+		if meta.Filename != "early_meta.bin" {
+			t.Errorf("Expected early filename 'early_meta.bin', got %q", meta.Filename)
+		}
+		if meta.TotalBytes != int64(len(content)) {
+			t.Errorf("Expected early TotalBytes %d, got %d", len(content), meta.TotalBytes)
+		}
+	})
+
+	if err != nil {
+		t.Fatalf("DownloadDirect error: %v", err)
+	}
+	if !metaCaptured {
+		t.Errorf("Expected onMeta to be called before stream finish")
+	}
+	if !initialProgressCaptured {
+		t.Errorf("Expected initial onProgress(0, total, ...) notification")
+	}
+	if info.Filename != "early_meta.bin" {
+		t.Errorf("Expected final filename 'early_meta.bin', got %q", info.Filename)
+	}
+}
+
+
 func TestDownloadManager_DirectDownloadLifecycle(t *testing.T) {
 	fileData := []byte("Encrypted CAS stored content via DownloadManager direct download test!")
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

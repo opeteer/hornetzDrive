@@ -678,6 +678,7 @@ templ Layout(title string) {
 								<span class="truncate max-w-[160px]" :class="t.status === 'failed' ? 'text-rose-400 font-semibold' : ''" x-text="t.statusText || t.status"></span>
 								<div class="flex items-center gap-2">
 									<span x-show="t.total > 0" x-text="$store.drive.formatBytes(t.loaded || 0) + ' / ' + $store.drive.formatBytes(t.total)"></span>
+									<span x-show="(!t.total || t.total <= 0) && t.loaded > 0" x-text="$store.drive.formatBytes(t.loaded || 0) + ' diunduh'"></span>
 									<span x-show="t.speed && t.speed !== 'Idle' && t.status === 'active'" class="text-[#EDEBE8] font-bold" x-text="t.speed"></span>
 								</div>
 							</div>
@@ -1209,6 +1210,8 @@ templ Layout(title string) {
 				},
 
 				async syncServerDownloads() {
+					if (this._isSyncingDownloads) return;
+					this._isSyncingDownloads = true;
 					try {
 						const res = await fetch('/api/downloads');
 						if (!res.ok) return;
@@ -1222,19 +1225,25 @@ templ Layout(title string) {
 								: (task.status === 'failed' ? 'failed' 
 								: (task.status === 'cancelled' ? 'cancelled' : 'active'));
 
+							const taskTotal = (task.total_bytes !== undefined ? task.total_bytes : task.total) || 0;
+							const taskLoaded = (task.downloaded_bytes !== undefined ? task.downloaded_bytes : task.downloaded) || 0;
+							const taskName = task.filename || 'Unduhan Jarak Jauh';
+							const taskSpeed = task.speed_text || (taskStatus === 'completed' ? 'Idle' : 'Menghubungkan...');
+							const taskStatusText = task.status_text || (taskStatus === 'completed' ? 'Selesai' : 'Mengunduh...');
+
 							if (!existing) {
 								existing = {
 									id: task.id,
 									type: 'download',
-									name: task.filename || 'Unduhan Jarak Jauh',
-									size: task.total || 0,
-									progress: task.progress || 0,
-									loaded: task.downloaded || 0,
-									total: task.total || 0,
-									speed: task.speed_text || 'Menghubungkan...',
+									name: taskName,
+									size: taskTotal,
+									progress: task.progress !== undefined ? task.progress : 0,
+									loaded: taskLoaded,
+									total: taskTotal,
+									speed: taskSpeed,
 									eta: '-',
 									status: taskStatus,
-									statusText: task.status_text || (taskStatus === 'completed' ? 'Selesai' : 'Mengunduh...'),
+									statusText: taskStatusText,
 									error: task.error_message || '',
 									folderId: task.folder_id || '',
 									createdAt: Date.now()
@@ -1242,14 +1251,22 @@ templ Layout(title string) {
 								this.transfers.unshift(existing);
 								hasChanges = true;
 							} else {
-								if (existing.status !== taskStatus || existing.progress !== task.progress || existing.speed !== task.speed_text) {
+								if (
+									existing.status !== taskStatus ||
+									existing.progress !== task.progress ||
+									existing.speed !== taskSpeed ||
+									existing.loaded !== taskLoaded ||
+									existing.total !== taskTotal ||
+									existing.name !== taskName ||
+									existing.statusText !== taskStatusText
+								) {
 									existing.status = taskStatus;
-									existing.name = task.filename || existing.name;
+									existing.name = taskName;
 									existing.progress = task.progress !== undefined ? task.progress : existing.progress;
-									existing.loaded = task.downloaded !== undefined ? task.downloaded : existing.loaded;
-									existing.total = task.total !== undefined ? task.total : existing.total;
-									existing.speed = task.speed_text || existing.speed;
-									existing.statusText = task.status_text || (taskStatus === 'completed' ? 'Selesai' : existing.statusText);
+									existing.loaded = taskLoaded;
+									existing.total = taskTotal;
+									existing.speed = taskSpeed;
+									existing.statusText = taskStatusText;
 									existing.error = task.error_message || existing.error;
 									hasChanges = true;
 								}
@@ -1263,11 +1280,31 @@ templ Layout(title string) {
 							}
 						}
 
+						// Synchronize top navbar telemetry with active server downloads & uploads
+						const activeDownloads = this.transfers.filter(t => t.type === 'download' && t.status === 'active');
+						const activeUploads = this.transfers.filter(t => t.type === 'upload' && t.status === 'active');
+
+						if (activeUploads.length > 0) {
+							this.isTransferring = true;
+							this.transferDirection = 'upload';
+						} else if (activeDownloads.length > 0) {
+							this.isTransferring = true;
+							this.transferDirection = 'download';
+							const activeWithSpeed = activeDownloads.find(d => d.speed && d.speed !== 'Menghubungkan...' && d.speed !== 'Idle');
+							this.currentSpeedText = activeWithSpeed ? activeWithSpeed.speed : (activeDownloads[0].speed || 'Mengunduh...');
+						} else if (!this.isUploading) {
+							this.isTransferring = false;
+							this.transferDirection = '';
+							this.currentSpeedText = 'Idle';
+						}
+
 						if (hasChanges) {
 							this.saveTransfersToStorage();
 						}
 					} catch(e) {
 						console.warn("Failed to sync server downloads:", e);
+					} finally {
+						this._isSyncingDownloads = false;
 					}
 				},
 
@@ -1608,13 +1645,18 @@ templ Layout(title string) {
 						if (hasActiveDownloads) {
 							this.syncServerDownloads();
 						}
-					}, 2000);
+					}, 1000);
 
 					try {
 						const sse = new EventSource('/sse?topic=nest:user_1');
+						let sseThrottleTimer = null;
 						sse.onmessage = () => {
-							this.fetchStorageStats();
-							this.syncServerDownloads();
+							if (!sseThrottleTimer) {
+								sseThrottleTimer = setTimeout(() => {
+									sseThrottleTimer = null;
+									this.syncServerDownloads();
+								}, 600);
+							}
 						};
 					} catch(e) {}
 				},
@@ -1981,18 +2023,19 @@ templ Layout(title string) {
 
 						this.transfers = this.transfers.filter(t => t.id !== batchTransferItem.id);
 						for (const task of tasks) {
+							const taskTotal = (task.total_bytes !== undefined ? task.total_bytes : task.total) || 0;
 							this.transfers.unshift({
 								id: task.id,
 								type: 'download',
 								name: task.filename || 'Unduhan Berkas',
-								size: task.total || 0,
-								progress: 10,
+								size: taskTotal,
+								progress: task.progress !== undefined ? task.progress : 10,
 								loaded: 0,
-								total: task.total || 0,
-								speed: 'Menghubungkan...',
+								total: taskTotal,
+								speed: task.speed_text || 'Menghubungkan...',
 								eta: '-',
 								status: 'active',
-								statusText: 'Menghubungkan...',
+								statusText: task.status_text || 'Menghubungkan...',
 								error: '',
 								folderId: targetFolderId,
 								createdAt: Date.now()
@@ -2009,7 +2052,14 @@ templ Layout(title string) {
 						this.saveTransfersToStorage();
 					} finally {
 						this.isUploading = false;
-						this.isTransferring = false;
+						const hasActive = this.transfers.some(t => t.status === 'active');
+						this.isTransferring = hasActive;
+						if (hasActive) {
+							this.transferDirection = 'download';
+						} else {
+							this.transferDirection = '';
+							this.currentSpeedText = 'Idle';
+						}
 					}
 				},
 
@@ -2069,6 +2119,7 @@ templ Layout(title string) {
 					this.isUploading = true;
 					this.isTransferring = true;
 					this.transferDirection = 'download';
+					this.currentSpeedText = 'Menghubungkan...';
 
 					try {
 						const res = await fetch('/api/downloads', {
@@ -2095,6 +2146,11 @@ templ Layout(title string) {
 							transferItem.name = task.filename;
 							this.uploadFileName = task.filename;
 						}
+						const taskTotal = (task.total_bytes !== undefined ? task.total_bytes : task.total) || 0;
+						if (taskTotal > 0) {
+							transferItem.size = taskTotal;
+							transferItem.total = taskTotal;
+						}
 						this.saveTransfersToStorage();
 
 						// Synchronize and start tracking
@@ -2109,7 +2165,14 @@ templ Layout(title string) {
 						this.saveTransfersToStorage();
 					} finally {
 						this.isUploading = false;
-						this.isTransferring = false;
+						const hasActive = this.transfers.some(t => t.status === 'active');
+						this.isTransferring = hasActive;
+						if (hasActive) {
+							this.transferDirection = 'download';
+						} else {
+							this.transferDirection = '';
+							this.currentSpeedText = 'Idle';
+						}
 					}
 				},
 
