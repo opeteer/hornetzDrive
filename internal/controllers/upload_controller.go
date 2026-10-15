@@ -4,9 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"fmt"
 	"io"
 	"log/slog"
@@ -91,17 +89,74 @@ func (uc *UploadController) PurgeAllSessions() {
 	})
 }
 
-func (uc *UploadController) GenerateProof(casHash, filename string, size int64) string {
-	h := sha256.Sum256([]byte(fmt.Sprintf("%s:%s:%d:hornetz_pow", casHash, filename, size)))
-	return hex.EncodeToString(h[:])
+type VerifyPoWRequest struct {
+	CasHash        string `json:"cas_hash"`
+	ChallengeNonce string `json:"challenge_nonce"`
+	Proof          string `json:"proof"`
+	Filename       string `json:"filename"`
+	MimeType       string `json:"mime_type"`
+	Size           int64  `json:"size"`
+	FolderID       string `json:"folder_id"`
 }
 
-func (uc *UploadController) VerifyProofOfOwnership(casHash, proof, filename string, size int64) bool {
-	if proof == "" || casHash == "" {
-		return false
+// VerifyProofOfOwnership handles POST /upload/verify-pow to verify challenge response proofs.
+func (uc *UploadController) VerifyProofOfOwnership(c *echo.Context) error {
+	var req VerifyPoWRequest
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid request")
 	}
-	expected := uc.GenerateProof(casHash, filename, size)
-	return proof == expected
+
+	ch, exists := upload.GetPoWChallenge(req.ChallengeNonce)
+	if !exists || ch.CasHash != req.CasHash {
+		return echo.NewHTTPError(http.StatusBadRequest, "challenge expired or invalid")
+	}
+
+	if !uc.CAS.Exists(ch.CasHash) {
+		return echo.NewHTTPError(http.StatusNotFound, "referenced CAS blob not found")
+	}
+
+	f, err := os.Open(uc.CAS.Path(ch.CasHash))
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to access CAS blob")
+	}
+	defer f.Close()
+
+	if !upload.VerifyPoW(f, ch, req.Proof) {
+		return echo.NewHTTPError(http.StatusUnauthorized, "invalid proof of ownership")
+	}
+
+	upload.DeletePoWChallenge(req.ChallengeNonce)
+
+	cleanFilename := filepath.Base(filepath.Clean(req.Filename))
+	if cleanFilename == "." || cleanFilename == "/" || cleanFilename == "" {
+		cleanFilename = "unnamed_file"
+	}
+
+	folderID := req.FolderID
+	if folderID == "root" {
+		folderID = ""
+	}
+
+	userID := auth.GetUserID(c)
+	fileID := fmt.Sprintf("file_%d_%s", time.Now().Unix(), upload.GenerateID()[:8])
+	if uc.DB != nil && uc.DB.SQL != nil {
+		query := uc.DB.Rebind("INSERT INTO files (id, owner_id, folder_id, name, mime_type, size, cas_hash, plaintext_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+		var dbFolder interface{} = nil
+		if folderID != "" {
+			dbFolder = folderID
+		}
+		_, err := uc.DB.SQL.Exec(query, fileID, userID, dbFolder, cleanFilename, req.MimeType, req.Size, ch.CasHash, req.CasHash)
+		if err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, "failed to record deduplicated file: "+err.Error())
+		}
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"status":   "completed",
+		"message":  "0-second deduplication successful",
+		"cas_hash": ch.CasHash,
+		"file_id":  fileID,
+	})
 }
 
 type ProgressBarComponent struct {
@@ -191,46 +246,36 @@ func (uc *UploadController) InitSession(c *echo.Context) error {
 		}
 	}
 
+	userID := auth.GetUserID(c)
+
 	if req.CasHash != "" {
 		if !storage.IsValidHash(req.CasHash) {
 			return echo.NewHTTPError(http.StatusBadRequest, "invalid cas_hash format")
 		}
-		// 0-second deduplication requires proof of ownership to prevent unauthorized file exfiltration
-		if req.Proof != "" && uc.VerifyProofOfOwnership(req.CasHash, req.Proof, cleanFilename, req.Size) {
-			var existingCasHash, existingFolderID string
-			if uc.DB != nil && uc.DB.SQL != nil {
-				queryCheck := uc.DB.Rebind("SELECT cas_hash, COALESCE(folder_id, '') FROM files WHERE (plaintext_hash = ? OR cas_hash = ?) AND (is_deleted = FALSE OR is_deleted = 0) LIMIT 1")
-				_ = uc.DB.SQL.QueryRow(queryCheck, req.CasHash, req.CasHash).Scan(&existingCasHash, &existingFolderID)
-			}
-			if existingCasHash == "" && uc.CAS.Exists(req.CasHash) {
-				existingCasHash = req.CasHash
-			}
+		var existingCasHash, existingFolderID string
+		if uc.DB != nil && uc.DB.SQL != nil {
+			queryCheck := uc.DB.Rebind("SELECT cas_hash, COALESCE(folder_id, '') FROM files WHERE (plaintext_hash = ? OR cas_hash = ?) AND (is_deleted = FALSE OR is_deleted = 0) LIMIT 1")
+			_ = uc.DB.SQL.QueryRow(queryCheck, req.CasHash, req.CasHash).Scan(&existingCasHash, &existingFolderID)
+		}
+		if existingCasHash == "" && uc.CAS.Exists(req.CasHash) {
+			existingCasHash = req.CasHash
+		}
 
-			if existingCasHash != "" && uc.CAS.Exists(existingCasHash) {
-				// BUG-SEC-38: Cross-Domain Protection: ensure encryption domains match (Vault vs Standard)
-				targetIsVault := uc.isVaultFolder(folderID)
-				sourceIsVault := uc.isVaultFolder(existingFolderID)
-				if targetIsVault == sourceIsVault {
-					fileID := fmt.Sprintf("file_%d_%s", time.Now().Unix(), upload.GenerateID()[:8])
-					if uc.DB != nil && uc.DB.SQL != nil {
-						query := uc.DB.Rebind("INSERT INTO files (id, owner_id, folder_id, name, mime_type, size, cas_hash, plaintext_hash) VALUES (?, 1, ?, ?, ?, ?, ?, ?)")
-						var dbFolder interface{} = nil
-						if folderID != "" && folderID != "root" {
-							dbFolder = folderID
-						}
-						_, err := uc.DB.SQL.Exec(query, fileID, dbFolder, cleanFilename, req.MimeType, req.Size, existingCasHash, req.CasHash)
-						if err != nil {
-							return echo.NewHTTPError(http.StatusInternalServerError, "failed to record deduplicated file: "+err.Error())
-						}
-					}
+		if existingCasHash != "" && uc.CAS.Exists(existingCasHash) {
+			// Cross-Domain Protection: ensure encryption domains match (Vault vs Standard)
+			targetIsVault := uc.isVaultFolder(folderID)
+			sourceIsVault := uc.isVaultFolder(existingFolderID)
+			if targetIsVault == sourceIsVault {
+				ch, err := upload.GeneratePoWChallenge(existingCasHash, req.Size)
+				if err == nil {
 					return c.JSON(http.StatusOK, map[string]interface{}{
-						"status":   "completed",
-						"message":  "0-second deduplication successful",
-						"cas_hash": existingCasHash,
-						"file_id":  fileID,
+						"status":          "challenge_required",
+						"cas_hash":        existingCasHash,
+						"challenge_nonce": ch.ChallengeNonce,
+						"offsets":         ch.Offsets,
+						"sample_size":     ch.SampleSize,
 					})
 				}
-				// If domains differ, do not dedup; fall through to standard chunk upload so file is re-encrypted with target key!
 			}
 		}
 	}
@@ -241,11 +286,11 @@ func (uc *UploadController) InitSession(c *echo.Context) error {
 		var queryCheck string
 		var row *sql.Row
 		if folderID == "" {
-			queryCheck = uc.DB.Rebind("SELECT id, cas_hash FROM files WHERE owner_id = 1 AND (folder_id IS NULL OR folder_id = '' OR folder_id = 'root') AND name = ? AND size = ? AND (is_deleted = FALSE OR is_deleted = 0) LIMIT 1")
-			row = uc.DB.SQL.QueryRow(queryCheck, cleanFilename, req.Size)
+			queryCheck = uc.DB.Rebind("SELECT id, cas_hash FROM files WHERE owner_id = ? AND (folder_id IS NULL OR folder_id = '' OR folder_id = 'root') AND name = ? AND size = ? AND (is_deleted = FALSE OR is_deleted = 0) LIMIT 1")
+			row = uc.DB.SQL.QueryRow(queryCheck, userID, cleanFilename, req.Size)
 		} else {
-			queryCheck = uc.DB.Rebind("SELECT id, cas_hash FROM files WHERE owner_id = 1 AND folder_id = ? AND name = ? AND size = ? AND (is_deleted = FALSE OR is_deleted = 0) LIMIT 1")
-			row = uc.DB.SQL.QueryRow(queryCheck, folderID, cleanFilename, req.Size)
+			queryCheck = uc.DB.Rebind("SELECT id, cas_hash FROM files WHERE owner_id = ? AND folder_id = ? AND name = ? AND size = ? AND (is_deleted = FALSE OR is_deleted = 0) LIMIT 1")
+			row = uc.DB.SQL.QueryRow(queryCheck, userID, folderID, cleanFilename, req.Size)
 		}
 		if err := row.Scan(&existingFileID, &existingCas); err == nil && existingFileID != "" && existingCas != "" {
 			return c.JSON(http.StatusOK, map[string]interface{}{
@@ -258,7 +303,7 @@ func (uc *UploadController) InitSession(c *echo.Context) error {
 	}
 
 	// Check if a half-uploaded session for this file already exists in this folder
-	if existingSess, found := uc.SessionMgr.FindActiveSession(1, folderID, cleanFilename, req.Size); found {
+	if existingSess, found := uc.SessionMgr.FindActiveSession(int(userID), folderID, cleanFilename, req.Size); found {
 		if existingSess.UploadedSize > 0 {
 			existingSess.LastActiveAt = time.Now()
 			_ = uc.SessionMgr.PersistSession(existingSess)
@@ -274,7 +319,7 @@ func (uc *UploadController) InitSession(c *echo.Context) error {
 		}
 	}
 
-	sess, err := uc.SessionMgr.CreateSession(1, folderID, cleanFilename, req.MimeType, req.Size)
+	sess, err := uc.SessionMgr.CreateSession(int(userID), folderID, cleanFilename, req.MimeType, req.Size)
 	if err != nil {
 		slog.Error("failed to initiate upload session", "error", err, "filename", cleanFilename)
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to initiate upload")
@@ -338,7 +383,7 @@ func (uc *UploadController) UploadChunk(c *echo.Context) error {
 	if isVault {
 		isAuth, _ := c.Get("vault_authenticated").(bool)
 		if isAuth {
-			if vKey, ok := c.Get("vault_key").([]byte); ok && len(vKey) > 0 && !bytes.Equal(vKey, crypto.DummyVK()) {
+			if vKey, ok := c.Get("vault_key").([]byte); ok && len(vKey) > 0 && !bytes.Equal(vKey, crypto.GetStandardStorageKey()) {
 				vk = vKey
 			}
 		}
@@ -353,7 +398,7 @@ func (uc *UploadController) UploadChunk(c *echo.Context) error {
 			return echo.NewHTTPError(http.StatusUnauthorized, "Vault locked. Master password required.")
 		}
 	} else {
-		vk = crypto.DummyVK()
+		vk = crypto.GetStandardStorageKey()
 	}
 
 	// Apply Dynamo AES-256-GCM chunked encryption directly during upload stream
@@ -433,8 +478,8 @@ func (uc *UploadController) UploadChunk(c *echo.Context) error {
 			if sess.FolderID != "" && sess.FolderID != "root" {
 				dbFolder = sess.FolderID
 			}
-			query := uc.DB.Rebind("INSERT INTO files (id, owner_id, folder_id, name, mime_type, size, cas_hash, plaintext_hash) VALUES (?, 1, ?, ?, ?, ?, ?, ?)")
-			_, err := uc.DB.SQL.Exec(query, fileID, dbFolder, sess.Filename, sess.MimeType, sess.UploadedSize, casHash, sess.PlaintextHash)
+			query := uc.DB.Rebind("INSERT INTO files (id, owner_id, folder_id, name, mime_type, size, cas_hash, plaintext_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+			_, err := uc.DB.SQL.Exec(query, fileID, sess.OwnerID, dbFolder, sess.Filename, sess.MimeType, sess.UploadedSize, casHash, sess.PlaintextHash)
 			if err != nil {
 				// BUG-SYS-43: Clean up orphaned CAS blob if database insertion fails
 				if !existedBefore {

@@ -449,9 +449,10 @@ func ExtractGoogleDriveConfirmLinkFromHTML(htmlContent string) string {
 // FetchMediaFireDirectLink attempts to fetch the MediaFire share page and extract the direct CDN download URL.
 // In restricted network or offline environments, it fails gracefully without blocking.
 func FetchMediaFireDirectLink(shareURL string) (string, string, error) {
-	client := &http.Client{
-		Timeout: 5 * time.Second,
+	if _, err := ValidateSafeURL(shareURL, false); err != nil {
+		return "", "", fmt.Errorf("unsafe share URL: %w", err)
 	}
+	client := NewSafeHTTPClient(5*time.Second, 5, false)
 	req, err := http.NewRequest(http.MethodGet, shareURL, nil)
 	if err != nil {
 		return "", "", err

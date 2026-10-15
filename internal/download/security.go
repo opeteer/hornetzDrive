@@ -1,11 +1,14 @@
 package download
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
+	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
 
 // AllowPrivateNetworks is a flag to allow loopback and private IP addresses (mainly for test suites).
@@ -96,3 +99,120 @@ func ValidateSafeURL(rawURL string, allowPrivate bool) (*url.URL, error) {
 
 	return u, nil
 }
+
+// ValidatePeerAddress checks if a BitTorrent peer address is valid and not pointing to a private or loopback IP.
+func ValidatePeerAddress(peerAddr string, allowPrivate bool) error {
+	if allowPrivate || AllowPrivateNetworks {
+		return nil
+	}
+	host, _, err := net.SplitHostPort(peerAddr)
+	if err != nil {
+		host = peerAddr
+	}
+	if strings.EqualFold(host, "localhost") {
+		return errors.New("peer connection to localhost is prohibited for security")
+	}
+	ip := net.ParseIP(host)
+	if ip != nil {
+		if IsPrivateIP(ip) {
+			return fmt.Errorf("peer IP %s belongs to a private network", host)
+		}
+		return nil
+	}
+	ips, err := lookupIP(host)
+	if err != nil {
+		return fmt.Errorf("failed to resolve peer host %s: %w", host, err)
+	}
+	for _, resolvedIP := range ips {
+		if IsPrivateIP(resolvedIP) {
+			return fmt.Errorf("peer host %s resolves to private IP %s", host, resolvedIP.String())
+		}
+	}
+	return nil
+}
+
+// SafeDialContext returns a dialing function that validates IP addresses against SSRF and DNS rebinding attacks.
+func SafeDialContext(dialTimeout time.Duration, allowPrivate bool) func(ctx context.Context, network, addr string) (net.Conn, error) {
+	if dialTimeout <= 0 {
+		dialTimeout = 10 * time.Second
+	}
+	return func(ctx context.Context, network, addr string) (net.Conn, error) {
+		host, port, err := net.SplitHostPort(addr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid address format %s: %w", addr, err)
+		}
+
+		if allowPrivate || AllowPrivateNetworks {
+			d := net.Dialer{Timeout: dialTimeout}
+			return d.DialContext(ctx, network, addr)
+		}
+
+		if strings.EqualFold(host, "localhost") {
+			return nil, errors.New("access to localhost is prohibited for security")
+		}
+
+		var targetIP net.IP
+		ip := net.ParseIP(host)
+		if ip != nil {
+			if IsPrivateIP(ip) {
+				return nil, fmt.Errorf("access to private IP address %s is prohibited", host)
+			}
+			targetIP = ip
+		} else {
+			ips, err := lookupIP(host)
+			if err != nil {
+				return nil, fmt.Errorf("failed to resolve host %s: %w", host, err)
+			}
+			for _, resolvedIP := range ips {
+				if IsPrivateIP(resolvedIP) {
+					return nil, fmt.Errorf("host %s resolves to private IP %s", host, resolvedIP.String())
+				}
+				if targetIP == nil {
+					targetIP = resolvedIP
+				}
+			}
+		}
+
+		if targetIP == nil {
+			return nil, fmt.Errorf("no valid IP address found for %s", host)
+		}
+
+		// Connect directly to the verified safe IP to prevent DNS rebinding races
+		safeAddr := net.JoinHostPort(targetIP.String(), port)
+		d := net.Dialer{Timeout: dialTimeout}
+		return d.DialContext(ctx, network, safeAddr)
+	}
+}
+
+// NewSafeTransport returns an http.Transport configured with SSRF-safe connection dialing.
+func NewSafeTransport(dialTimeout time.Duration, allowPrivate bool) *http.Transport {
+	return &http.Transport{
+		DialContext:           SafeDialContext(dialTimeout, allowPrivate),
+		TLSHandshakeTimeout:   10 * time.Second,
+		ResponseHeaderTimeout: 30 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+		IdleConnTimeout:       90 * time.Second,
+		MaxIdleConns:          100,
+	}
+}
+
+// NewSafeHTTPClient returns an http.Client with safe dialer and strict redirect validation.
+func NewSafeHTTPClient(timeout time.Duration, maxRedirects int, allowPrivate bool) *http.Client {
+	if maxRedirects <= 0 {
+		maxRedirects = 10
+	}
+	return &http.Client{
+		Timeout:   timeout,
+		Transport: NewSafeTransport(10*time.Second, allowPrivate),
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= maxRedirects {
+				return fmt.Errorf("stopped after %d redirects", maxRedirects)
+			}
+			if _, err := ValidateSafeURL(req.URL.String(), allowPrivate); err != nil {
+				return fmt.Errorf("redirect blocked by security policy: %w", err)
+			}
+			return nil
+		},
+	}
+}
+

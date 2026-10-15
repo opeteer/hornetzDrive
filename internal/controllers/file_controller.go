@@ -2,7 +2,9 @@ package controllers
 
 import (
 	"archive/zip"
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"html"
@@ -114,8 +116,25 @@ func (fc *FileController) seedInitialDataInternal() {
 		onConflict = " ON CONFLICT DO NOTHING"
 	}
 
-	// Ensure user exists
-	fc.DB.SQL.Exec(ignoreClause + ` INTO users (id, email, password_hash, salt, encrypted_vault_key) VALUES (1, 'master@hornetz.io', 'hash', 'salt', 'vk')` + onConflict)
+	// Ensure user exists with real Argon2id master password hash, salt, and encrypted vault key
+	initialPassword := os.Getenv("HORNETZ_MASTER_PASSWORD")
+	if initialPassword == "" {
+		initialPassword = "HornetzAdmin@2026!"
+	}
+	salt := make([]byte, crypto.SaltSize)
+	_, _ = rand.Read(salt)
+	mek := crypto.DeriveMEK([]byte(initialPassword), salt)
+	vk := make([]byte, crypto.KeySize)
+	_, _ = rand.Read(vk)
+	encryptedVK, _ := crypto.EncryptBlock(vk, mek)
+	passwordHash := hex.EncodeToString(mek)
+
+	if fc.DB != nil && fc.DB.DriverName == "postgres" {
+		_, _ = fc.DB.SQL.Exec(`INSERT INTO users (id, email, password_hash, salt, encrypted_vault_key) VALUES (1, 'master@hornetz.io', $1, $2, $3) ON CONFLICT (id) DO UPDATE SET password_hash = CASE WHEN users.password_hash = 'hash' THEN EXCLUDED.password_hash ELSE users.password_hash END, salt = CASE WHEN users.password_hash = 'hash' THEN EXCLUDED.salt ELSE users.salt END, encrypted_vault_key = CASE WHEN users.password_hash = 'hash' THEN EXCLUDED.encrypted_vault_key ELSE users.encrypted_vault_key END`, passwordHash, salt, encryptedVK)
+	} else if fc.DB != nil && fc.DB.SQL != nil {
+		_, _ = fc.DB.SQL.Exec(`INSERT OR IGNORE INTO users (id, email, password_hash, salt, encrypted_vault_key) VALUES (1, 'master@hornetz.io', ?, ?, ?)`, passwordHash, salt, encryptedVK)
+		_, _ = fc.DB.SQL.Exec(`UPDATE users SET password_hash = ?, salt = ?, encrypted_vault_key = ? WHERE id = 1 AND password_hash = 'hash'`, passwordHash, salt, encryptedVK)
+	}
 
 	// Create Folders
 	fc.DB.SQL.Exec(ignoreClause + ` INTO folders (id, owner_id, parent_id, name) VALUES 
@@ -261,8 +280,9 @@ func (fc *FileController) GetFiles(c *echo.Context) error {
 		}
 	}
 
-	query := "SELECT id, owner_id, COALESCE(folder_id, ''), name, mime_type, size, cas_hash, created_at, COALESCE(is_starred, FALSE), COALESCE(is_deleted, FALSE) FROM files WHERE 1=1"
-	args := []interface{}{}
+	userID := auth.GetUserID(c)
+	query := "SELECT id, owner_id, COALESCE(folder_id, ''), name, mime_type, size, cas_hash, created_at, COALESCE(is_starred, FALSE), COALESCE(is_deleted, FALSE) FROM files WHERE owner_id = ?"
+	args := []interface{}{userID}
 
 	if tab == "trash" {
 		query += " AND is_deleted = TRUE"
@@ -388,13 +408,14 @@ func (fc *FileController) GetFolders(c *echo.Context) error {
 		}
 	}
 
+	userID := auth.GetUserID(c)
 	query := `
 		SELECT f.id, f.owner_id, COALESCE(f.parent_id, ''), f.name, COUNT(fi.id) as file_count, f.created_at 
 		FROM folders f 
 		LEFT JOIN files fi ON fi.folder_id = f.id AND fi.is_deleted = FALSE
-		WHERE 1=1`
+		WHERE f.owner_id = ?`
 	
-	args := []interface{}{}
+	args := []interface{}{userID}
 
 	if parentID != "" && search == "" {
 		query += " AND f.parent_id = ?"
@@ -521,10 +542,11 @@ func parseRangeHeader(rangeHeader string, totalSize int64) (start int64, end int
 
 func (fc *FileController) DownloadFile(c *echo.Context) error {
 	id := c.Param("id")
+	userID := auth.GetUserID(c)
 	var f FileRecord
 	// BUG-SEC-46: Strictly verify owner_id to prevent IDOR access across accounts
 	query := fc.DB.Rebind("SELECT id, COALESCE(folder_id, ''), name, mime_type, size, cas_hash FROM files WHERE id = ? AND owner_id = ? AND is_deleted = FALSE")
-	err := fc.DB.SQL.QueryRow(query, id, 1).Scan(&f.ID, &f.FolderID, &f.Name, &f.MimeType, &f.Size, &f.CasHash)
+	err := fc.DB.SQL.QueryRow(query, id, userID).Scan(&f.ID, &f.FolderID, &f.Name, &f.MimeType, &f.Size, &f.CasHash)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusNotFound, "File not found")
 	}
@@ -631,7 +653,7 @@ func (fc *FileController) DownloadFile(c *echo.Context) error {
 			return echo.NewHTTPError(http.StatusUnauthorized, "Vault locked. Master password required to download this file.")
 		}
 	} else {
-		vk = crypto.DummyVK()
+		vk = crypto.GetStandardStorageKey()
 	}
 
 	decStream, err := crypto.NewDecryptStream(file, vk)
@@ -672,9 +694,10 @@ func (fc *FileController) DownloadFile(c *echo.Context) error {
 
 func (fc *FileController) PreviewFile(c *echo.Context) error {
 	id := c.Param("id")
+	userID := auth.GetUserID(c)
 	var f FileRecord
 	query := fc.DB.Rebind("SELECT id, COALESCE(folder_id, ''), name, mime_type, size, cas_hash FROM files WHERE id = ? AND owner_id = ? AND is_deleted = FALSE")
-	err := fc.DB.SQL.QueryRow(query, id, 1).Scan(&f.ID, &f.FolderID, &f.Name, &f.MimeType, &f.Size, &f.CasHash)
+	err := fc.DB.SQL.QueryRow(query, id, userID).Scan(&f.ID, &f.FolderID, &f.Name, &f.MimeType, &f.Size, &f.CasHash)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusNotFound, "File not found")
 	}
@@ -737,7 +760,7 @@ func (fc *FileController) PreviewFile(c *echo.Context) error {
 			return echo.NewHTTPError(http.StatusUnauthorized, "Vault locked. Master password required to preview this file.")
 		}
 	} else {
-		vk = crypto.DummyVK()
+		vk = crypto.GetStandardStorageKey()
 	}
 
 	decStream, err := crypto.NewDecryptStream(file, vk)
@@ -776,9 +799,10 @@ func (fc *FileController) PreviewFile(c *echo.Context) error {
 
 func (fc *FileController) ThumbnailFile(c *echo.Context) error {
 	id := c.Param("id")
+	userID := auth.GetUserID(c)
 	var f FileRecord
 	query := fc.DB.Rebind("SELECT id, COALESCE(folder_id, ''), name, mime_type, size, cas_hash FROM files WHERE id = ? AND owner_id = ? AND is_deleted = FALSE")
-	err := fc.DB.SQL.QueryRow(query, id, 1).Scan(&f.ID, &f.FolderID, &f.Name, &f.MimeType, &f.Size, &f.CasHash)
+	err := fc.DB.SQL.QueryRow(query, id, userID).Scan(&f.ID, &f.FolderID, &f.Name, &f.MimeType, &f.Size, &f.CasHash)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusNotFound, "File not found")
 	}
@@ -821,7 +845,7 @@ func (fc *FileController) ThumbnailFile(c *echo.Context) error {
 					vk, _ = auth.GlobalSessionStore.GetKey(cookie.Value)
 				}
 			} else {
-				vk = crypto.DummyVK()
+				vk = crypto.GetStandardStorageKey()
 			}
 
 			// Singleflight group to prevent thundering herd for PDF thumbnail rendering
@@ -907,7 +931,7 @@ func (fc *FileController) ThumbnailFile(c *echo.Context) error {
 					vk, _ = auth.GlobalSessionStore.GetKey(cookie.Value)
 				}
 			} else {
-				vk = crypto.DummyVK()
+				vk = crypto.GetStandardStorageKey()
 			}
 
 			// Singleflight group to prevent duplicate concurrent office thumbnail extraction
@@ -991,7 +1015,7 @@ func (fc *FileController) ThumbnailFile(c *echo.Context) error {
 				vk, _ = auth.GlobalSessionStore.GetKey(cookie.Value)
 			}
 		} else {
-			vk = crypto.DummyVK()
+			vk = crypto.GetStandardStorageKey()
 		}
 		if file, err := os.Open(casPath); err == nil {
 			defer file.Close()
@@ -1014,19 +1038,20 @@ func (fc *FileController) ThumbnailFile(c *echo.Context) error {
 func (fc *FileController) DeleteFile(c *echo.Context) error {
 	id := c.Param("id")
 	permanent := c.QueryParam("permanent") == "true"
+	userID := auth.GetUserID(c)
 
 	var folderID string
-	_ = fc.DB.SQL.QueryRow(fc.DB.Rebind("SELECT COALESCE(folder_id, '') FROM files WHERE id = ? AND owner_id = ?"), id, 1).Scan(&folderID)
+	_ = fc.DB.SQL.QueryRow(fc.DB.Rebind("SELECT COALESCE(folder_id, '') FROM files WHERE id = ? AND owner_id = ?"), id, userID).Scan(&folderID)
 	if fc.IsVaultFolder(folderID) && !fc.isVaultUnlocked(c) {
 		return echo.NewHTTPError(http.StatusUnauthorized, "Vault locked. Master password required.")
 	}
 
 	if permanent {
 		var casHash string
-		_ = fc.DB.SQL.QueryRow(fc.DB.Rebind("SELECT cas_hash FROM files WHERE id = ? AND owner_id = ?"), id, 1).Scan(&casHash)
+		_ = fc.DB.SQL.QueryRow(fc.DB.Rebind("SELECT cas_hash FROM files WHERE id = ? AND owner_id = ?"), id, userID).Scan(&casHash)
 
 		query := fc.DB.Rebind("DELETE FROM files WHERE id = ? AND owner_id = ?")
-		res, err := fc.DB.SQL.Exec(query, id, 1)
+		res, err := fc.DB.SQL.Exec(query, id, userID)
 		if err != nil {
 			return echo.NewHTTPError(http.StatusInternalServerError, "Failed to delete file: "+err.Error())
 		}
@@ -1047,7 +1072,7 @@ func (fc *FileController) DeleteFile(c *echo.Context) error {
 
 	// Soft delete: move to trash
 	query := fc.DB.Rebind("UPDATE files SET is_deleted = TRUE WHERE id = ? AND owner_id = ?")
-	res, err := fc.DB.SQL.Exec(query, id, 1)
+	res, err := fc.DB.SQL.Exec(query, id, userID)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to move file to trash: "+err.Error())
 	}
@@ -1059,15 +1084,16 @@ func (fc *FileController) DeleteFile(c *echo.Context) error {
 
 func (fc *FileController) RestoreFile(c *echo.Context) error {
 	id := c.Param("id")
+	userID := auth.GetUserID(c)
 
 	var folderID string
-	_ = fc.DB.SQL.QueryRow(fc.DB.Rebind("SELECT COALESCE(folder_id, '') FROM files WHERE id = ? AND owner_id = ?"), id, 1).Scan(&folderID)
+	_ = fc.DB.SQL.QueryRow(fc.DB.Rebind("SELECT COALESCE(folder_id, '') FROM files WHERE id = ? AND owner_id = ?"), id, userID).Scan(&folderID)
 	if fc.IsVaultFolder(folderID) && !fc.isVaultUnlocked(c) {
 		return echo.NewHTTPError(http.StatusUnauthorized, "Vault locked. Master password required.")
 	}
 
 	query := fc.DB.Rebind("UPDATE files SET is_deleted = FALSE WHERE id = ? AND owner_id = ?")
-	res, err := fc.DB.SQL.Exec(query, id, 1)
+	res, err := fc.DB.SQL.Exec(query, id, userID)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to restore file: "+err.Error())
 	}
@@ -1079,21 +1105,22 @@ func (fc *FileController) RestoreFile(c *echo.Context) error {
 
 func (fc *FileController) StarFile(c *echo.Context) error {
 	id := c.Param("id")
+	userID := auth.GetUserID(c)
 
 	var folderID string
-	_ = fc.DB.SQL.QueryRow(fc.DB.Rebind("SELECT COALESCE(folder_id, '') FROM files WHERE id = ? AND owner_id = ?"), id, 1).Scan(&folderID)
+	_ = fc.DB.SQL.QueryRow(fc.DB.Rebind("SELECT COALESCE(folder_id, '') FROM files WHERE id = ? AND owner_id = ?"), id, userID).Scan(&folderID)
 	if fc.IsVaultFolder(folderID) && !fc.isVaultUnlocked(c) {
 		return echo.NewHTTPError(http.StatusUnauthorized, "Vault locked. Master password required.")
 	}
 
 	query := fc.DB.Rebind("UPDATE files SET is_starred = CASE WHEN is_starred = TRUE THEN FALSE ELSE TRUE END WHERE id = ? AND owner_id = ? AND is_deleted = FALSE")
-	res, err := fc.DB.SQL.Exec(query, id, 1)
+	res, err := fc.DB.SQL.Exec(query, id, userID)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to toggle star: "+err.Error())
 	}
 	if rows, _ := res.RowsAffected(); rows == 0 {
 		var isDeleted bool
-		errCheck := fc.DB.SQL.QueryRow(fc.DB.Rebind("SELECT is_deleted FROM files WHERE id = ? AND owner_id = ?"), id, 1).Scan(&isDeleted)
+		errCheck := fc.DB.SQL.QueryRow(fc.DB.Rebind("SELECT is_deleted FROM files WHERE id = ? AND owner_id = ?"), id, userID).Scan(&isDeleted)
 		if errCheck == nil && isDeleted {
 			return echo.NewHTTPError(http.StatusBadRequest, "Cannot star a deleted file")
 		}
@@ -1103,6 +1130,7 @@ func (fc *FileController) StarFile(c *echo.Context) error {
 }
 
 func (fc *FileController) EmptyTrash(c *echo.Context) error {
+	userID := auth.GetUserID(c)
 	isUnlocked := fc.isVaultUnlocked(c)
 	filterClause := "owner_id = ? AND is_deleted = TRUE"
 	if !isUnlocked {
@@ -1115,7 +1143,7 @@ func (fc *FileController) EmptyTrash(c *echo.Context) error {
 	}
 	defer tx.Rollback()
 
-	rows, err := tx.Query(fc.DB.Rebind("SELECT DISTINCT cas_hash FROM files WHERE "+filterClause), 1)
+	rows, err := tx.Query(fc.DB.Rebind("SELECT DISTINCT cas_hash FROM files WHERE "+filterClause), userID)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to query trash: "+err.Error())
 	}
@@ -1130,7 +1158,7 @@ func (fc *FileController) EmptyTrash(c *echo.Context) error {
 	}
 	rows.Close()
 
-	res, err := tx.Exec(fc.DB.Rebind("DELETE FROM files WHERE "+filterClause), 1)
+	res, err := tx.Exec(fc.DB.Rebind("DELETE FROM files WHERE "+filterClause), userID)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to empty trash: "+err.Error())
 	}
@@ -1173,8 +1201,9 @@ func (fc *FileController) GetStorageStats(c *echo.Context) error {
 		filterTrash += " AND " + fc.vaultExcludeFilter()
 	}
 
-	_ = fc.DB.SQL.QueryRow(fc.DB.Rebind("SELECT COALESCE(SUM(size), 0), COUNT(*) FROM files WHERE "+filterActive), 1).Scan(&activeBytes, &activeCount)
-	_ = fc.DB.SQL.QueryRow(fc.DB.Rebind("SELECT COALESCE(SUM(size), 0), COUNT(*) FROM files WHERE "+filterTrash), 1).Scan(&trashBytes, &trashCount)
+	userID := auth.GetUserID(c)
+	_ = fc.DB.SQL.QueryRow(fc.DB.Rebind("SELECT COALESCE(SUM(size), 0), COUNT(*) FROM files WHERE "+filterActive), userID).Scan(&activeBytes, &activeCount)
+	_ = fc.DB.SQL.QueryRow(fc.DB.Rebind("SELECT COALESCE(SUM(size), 0), COUNT(*) FROM files WHERE "+filterTrash), userID).Scan(&trashBytes, &trashCount)
 
 	activeUsed := activeBytes.Int64
 	trashedUsed := trashBytes.Int64
@@ -1545,9 +1574,10 @@ func (fc *FileController) CreateFolder(c *echo.Context) error {
 		return echo.NewHTTPError(http.StatusConflict, "Folder with this name already exists in the destination")
 	}
 
+	userID := auth.GetUserID(c)
 	folderID := fmt.Sprintf("f_%d_%s", time.Now().Unix(), upload.GenerateID()[:8])
-	query := fc.DB.Rebind("INSERT INTO folders (id, owner_id, parent_id, name) VALUES (?, 1, NULLIF(?, ''), ?)")
-	_, err := fc.DB.SQL.Exec(query, folderID, req.ParentID, cleanName)
+	query := fc.DB.Rebind("INSERT INTO folders (id, owner_id, parent_id, name) VALUES (?, ?, NULLIF(?, ''), ?)")
+	_, err := fc.DB.SQL.Exec(query, folderID, userID, req.ParentID, cleanName)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to create folder: "+err.Error())
 	}
@@ -1561,6 +1591,7 @@ func (fc *FileController) CreateFolder(c *echo.Context) error {
 
 func (fc *FileController) DeleteFolder(c *echo.Context) error {
 	id := c.Param("id")
+	userID := auth.GetUserID(c)
 
 	// Block deletion of immutable system root folders
 	if id == "f1" || id == "f2" || id == "f3" {
@@ -1569,7 +1600,7 @@ func (fc *FileController) DeleteFolder(c *echo.Context) error {
 
 	// BUG-SYS-44: Verify folder exists
 	var exists bool
-	errCheck := fc.DB.SQL.QueryRow(fc.DB.Rebind("SELECT EXISTS(SELECT 1 FROM folders WHERE id = ? AND owner_id = ?)"), id, 1).Scan(&exists)
+	errCheck := fc.DB.SQL.QueryRow(fc.DB.Rebind("SELECT EXISTS(SELECT 1 FROM folders WHERE id = ? AND owner_id = ?)"), id, userID).Scan(&exists)
 	if errCheck != nil || !exists {
 		return echo.NewHTTPError(http.StatusNotFound, "Folder not found")
 	}
@@ -1586,7 +1617,7 @@ func (fc *FileController) DeleteFolder(c *echo.Context) error {
 	for len(queue) > 0 {
 		currID := queue[0]
 		queue = queue[1:]
-		rows, err := fc.DB.SQL.Query(fc.DB.Rebind("SELECT id FROM folders WHERE parent_id = ? AND owner_id = ?"), currID, 1)
+		rows, err := fc.DB.SQL.Query(fc.DB.Rebind("SELECT id FROM folders WHERE parent_id = ? AND owner_id = ?"), currID, userID)
 		if err == nil {
 			for rows.Next() {
 				var childID string
@@ -1610,15 +1641,15 @@ func (fc *FileController) DeleteFolder(c *echo.Context) error {
 	isVault := fc.IsVaultFolder(id)
 	for _, fID := range allFolderIDs {
 		if isVault {
-			_, _ = tx.Exec(fc.DB.Rebind("UPDATE files SET is_deleted = TRUE, folder_id = 'f2' WHERE folder_id = ? AND owner_id = ?"), fID, 1)
+			_, _ = tx.Exec(fc.DB.Rebind("UPDATE files SET is_deleted = TRUE, folder_id = 'f2' WHERE folder_id = ? AND owner_id = ?"), fID, userID)
 		} else {
-			_, _ = tx.Exec(fc.DB.Rebind("UPDATE files SET is_deleted = TRUE, folder_id = NULL WHERE folder_id = ? AND owner_id = ?"), fID, 1)
+			_, _ = tx.Exec(fc.DB.Rebind("UPDATE files SET is_deleted = TRUE, folder_id = NULL WHERE folder_id = ? AND owner_id = ?"), fID, userID)
 		}
 	}
 
 	// Delete child subfolders first (reverse order)
 	for i := len(allFolderIDs) - 1; i >= 0; i-- {
-		_, _ = tx.Exec(fc.DB.Rebind("DELETE FROM folders WHERE id = ? AND owner_id = ?"), allFolderIDs[i], 1)
+		_, _ = tx.Exec(fc.DB.Rebind("DELETE FROM folders WHERE id = ? AND owner_id = ?"), allFolderIDs[i], userID)
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -1635,6 +1666,7 @@ type RenameFolderRequest struct {
 
 func (fc *FileController) RenameFolder(c *echo.Context) error {
 	id := c.Param("id")
+	userID := auth.GetUserID(c)
 
 	// Block renaming of immutable system root folders
 	if id == "f1" || id == "f2" || id == "f3" {
@@ -1661,22 +1693,22 @@ func (fc *FileController) RenameFolder(c *echo.Context) error {
 	}
 
 	var parentID sql.NullString
-	err := fc.DB.SQL.QueryRow(fc.DB.Rebind("SELECT parent_id FROM folders WHERE id = ? AND owner_id = ?"), id, 1).Scan(&parentID)
+	err := fc.DB.SQL.QueryRow(fc.DB.Rebind("SELECT parent_id FROM folders WHERE id = ? AND owner_id = ?"), id, userID).Scan(&parentID)
 	if err == sql.ErrNoRows {
 		return echo.NewHTTPError(http.StatusNotFound, "Folder not found")
 	}
 
 	var exists bool
 	if parentID.Valid && parentID.String != "" {
-		_ = fc.DB.SQL.QueryRow(fc.DB.Rebind("SELECT EXISTS(SELECT 1 FROM folders WHERE parent_id = ? AND name = ? AND id != ?)"), parentID.String, cleanName, id).Scan(&exists)
+		_ = fc.DB.SQL.QueryRow(fc.DB.Rebind("SELECT EXISTS(SELECT 1 FROM folders WHERE parent_id = ? AND name = ? AND id != ? AND owner_id = ?)"), parentID.String, cleanName, id, userID).Scan(&exists)
 	} else {
-		_ = fc.DB.SQL.QueryRow(fc.DB.Rebind("SELECT EXISTS(SELECT 1 FROM folders WHERE (parent_id IS NULL OR parent_id = '') AND name = ? AND id != ?)"), cleanName, id).Scan(&exists)
+		_ = fc.DB.SQL.QueryRow(fc.DB.Rebind("SELECT EXISTS(SELECT 1 FROM folders WHERE (parent_id IS NULL OR parent_id = '') AND name = ? AND id != ? AND owner_id = ?)"), cleanName, id, userID).Scan(&exists)
 	}
 	if exists {
 		return echo.NewHTTPError(http.StatusConflict, "Folder with this name already exists")
 	}
 
-	res, err := fc.DB.SQL.Exec(fc.DB.Rebind("UPDATE folders SET name = ? WHERE id = ? AND owner_id = ?"), cleanName, id, 1)
+	res, err := fc.DB.SQL.Exec(fc.DB.Rebind("UPDATE folders SET name = ? WHERE id = ? AND owner_id = ?"), cleanName, id, userID)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to rename folder: "+err.Error())
 	}
@@ -1693,6 +1725,7 @@ type RenameFileRequest struct {
 
 func (fc *FileController) RenameFile(c *echo.Context) error {
 	id := c.Param("id")
+	userID := auth.GetUserID(c)
 	var req RenameFileRequest
 	if err := c.Bind(&req); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "Invalid request")
@@ -1707,7 +1740,7 @@ func (fc *FileController) RenameFile(c *echo.Context) error {
 	}
 
 	var folderID string
-	err := fc.DB.SQL.QueryRow(fc.DB.Rebind("SELECT COALESCE(folder_id, '') FROM files WHERE id = ? AND owner_id = ? AND is_deleted = FALSE"), id, 1).Scan(&folderID)
+	err := fc.DB.SQL.QueryRow(fc.DB.Rebind("SELECT COALESCE(folder_id, '') FROM files WHERE id = ? AND owner_id = ? AND is_deleted = FALSE"), id, userID).Scan(&folderID)
 	if err == sql.ErrNoRows {
 		return echo.NewHTTPError(http.StatusNotFound, "File not found")
 	}
@@ -1718,15 +1751,15 @@ func (fc *FileController) RenameFile(c *echo.Context) error {
 	// BUG-SYS-52: Prevent duplicate file names under the same folder
 	var exists bool
 	if folderID != "" {
-		_ = fc.DB.SQL.QueryRow(fc.DB.Rebind("SELECT EXISTS(SELECT 1 FROM files WHERE folder_id = ? AND name = ? AND id != ? AND owner_id = ? AND is_deleted = FALSE)"), folderID, cleanName, id, 1).Scan(&exists)
+		_ = fc.DB.SQL.QueryRow(fc.DB.Rebind("SELECT EXISTS(SELECT 1 FROM files WHERE folder_id = ? AND name = ? AND id != ? AND owner_id = ? AND is_deleted = FALSE)"), folderID, cleanName, id, userID).Scan(&exists)
 	} else {
-		_ = fc.DB.SQL.QueryRow(fc.DB.Rebind("SELECT EXISTS(SELECT 1 FROM files WHERE (folder_id IS NULL OR folder_id = '') AND name = ? AND id != ? AND owner_id = ? AND is_deleted = FALSE)"), cleanName, id, 1).Scan(&exists)
+		_ = fc.DB.SQL.QueryRow(fc.DB.Rebind("SELECT EXISTS(SELECT 1 FROM files WHERE (folder_id IS NULL OR folder_id = '') AND name = ? AND id != ? AND owner_id = ? AND is_deleted = FALSE)"), cleanName, id, userID).Scan(&exists)
 	}
 	if exists {
 		return echo.NewHTTPError(http.StatusConflict, "File with this name already exists in this folder")
 	}
 
-	res, err := fc.DB.SQL.Exec(fc.DB.Rebind("UPDATE files SET name = ? WHERE id = ? AND owner_id = ? AND is_deleted = FALSE"), cleanName, id, 1)
+	res, err := fc.DB.SQL.Exec(fc.DB.Rebind("UPDATE files SET name = ? WHERE id = ? AND owner_id = ? AND is_deleted = FALSE"), cleanName, id, userID)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to rename file: "+err.Error())
 	}

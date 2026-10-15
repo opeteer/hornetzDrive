@@ -128,18 +128,7 @@ func ProbeLink(ctx context.Context, client *http.Client, rawURL string) (*ProbeR
 	}
 
 	if client == nil {
-		client = &http.Client{
-			Timeout: 10 * time.Second,
-			CheckRedirect: func(req *http.Request, via []*http.Request) error {
-				if len(via) >= 15 {
-					return http.ErrUseLastResponse
-				}
-				if _, err := ValidateSafeURL(req.URL.String(), false); err != nil {
-					return fmt.Errorf("probe redirect blocked by security policy: %w", err)
-				}
-				return nil
-			},
-		}
+		client = NewSafeHTTPClient(10*time.Second, 15, false)
 	}
 
 	probeCtx, cancel := context.WithTimeout(ctx, 10*time.Second)

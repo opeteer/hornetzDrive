@@ -3,7 +3,6 @@ package download
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -29,20 +28,10 @@ type DirectDownloader struct {
 
 func NewDirectDownloader() *DirectDownloader {
 	jar, _ := cookiejar.New(nil)
+	client := NewSafeHTTPClient(2*time.Hour, 15, false)
+	client.Jar = jar
 	return &DirectDownloader{
-		HTTPClient: &http.Client{
-			Jar:     jar,
-			Timeout: 2 * time.Hour, // Allow large file streaming
-			CheckRedirect: func(req *http.Request, via []*http.Request) error {
-				if len(via) >= 15 {
-					return errors.New("stopped after 15 redirects")
-				}
-				if _, err := ValidateSafeURL(req.URL.String(), false); err != nil {
-					return fmt.Errorf("redirect blocked by security policy: %w", err)
-				}
-				return nil
-			},
-		},
+		HTTPClient: client,
 	}
 }
 

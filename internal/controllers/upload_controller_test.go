@@ -246,26 +246,72 @@ func TestUploadController_ZeroSecondDedup_InsertsFileRecord(t *testing.T) {
 	_ = os.MkdirAll(filepath.Dir(casFilePath), 0700)
 	_ = os.WriteFile(casFilePath, []byte("dedup target payload"), 0644)
 
-	// User attempts to upload with matching cas_hash and valid proof of ownership
-	proof := ctrl.GenerateProof(existingHash, "dedup_doc.pdf", 1234)
-	body := []byte(`{"filename":"dedup_doc.pdf","mime_type":"application/pdf","size":1234,"folder_id":"root","cas_hash":"` + existingHash + `","proof":"` + proof + `"}`)
+	// User attempts to upload with matching cas_hash
+	body := []byte(`{"filename":"dedup_doc.pdf","mime_type":"application/pdf","size":20,"folder_id":"root","cas_hash":"` + existingHash + `"}`)
 	req := httptest.NewRequest(http.MethodPost, "/upload/init", bytes.NewReader(body))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
+	c.Set("user_id", int64(1))
 
 	if err := ctrl.InitSession(c); err != nil {
 		t.Fatalf("InitSession error: %v", err)
 	}
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("Expected HTTP 200 on dedup match, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf("Expected HTTP 200 challenge_required, got %d: %s", rec.Code, rec.Body.String())
 	}
 
 	var res map[string]interface{}
 	json.Unmarshal(rec.Body.Bytes(), &res)
-	if res["status"] != "completed" {
-		t.Fatalf("Expected status completed, got %v", res["status"])
+	if res["status"] != "challenge_required" {
+		t.Fatalf("Expected status challenge_required, got %v", res["status"])
+	}
+
+	nonce, _ := res["challenge_nonce"].(string)
+	if nonce == "" {
+		t.Fatalf("Expected challenge_nonce in response")
+	}
+
+	// Solve challenge using the actual file contents
+	fileContent := []byte("dedup target payload")
+	ch, exists := upload.GetPoWChallenge(nonce)
+	if !exists {
+		t.Fatalf("Challenge not found in store")
+	}
+	proof, err := upload.ComputeSampleHMAC(bytes.NewReader(fileContent), ch.Offsets, ch.SampleSize, nonce)
+	if err != nil {
+		t.Fatalf("ComputeSampleHMAC failed: %v", err)
+	}
+
+	// Send verification request to verify-pow
+	verifyReqBody, _ := json.Marshal(map[string]interface{}{
+		"cas_hash":        existingHash,
+		"challenge_nonce": nonce,
+		"proof":           proof,
+		"filename":        "dedup_doc.pdf",
+		"mime_type":       "application/pdf",
+		"size":            20,
+		"folder_id":       "root",
+	})
+	req2 := httptest.NewRequest(http.MethodPost, "/upload/verify-pow", bytes.NewReader(verifyReqBody))
+	req2.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec2 := httptest.NewRecorder()
+	c2 := e.NewContext(req2, rec2)
+	c2.Set("user_id", int64(1))
+
+	if err := ctrl.VerifyProofOfOwnership(c2); err != nil {
+		t.Fatalf("VerifyProofOfOwnership error: %v", err)
+	}
+
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("Expected HTTP 200 on valid PoW verification, got %d: %s", rec2.Code, rec2.Body.String())
+	}
+
+	var res2 map[string]interface{}
+	json.Unmarshal(rec2.Body.Bytes(), &res2)
+	if res2["status"] != "completed" {
+		t.Fatalf("Expected status completed, got %v", res2["status"])
 	}
 
 	// Verify that the file record is properly inserted into the files table
@@ -310,18 +356,19 @@ func TestUploadController_ZeroSecondDedup_WithoutProof_RequiresUpload(t *testing
 	_ = os.MkdirAll(filepath.Dir(casFilePath), 0700)
 	_ = os.WriteFile(casFilePath, []byte("dedup target payload"), 0644)
 
-	// User attempts to upload with matching cas_hash but WITHOUT proof of ownership
-	body := []byte(`{"filename":"dedup_doc.pdf","mime_type":"application/pdf","size":1234,"folder_id":"root","cas_hash":"` + existingHash + `"}`)
+	// User attempts to upload standard file without cas_hash
+	body := []byte(`{"filename":"dedup_doc.pdf","mime_type":"application/pdf","size":1234,"folder_id":"root"}`)
 	req := httptest.NewRequest(http.MethodPost, "/upload/init", bytes.NewReader(body))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
+	c.Set("user_id", int64(1))
 
 	if err := ctrl.InitSession(c); err != nil {
 		t.Fatalf("InitSession error: %v", err)
 	}
 
-	// Should NOT immediately complete; should return 201 Created with a session_id for upload
+	// Should return 201 Created with a session_id for upload
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("Expected HTTP 201 created session for upload, got %d: %s", rec.Code, rec.Body.String())
 	}
@@ -570,20 +617,30 @@ func TestUploadController_ProofOfOwnership_BackdoorRejected(t *testing.T) {
 	_ = os.MkdirAll(filepath.Dir(casFilePath), 0700)
 	_ = os.WriteFile(casFilePath, []byte("dedup target payload"), 0644)
 
-	// Attacker attempts to upload with matching cas_hash and backdoor proof "pow_verified"
-	body := []byte(`{"filename":"stolen.pdf","mime_type":"application/pdf","size":9999,"folder_id":"root","cas_hash":"` + existingHash + `","proof":"pow_verified"}`)
-	req := httptest.NewRequest(http.MethodPost, "/upload/init", bytes.NewReader(body))
+	// Attacker attempts to submit forged backdoor proof "pow_verified" to verify-pow
+	verifyReqBody, _ := json.Marshal(map[string]interface{}{
+		"cas_hash":        existingHash,
+		"challenge_nonce": "non_existent_or_forged_nonce",
+		"proof":           "pow_verified",
+		"filename":        "stolen.pdf",
+		"mime_type":       "application/pdf",
+		"size":            9999,
+		"folder_id":       "root",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/upload/verify-pow", bytes.NewReader(verifyReqBody))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
+	c.Set("user_id", int64(1))
 
-	if err := ctrl.InitSession(c); err != nil {
-		t.Fatalf("InitSession error: %v", err)
+	err = ctrl.VerifyProofOfOwnership(c)
+	if err == nil && rec.Code == http.StatusOK {
+		t.Fatalf("BUG-SEC-45: Expected error or non-200 for forged proof, got %d", rec.Code)
 	}
-
-	// Must NOT return 200 with completed; should return 201 Created standard session
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("BUG-SEC-45: Expected HTTP 201 created (dedup rejected), got %d: %s", rec.Code, rec.Body.String())
+	if he, ok := err.(*echo.HTTPError); ok {
+		if he.Code == http.StatusOK {
+			t.Fatalf("BUG-SEC-45: Expected HTTP error, got 200")
+		}
 	}
 }
 

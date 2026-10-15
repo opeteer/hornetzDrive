@@ -16,6 +16,7 @@ import (
 	"ztatic-go-framework/fullstack"
 	"ztatic-go-framework/internal/auth"
 	"ztatic-go-framework/internal/controllers"
+	"ztatic-go-framework/internal/crypto"
 	"ztatic-go-framework/internal/download"
 	"ztatic-go-framework/internal/storage"
 	"ztatic-go-framework/internal/ui/components"
@@ -34,6 +35,7 @@ type AppConfig struct {
 	CASDir       string `env:"CAS_DIR" envDefault:"storage/cas"`
 	TmpDir       string `env:"TMP_DIR" envDefault:"storage/tmp"`
 	StorageQuota int64  `env:"STORAGE_QUOTA" envDefault:"0"`
+	StorageKey   string `env:"STORAGE_MASTER_KEY" envDefault:""`
 }
 
 func main() {
@@ -83,6 +85,9 @@ func main() {
 	}
 	defer dbEngine.Close()
 
+	auth.SetDB(dbEngine)
+	_, _ = crypto.InitStandardStorageKey(appCfg.StorageKey, "storage")
+
 	migrationEngine := data.NewMigrationEngine(dbEngine.SQL)
 	migDir := "data/migrations_sqlite3"
 	if appCfg.DBDriver == "postgres" {
@@ -123,22 +128,6 @@ func main() {
 	}
 	fileCtrl.SeedInitialData()
 
-	app.GET("/api/files", fileCtrl.GetFiles)
-	app.PATCH("/api/files/:id", fileCtrl.RenameFile)
-	app.GET("/api/folders", fileCtrl.GetFolders)
-	app.POST("/api/folders", fileCtrl.CreateFolder)
-	app.DELETE("/api/folders/:id", fileCtrl.DeleteFolder)
-	app.PATCH("/api/folders/:id", fileCtrl.RenameFolder)
-	app.GET("/api/storage/stats", fileCtrl.GetStorageStats)
-	app.GET("/api/files/:id/download", fileCtrl.DownloadFile)
-	app.GET("/api/files/:id/preview", fileCtrl.PreviewFile)
-	app.GET("/api/files/:id/thumbnail", fileCtrl.ThumbnailFile)
-	app.DELETE("/api/files/trash/empty", fileCtrl.EmptyTrash)
-	app.DELETE("/api/files/:id", fileCtrl.DeleteFile)
-	app.POST("/api/files/:id/restore", fileCtrl.RestoreFile)
-	app.POST("/api/files/:id/star", fileCtrl.StarFile)
-	app.POST("/api/vault/lock", auth.LockVault)
-
 	downloadMgr, err := download.NewDownloadManager(casEngine, dbEngine, broker, appCfg.TmpDir, appCfg.StorageQuota)
 	if err != nil {
 		log.Error("Failed to init Download Manager", "error", err)
@@ -151,11 +140,28 @@ func main() {
 		CAS:     casEngine,
 	}
 
-	app.POST("/api/downloads", downloadCtrl.StartDownload)
-	app.POST("/api/downloads/batch", downloadCtrl.StartBatchDownload)
-	app.GET("/api/downloads/:id", downloadCtrl.GetDownloadStatus)
-	app.DELETE("/api/downloads/:id", downloadCtrl.CancelDownload)
-	app.POST("/api/downloads/parse", downloadCtrl.ParseLink)
+	apiGroup := app.Group("/api", auth.RequireAuth(dbEngine))
+	apiGroup.GET("/files", fileCtrl.GetFiles)
+	apiGroup.PATCH("/files/:id", fileCtrl.RenameFile)
+	apiGroup.GET("/folders", fileCtrl.GetFolders)
+	apiGroup.POST("/folders", fileCtrl.CreateFolder)
+	apiGroup.DELETE("/folders/:id", fileCtrl.DeleteFolder)
+	apiGroup.PATCH("/folders/:id", fileCtrl.RenameFolder)
+	apiGroup.GET("/storage/stats", fileCtrl.GetStorageStats)
+	apiGroup.GET("/files/:id/download", fileCtrl.DownloadFile)
+	apiGroup.GET("/files/:id/preview", fileCtrl.PreviewFile)
+	apiGroup.GET("/files/:id/thumbnail", fileCtrl.ThumbnailFile)
+	apiGroup.DELETE("/files/trash/empty", fileCtrl.EmptyTrash)
+	apiGroup.DELETE("/files/:id", fileCtrl.DeleteFile)
+	apiGroup.POST("/files/:id/restore", fileCtrl.RestoreFile)
+	apiGroup.POST("/files/:id/star", fileCtrl.StarFile)
+	apiGroup.POST("/vault/lock", auth.LockVault)
+
+	apiGroup.POST("/downloads", downloadCtrl.StartDownload)
+	apiGroup.POST("/downloads/batch", downloadCtrl.StartBatchDownload)
+	apiGroup.GET("/downloads/:id", downloadCtrl.GetDownloadStatus)
+	apiGroup.DELETE("/downloads/:id", downloadCtrl.CancelDownload)
+	apiGroup.POST("/downloads/parse", downloadCtrl.ParseLink)
 
 	uploadCtrl := &controllers.UploadController{
 		SessionMgr: sessionMgr,
@@ -194,8 +200,9 @@ func main() {
 	app.POST("/login", auth.LoginMock, web.AdaptiveRateLimiterWithConfig(web.AuthRateLimiterConfig()))
 
 	// Protected Upload Routes with RouteLimit
-	uploadGroup := app.Group("/upload", auth.VaultKeyMiddleware(), frameworkUpload.RouteLimit(50*1024*1024))
+	uploadGroup := app.Group("/upload", auth.RequireAuth(dbEngine), auth.VaultKeyMiddleware(), frameworkUpload.RouteLimit(50*1024*1024))
 	uploadGroup.POST("/init", uploadCtrl.InitSession)
+	uploadGroup.POST("/verify-pow", uploadCtrl.VerifyProofOfOwnership)
 	uploadGroup.PUT("/:session_id", uploadCtrl.UploadChunk)
 	uploadGroup.GET("/:session_id", uploadCtrl.GetStatus)
 	uploadGroup.DELETE("/:session_id", uploadCtrl.AbortSession)
@@ -203,12 +210,12 @@ func main() {
 	// Landing Page route
 	app.GET("/", func(c *echo.Context) error {
 		return components.LandingPage(c).Render(c.Request().Context(), c.Response())
-	})
+	}, auth.EnsureDashboardSessionMiddleware())
 
 	// Storage Web Application Dashboard routes
 	app.GET("/app", func(c *echo.Context) error {
 		return components.Dashboard(c).Render(c.Request().Context(), c.Response())
-	})
+	}, auth.EnsureDashboardSessionMiddleware())
 	app.GET("/drive", func(c *echo.Context) error {
 		return c.Redirect(http.StatusMovedPermanently, "/app")
 	})

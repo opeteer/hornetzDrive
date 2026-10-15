@@ -4,11 +4,13 @@ import (
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/hex"
+	"errors"
 	"net/http"
 	"sync"
 	"time"
 
 	"github.com/labstack/echo/v5"
+	"ztatic-go-framework/data"
 	"ztatic-go-framework/internal/crypto"
 )
 
@@ -131,19 +133,105 @@ type LoginRequest struct {
 }
 
 var (
-	defaultVaultSalt = []byte("hornetz_vault_master_salt_32b_!")
-	defaultVaultHash = crypto.DeriveMEK([]byte("ManusiaIdaman"), defaultVaultSalt)
+	globalDBMu           sync.RWMutex
+	globalDB             *data.DBEngine
+	mockPasswordVerifier func(password string) ([]byte, bool)
 )
 
-// VerifyMasterPassword validates password using Argon2id constant-time comparison against master key
+// SetDB configures the database connection for authenticating vault unlock requests.
+func SetDB(db *data.DBEngine) {
+	globalDBMu.Lock()
+	defer globalDBMu.Unlock()
+	globalDB = db
+}
+
+func getDB() *data.DBEngine {
+	globalDBMu.RLock()
+	defer globalDBMu.RUnlock()
+	return globalDB
+}
+
+// SetMockPasswordVerifier sets a fallback password verifier for isolated unit tests.
+func SetMockPasswordVerifier(fn func(password string) ([]byte, bool)) {
+	globalDBMu.Lock()
+	defer globalDBMu.Unlock()
+	mockPasswordVerifier = fn
+}
+
+// VerifyAndUnlockVault authenticates against the users table using Argon2id and decrypts the user's VK.
+func VerifyAndUnlockVault(db *data.DBEngine, userID int64, password string) (string, []byte, error) {
+	if password == "" {
+		return "", nil, errors.New("password cannot be empty")
+	}
+
+	globalDBMu.RLock()
+	mockFn := mockPasswordVerifier
+	globalDBMu.RUnlock()
+
+	if mockFn != nil {
+		if vk, ok := mockFn(password); ok {
+			sessBytes := make([]byte, 16)
+			_, _ = rand.Read(sessBytes)
+			sessionID := "sess_" + hex.EncodeToString(sessBytes)
+			GlobalSessionStore.SetKey(sessionID, vk)
+			return sessionID, vk, nil
+		}
+		return "", nil, errors.New("invalid master password")
+	}
+
+	if db == nil || db.SQL == nil {
+		return "", nil, errors.New("database connection unavailable")
+	}
+
+	var passwordHashHex string
+	var salt, encryptedVK []byte
+
+	query := "SELECT password_hash, salt, encrypted_vault_key FROM users WHERE id = ?"
+	err := db.SQL.QueryRow(db.Rebind(query), userID).Scan(&passwordHashHex, &salt, &encryptedVK)
+	if err != nil {
+		return "", nil, errors.New("user not found or invalid credentials")
+	}
+
+	expectedHash, err := hex.DecodeString(passwordHashHex)
+	if err != nil || len(expectedHash) == 0 {
+		return "", nil, errors.New("invalid stored password hash format")
+	}
+
+	mek := crypto.DeriveMEK([]byte(password), salt)
+	if subtle.ConstantTimeCompare(mek, expectedHash) != 1 {
+		return "", nil, errors.New("invalid master password")
+	}
+
+	vk, err := crypto.DecryptBlock(encryptedVK, mek)
+	if err != nil {
+		return "", nil, errors.New("failed to decrypt vault key: " + err.Error())
+	}
+
+	sessBytes := make([]byte, 16)
+	_, _ = rand.Read(sessBytes)
+	sessionID := "sess_" + hex.EncodeToString(sessBytes)
+
+	GlobalSessionStore.SetKey(sessionID, vk)
+	return sessionID, vk, nil
+}
+
+// VerifyMasterPassword validates password using Argon2id constant-time comparison against master key.
 func VerifyMasterPassword(password string) bool {
 	if password == "" {
 		return false
 	}
-	return crypto.VerifyPassword([]byte(password), defaultVaultSalt, defaultVaultHash)
+	db := getDB()
+	globalDBMu.RLock()
+	mockFn := mockPasswordVerifier
+	globalDBMu.RUnlock()
+	if db == nil && mockFn == nil {
+		return false
+	}
+	_, _, err := VerifyAndUnlockVault(db, 1, password)
+	return err == nil
 }
 
-// LoginMock simulates unlocking the vault and storing the VK in RAM using Argon2id.
+// LoginMock unlocks the vault and stores the decrypted VK in RAM using database-backed Argon2id verification.
 func LoginMock(c *echo.Context) error {
 	var req LoginRequest
 	if err := c.Bind(&req); err != nil {
@@ -154,24 +242,22 @@ func LoginMock(c *echo.Context) error {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Invalid master password"})
 	}
 
-	// High-performance single-pass Argon2id key derivation and constant-time comparison
-	vk := crypto.DeriveMEK([]byte(req.Password), defaultVaultSalt)
-	if subtle.ConstantTimeCompare(vk, defaultVaultHash) != 1 {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Invalid master password"})
+	userID := int64(1)
+	if uid, ok := c.Get("user_id").(int64); ok && uid > 0 {
+		userID = uid
 	}
 
-	sessBytes := make([]byte, 16)
-	_, _ = rand.Read(sessBytes)
-	sessionID := "sess_" + hex.EncodeToString(sessBytes)
-
-	GlobalSessionStore.SetKey(sessionID, vk)
+	sessionID, _, err := VerifyAndUnlockVault(getDB(), userID, req.Password)
+	if err != nil {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Invalid master password"})
+	}
 
 	c.SetCookie(&http.Cookie{
 		Name:     "swarm_session",
 		Value:    sessionID,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   false,
+		Secure:   c.Scheme() == "https",
 		SameSite: http.SameSiteLaxMode,
 		Expires:  time.Now().Add(24 * time.Hour),
 	})

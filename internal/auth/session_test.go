@@ -77,8 +77,28 @@ func TestVaultKeyMiddleware_ValidSession(t *testing.T) {
 func TestLoginMock_SuccessAndFailure(t *testing.T) {
 	e := echo.New()
 
+	// 0. Verify that old hardcoded password is NOT accepted by default
+	reqOld := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(`{"password":"ManusiaIdaman"}`))
+	reqOld.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	recOld := httptest.NewRecorder()
+	cOld := e.NewContext(reqOld, recOld)
+	_ = LoginMock(cOld)
+	if recOld.Code != http.StatusUnauthorized {
+		t.Fatalf("Expected old hardcoded password to be rejected with 401, got %d", recOld.Code)
+	}
+
+	// Configure mock verifier for isolated unit test
+	testVK := []byte("0123456789abcdef0123456789abcdef")
+	SetMockPasswordVerifier(func(password string) ([]byte, bool) {
+		if password == "SecureVaultPass2026!" {
+			return testVK, true
+		}
+		return nil, false
+	})
+	defer SetMockPasswordVerifier(nil)
+
 	// 1. Valid password
-	validBody := `{"password":"ManusiaIdaman"}`
+	validBody := `{"password":"SecureVaultPass2026!"}`
 	req := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(validBody))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	rec := httptest.NewRecorder()

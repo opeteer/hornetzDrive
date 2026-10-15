@@ -27,10 +27,8 @@ func NewTorrentClient() *TorrentClient {
 	_, _ = rand.Read(peerID[8:])
 
 	return &TorrentClient{
-		HTTPClient: &http.Client{
-			Timeout: 30 * time.Second,
-		},
-		PeerID: peerID,
+		HTTPClient: NewSafeHTTPClient(30*time.Second, 10, false),
+		PeerID:     peerID,
 	}
 }
 
@@ -111,6 +109,10 @@ func (tc *TorrentClient) downloadFromWebSeed(ctx context.Context, wsURL string, 
 		targetURL += url.PathEscape(info.DisplayName)
 	}
 
+	if _, err := ValidateSafeURL(targetURL, false); err != nil {
+		return fmt.Errorf("insecure web seed URL: %w", err)
+	}
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, targetURL, nil)
 	if err != nil {
 		return err
@@ -136,6 +138,10 @@ func (tc *TorrentClient) downloadFromWebSeed(ctx context.Context, wsURL string, 
 }
 
 func (tc *TorrentClient) announceHTTPTracker(ctx context.Context, trackerURL string, info *MagnetInfo) ([]string, error) {
+	if _, err := ValidateSafeURL(trackerURL, false); err != nil {
+		return nil, fmt.Errorf("insecure tracker URL: %w", err)
+	}
+
 	u, err := url.Parse(trackerURL)
 	if err != nil {
 		return nil, err
@@ -213,8 +219,10 @@ func (tc *TorrentClient) announceHTTPTracker(ctx context.Context, trackerURL str
 }
 
 func (tc *TorrentClient) downloadFromPeer(ctx context.Context, peerAddr string, info *MagnetInfo, destWriter io.Writer, onProgress func(downloaded int64, total int64, speed string)) error {
-	d := net.Dialer{Timeout: 5 * time.Second}
-	conn, err := d.DialContext(ctx, "tcp", peerAddr)
+	if err := ValidatePeerAddress(peerAddr, false); err != nil {
+		return fmt.Errorf("peer address rejected by security policy: %w", err)
+	}
+	conn, err := SafeDialContext(5*time.Second, false)(ctx, "tcp", peerAddr)
 	if err != nil {
 		return err
 	}

@@ -1,7 +1,7 @@
 package crypto
 
-// DummyVK returns a hardcoded 32-byte Vault Key for testing Phase 3
-// before the authentication system is implemented.
+// DummyVK is deprecated and retained for backwards-compatible test stubs.
+// In production, use GetStandardStorageKey() or the session Vault Key.
 func DummyVK() []byte {
-	return []byte("0123456789abcdef0123456789abcdef")
+	return GetStandardStorageKey()
 }

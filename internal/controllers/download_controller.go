@@ -46,7 +46,7 @@ func (dc *DownloadController) isVaultFolder(folderID string) bool {
 
 func (dc *DownloadController) getVaultKey(c *echo.Context) ([]byte, bool) {
 	if isAuth, _ := c.Get("vault_authenticated").(bool); isAuth {
-		if vKey, ok := c.Get("vault_key").([]byte); ok && len(vKey) > 0 && !bytes.Equal(vKey, crypto.DummyVK()) {
+		if vKey, ok := c.Get("vault_key").([]byte); ok && len(vKey) > 0 && !bytes.Equal(vKey, crypto.GetStandardStorageKey()) {
 			return vKey, true
 		}
 	}
@@ -99,10 +99,7 @@ func (dc *DownloadController) StartDownload(c *echo.Context) error {
 		vk = key
 	}
 
-	userID := 1
-	if uid, ok := c.Get("user_id").(int); ok && uid > 0 {
-		userID = uid
-	}
+	userID := int(auth.GetUserID(c))
 
 	task, err := dc.Manager.StartDownloadWithFilename(c.Request().Context(), userID, folderID, normURL, req.Filename, isVault, vk)
 	if err != nil {
@@ -163,10 +160,7 @@ func (dc *DownloadController) StartBatchDownload(c *echo.Context) error {
 		vk = key
 	}
 
-	userID := 1
-	if uid, ok := c.Get("user_id").(int); ok && uid > 0 {
-		userID = uid
-	}
+	userID := int(auth.GetUserID(c))
 
 	tasks, err := dc.Manager.StartBatchDownload(c.Request().Context(), userID, folderID, urlsToProcess, isVault, vk)
 	if err != nil {

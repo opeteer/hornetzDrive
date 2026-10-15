@@ -169,14 +169,14 @@ func (dm *DownloadManager) executeDownload(ctx context.Context, task *DownloadTa
 	// Encryption key handling
 	var vk []byte
 	if isVault {
-		if len(vaultKey) > 0 && !bytesEqual(vaultKey, crypto.DummyVK()) {
+		if len(vaultKey) > 0 && !bytesEqual(vaultKey, crypto.GetStandardStorageKey()) {
 			vk = vaultKey
 		} else {
 			dm.failTask(task, "Vault locked. Master password required to download into vault folder.")
 			return
 		}
 	} else {
-		vk = crypto.DummyVK()
+		vk = crypto.GetStandardStorageKey()
 	}
 
 	encStream, err := crypto.NewEncryptStream(bufWriter, vk)

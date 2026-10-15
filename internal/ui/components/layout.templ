@@ -2012,8 +2012,6 @@ templ Layout(title string) {
 						};
 						if (clientCasHash) {
 							initPayload.cas_hash = clientCasHash;
-							const powRaw = `${clientCasHash}:${file.name}:${file.size}:hornetz_pow`;
-							initPayload.proof = await this.computeSha256Str(powRaw);
 						}
 
 						const initRes = await fetch("/upload/init", {
@@ -2029,7 +2027,90 @@ templ Layout(title string) {
 							const errData = await initRes.json().catch(() => ({}));
 							throw new Error(errData.message || `Gagal inisiasi upload (Status HTTP ${initRes.status})`);
 						}
-						const initData = await initRes.json();
+						let initData = await initRes.json();
+
+						if (initData.status === "challenge_required" && window.crypto && window.crypto.subtle) {
+							try {
+								const keyData = new TextEncoder().encode(initData.challenge_nonce);
+								const key = await window.crypto.subtle.importKey(
+									"raw",
+									keyData,
+									{ name: "HMAC", hash: { name: "SHA-256" } },
+									false,
+									["sign"]
+								);
+								const sampleSize = initData.sample_size || 1024;
+								const chunks = [];
+								let totalLength = 0;
+								for (const offset of (initData.offsets || [])) {
+									const end = Math.min(offset + sampleSize, file.size);
+									const slice = file.slice(offset, end);
+									const buf = await slice.arrayBuffer();
+									chunks.push(new Uint8Array(buf));
+									totalLength += buf.byteLength;
+								}
+								const combined = new Uint8Array(totalLength);
+								let curOff = 0;
+								for (const chunk of chunks) {
+									combined.set(chunk, curOff);
+									curOff += chunk.length;
+								}
+								const sigBuf = await window.crypto.subtle.sign("HMAC", key, combined);
+								const sigArr = Array.from(new Uint8Array(sigBuf));
+								const proofHex = sigArr.map(b => b.toString(16).padStart(2, '0')).join('');
+
+								const powRes = await fetch("/upload/verify-pow", {
+									method: "POST",
+									headers: {
+										"Content-Type": "application/json",
+										"X-CSRF-Token": this.getCsrfToken()
+									},
+									body: JSON.stringify({
+										cas_hash: initData.cas_hash,
+										challenge_nonce: initData.challenge_nonce,
+										proof: proofHex,
+										filename: file.name,
+										mime_type: file.type || "application/octet-stream",
+										size: file.size,
+										folder_id: targetFolderId
+									})
+								});
+								if (powRes.ok) {
+									const powData = await powRes.json();
+									if (powData.status === "completed") {
+										this.stopTransferWatchdog();
+										this.transferSamples = [];
+										await this.fetchFiles();
+										await this.fetchFolders();
+										await this.fetchStorageStats();
+										this.uploadProgress = 100;
+										this.transferBytesLoaded = file.size;
+										this.uploadStatusText = 'Status: Instan (CAS)';
+										this.currentSpeedText = 'Instan (CAS)';
+										await new Promise(r => setTimeout(r, 600));
+										return;
+									}
+								}
+							} catch (powErr) {
+								console.warn("PoW verification failed, falling back to full upload:", powErr);
+							}
+
+							// If PoW didn't complete, fallback to standard upload without deduplication
+							delete initPayload.cas_hash;
+							const fallbackRes = await fetch("/upload/init", {
+								method: "POST",
+								headers: {
+									"Content-Type": "application/json",
+									"X-CSRF-Token": this.getCsrfToken()
+								},
+								body: JSON.stringify(initPayload)
+							});
+							if (!fallbackRes.ok) {
+								const errData = await fallbackRes.json().catch(() => ({}));
+								throw new Error(errData.message || `Gagal inisiasi upload fallback (Status HTTP ${fallbackRes.status})`);
+							}
+							initData = await fallbackRes.json();
+						}
 
 						if (initData.status === "completed") {
 							this.stopTransferWatchdog();
