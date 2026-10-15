@@ -20,8 +20,8 @@ RUN CGO_ENABLED=1 GOOS=linux go build -tags "sqlite_omit_load_extension" -ldflag
 # Stage 2: Minimal Runtime Environment
 FROM alpine:latest
 
-# Install tzdata and ca-certificates for network and time
-RUN apk add --no-cache tzdata ca-certificates
+# Install tzdata, ca-certificates, and poppler-utils (for pdftoppm PDF thumbnail generation)
+RUN apk add --no-cache tzdata ca-certificates poppler-utils
 
 WORKDIR /app
 

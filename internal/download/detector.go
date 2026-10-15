@@ -59,12 +59,15 @@ func CleanFilename(name string, fallback string) string {
 	clean = strings.ReplaceAll(clean, "\r", "")
 	clean = strings.ReplaceAll(clean, "\n", "")
 
-	trimmed := strings.Trim(clean, "._ ")
-	if trimmed == "" {
+	// Check if the filename consists solely of dots, underscores, or spaces
+	if strings.Trim(clean, "._ ") == "" {
 		if fallback != "" {
 			return fallback
 		}
 		return "downloaded_file"
 	}
-	return trimmed
+
+	// Trim trailing whitespace while preserving leading dots (.env, .gitignore)
+	// and leading underscores (__init__.py).
+	return strings.TrimRight(clean, " \t")
 }

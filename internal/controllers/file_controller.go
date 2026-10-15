@@ -1368,16 +1368,21 @@ func (fc *FileController) GetStorageStats(c *echo.Context) error {
 	var activeCount, trashCount int
 	isUnlocked := fc.isVaultUnlocked(c)
 
-	filterActive := "owner_id = ? AND is_deleted = FALSE"
-	filterTrash := "owner_id = ? AND is_deleted = TRUE"
-	if !isUnlocked {
-		filterActive += " AND " + fc.vaultExcludeFilter()
-		filterTrash += " AND " + fc.vaultExcludeFilter()
-	}
-
 	userID := auth.GetUserID(c)
-	_ = fc.DB.SQL.QueryRow(fc.DB.Rebind("SELECT COALESCE(SUM(size), 0), COUNT(*) FROM files WHERE "+filterActive), userID).Scan(&activeBytes, &activeCount)
-	_ = fc.DB.SQL.QueryRow(fc.DB.Rebind("SELECT COALESCE(SUM(size), 0), COUNT(*) FROM files WHERE "+filterTrash), userID).Scan(&trashBytes, &trashCount)
+
+	// Physical disk quota usage and total used bytes MUST always include all files
+	// (both standard and encrypted vault files) regardless of vault unlock status.
+	// This prevents a side-channel information leak where locking/unlocking the vault
+	// visibly shrinks/expands the storage quota meter bar (BUG-UX-23).
+	_ = fc.DB.SQL.QueryRow(fc.DB.Rebind("SELECT COALESCE(SUM(size), 0) FROM files WHERE owner_id = ? AND is_deleted = FALSE"), userID).Scan(&activeBytes)
+	_ = fc.DB.SQL.QueryRow(fc.DB.Rebind("SELECT COALESCE(SUM(size), 0), COUNT(*) FROM files WHERE owner_id = ? AND is_deleted = TRUE"), userID).Scan(&trashBytes, &trashCount)
+
+	// Active file count reflects visible accessible files for the current session state.
+	filterCount := "owner_id = ? AND is_deleted = FALSE"
+	if !isUnlocked {
+		filterCount += " AND " + fc.vaultExcludeFilter()
+	}
+	_ = fc.DB.SQL.QueryRow(fc.DB.Rebind("SELECT COUNT(*) FROM files WHERE "+filterCount), userID).Scan(&activeCount)
 
 	activeUsed := activeBytes.Int64
 	trashedUsed := trashBytes.Int64

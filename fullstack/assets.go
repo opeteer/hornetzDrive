@@ -63,14 +63,35 @@ func (am *AssetManager) Mount(e *echo.Echo) {
 		if am.isDev {
 			// Development: Never cache, always revalidate for instant live reload
 			res.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
-		} else {
-			// Production: Aggressive immutable caching for content-hashed assets (1 year)
+		} else if am.isVersionedOrHashed(req, req.URL.Path) {
+			// Production: Aggressive immutable caching for content-hashed or version-queried assets (1 year)
 			res.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		} else {
+			// Production: Unversioned or non-hashed assets must revalidate, preventing stale asset lockup (BUG-UX-22)
+			res.Header().Set("Cache-Control", "public, max-age=3600, must-revalidate")
 		}
 
 		fileServer.ServeHTTP(res, req)
 		return nil
 	})
+}
+
+// isVersionedOrHashed returns true if the asset request contains a version/hash query parameter
+// or resolves directly to a hashed asset filename from the manifest.
+func (am *AssetManager) isVersionedOrHashed(r *http.Request, strippedPath string) bool {
+	q := r.URL.Query()
+	if q.Get("v") != "" || q.Get("h") != "" {
+		return true
+	}
+	clean := strings.TrimPrefix(strippedPath, "/")
+	cleanBase := filepath.Base(clean)
+	for _, hashed := range am.manifest {
+		cleanHashed := strings.TrimPrefix(hashed, "/")
+		if cleanHashed == clean || filepath.Base(cleanHashed) == cleanBase {
+			return true
+		}
+	}
+	return false
 }
 
 // GetURL resolves the correct URL path for an asset.
@@ -99,8 +120,8 @@ func (am *AssetManager) GetURL(assetPath string) string {
 		return fmt.Sprintf("%s/%s", am.urlPrefix, hashedName)
 	}
 
-	// Fallback to original clean name if manifest fails
-	return fmt.Sprintf("%s/%s", am.urlPrefix, cleanPath)
+	// Fallback to original clean name with startup time cache-buster if manifest fails
+	return fmt.Sprintf("%s/%s?v=%d", am.urlPrefix, cleanPath, am.startupTime)
 }
 
 // AssetURL is a global helper function designed to be called directly from 

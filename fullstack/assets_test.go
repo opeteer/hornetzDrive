@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/labstack/echo/v5"
@@ -96,11 +97,37 @@ func TestAssetManager_ProdMode(t *testing.T) {
 	e := echo.New()
 	am.Mount(e)
 
+	// 1. Hashed asset in manifest should receive immutable 1-year cache headers
 	req := httptest.NewRequest(http.MethodGet, "/assets/css/app.hash123.css", nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
 	if rec.Header().Get("Cache-Control") != "public, max-age=31536000, immutable" {
-		t.Errorf("Expected prod immutable cache headers, got %s", rec.Header().Get("Cache-Control"))
+		t.Errorf("Expected prod immutable cache headers for hashed asset, got %s", rec.Header().Get("Cache-Control"))
+	}
+
+	// 2. Unversioned asset NOT in manifest must receive revalidating cache headers (BUG-UX-22)
+	os.WriteFile(tempDir+"/css/plain.css", []byte("plain"), 0644)
+	reqPlain := httptest.NewRequest(http.MethodGet, "/assets/css/plain.css", nil)
+	recPlain := httptest.NewRecorder()
+	e.ServeHTTP(recPlain, reqPlain)
+
+	if recPlain.Header().Get("Cache-Control") != "public, max-age=3600, must-revalidate" {
+		t.Errorf("Expected must-revalidate cache header for unversioned asset, got %s", recPlain.Header().Get("Cache-Control"))
+	}
+
+	// 3. Asset with ?v= version query parameter should receive immutable caching
+	reqVersioned := httptest.NewRequest(http.MethodGet, "/assets/css/plain.css?v=12345", nil)
+	recVersioned := httptest.NewRecorder()
+	e.ServeHTTP(recVersioned, reqVersioned)
+
+	if recVersioned.Header().Get("Cache-Control") != "public, max-age=31536000, immutable" {
+		t.Errorf("Expected immutable cache headers for version-queried asset, got %s", recVersioned.Header().Get("Cache-Control"))
+	}
+
+	// 4. Fallback GetURL for unmanifested asset should automatically append ?v=
+	unmanifestedURL := am.GetURL("css/plain.css")
+	if unmanifestedURL[:20] != "/assets/css/plain.cs" || !strings.Contains(unmanifestedURL, "?v=") {
+		t.Errorf("Expected GetURL to append ?v= cache-buster for unmanifested asset, got %s", unmanifestedURL)
 	}
 }

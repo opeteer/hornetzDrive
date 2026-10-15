@@ -266,6 +266,19 @@ func TestFileController_GetStorageStats(t *testing.T) {
 	if authStats.FileCount != 4 {
 		t.Fatalf("Expected 4 files when authenticated, got %d", authStats.FileCount)
 	}
+
+	// Verify BUG-UX-23 side-channel leak remediation:
+	// UsedBytes, UsedFormatted, and PercentUsed must remain strictly identical
+	// whether the vault is locked or unlocked.
+	if authStats.UsedBytes != stats.UsedBytes {
+		t.Fatalf("Side-channel leak detected: used_bytes changed from %d (locked) to %d (unlocked)", stats.UsedBytes, authStats.UsedBytes)
+	}
+	if authStats.UsedFormatted != stats.UsedFormatted {
+		t.Fatalf("Side-channel leak detected: used_formatted changed from %q to %q", stats.UsedFormatted, authStats.UsedFormatted)
+	}
+	if authStats.PercentUsed != stats.PercentUsed {
+		t.Fatalf("Side-channel leak detected: percent_used changed from %f to %f", stats.PercentUsed, authStats.PercentUsed)
+	}
 }
 
 func TestFileController_DownloadFile_ContentLengthAndDecryption(t *testing.T) {

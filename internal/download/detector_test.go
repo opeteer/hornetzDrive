@@ -35,12 +35,24 @@ func TestCleanFilename(t *testing.T) {
 		fallback string
 		expected string
 	}{
-		{"normal.txt", "def.bin", "normal.txt"},
+		{"normal.txt", "fallback.txt", "normal.txt"},
 		{"../../../etc/passwd", "fallback.txt", "passwd"},
 		{"file\"with*quotes?.dat", "fallback.txt", "file_with*quotes?.dat"},
 		{"", "fallback.txt", "fallback.txt"},
 		{".", "fallback.txt", "fallback.txt"},
+		{"..", "fallback.txt", "fallback.txt"},
+		{"...", "fallback.txt", "fallback.txt"},
+		{".  ", "fallback.txt", "fallback.txt"},
+		{"___", "fallback.txt", "fallback.txt"},
 		{"/", "fallback.txt", "fallback.txt"},
+		{".env", "fallback.txt", ".env"},
+		{".gitignore", "fallback.txt", ".gitignore"},
+		{".bashrc", "fallback.txt", ".bashrc"},
+		{".dockerignore", "fallback.txt", ".dockerignore"},
+		{"__init__.py", "fallback.txt", "__init__.py"},
+		{"_header.scss", "fallback.txt", "_header.scss"},
+		{"my document.pdf  ", "fallback.txt", "my document.pdf"},
+		{"subdir/.env", "fallback.txt", ".env"},
 	}
 
 	for _, tt := range tests {

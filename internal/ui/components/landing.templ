@@ -2,6 +2,7 @@ package components
 
 import (
 	"github.com/labstack/echo/v5"
+	"ztatic-go-framework/fullstack"
 )
 
 templ LandingPage(c *echo.Context) {
@@ -37,7 +38,7 @@ templ LandingPage(c *echo.Context) {
 		<link rel="preconnect" href="https://fonts.googleapis.com"/>
 		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 		<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet"/>
-		<link rel="stylesheet" href="/assets/css/main.css"/>
+		<link rel="stylesheet" href={ fullstack.AssetURL("css/main.css") }/>
 		
 		<style>
 			[x-cloak] { display: none !important; }
