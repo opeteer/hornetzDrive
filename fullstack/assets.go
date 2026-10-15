@@ -28,6 +28,14 @@ type AssetManager struct {
 // In Development (isDev=true), it serves directly from os.DirFS to support live reloading.
 // In Production (isDev=false), it serves from the provided embedFS and uses the manifest for cache-busting.
 func NewAssetManager(fileSystem fs.FS, isDev bool, urlPrefix string) (*AssetManager, error) {
+	// If the fileSystem contains an "assets" root directory (e.g. from //go:embed assets/*),
+	// automatically sub into it so paths like "css/main.css" resolve seamlessly.
+	if fi, err := fs.Stat(fileSystem, "assets"); err == nil && fi.IsDir() {
+		if sub, err := fs.Sub(fileSystem, "assets"); err == nil {
+			fileSystem = sub
+		}
+	}
+
 	am := &AssetManager{
 		fs:          fileSystem,
 		isDev:       isDev,

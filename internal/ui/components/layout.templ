@@ -10,6 +10,7 @@ templ Layout(title string) {
 		<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 		<title>{ title } - Hornetz Drive</title>
 		<script>
+			var tailwind = window.tailwind || {};
 			tailwind.config = {
 				theme: {
 					extend: {
@@ -19,7 +20,7 @@ templ Layout(title string) {
 						}
 					}
 				}
-			}
+			};
 		</script>
 		<script defer src={ fullstack.AssetURL("js/alpine.min.js") }></script>
 		<script src={ fullstack.AssetURL("js/turbo_downloader.js") }></script>

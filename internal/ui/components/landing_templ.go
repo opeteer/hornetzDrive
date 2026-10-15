@@ -34,14 +34,14 @@ func LandingPage(c *echo.Context) templ.Component {
 			templ_7745c5c3_Var1 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<!doctype html><html lang=\"id\" class=\"scroll-smooth\"><head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"><title>Hornetz Drive - Zero-Trust Encrypted Cloud Storage & HOTW Architecture</title><meta name=\"description\" content=\"Penyimpanan awan terenkripsi berstandar enterprise dengan AES-256-GCM streaming, 0-second deduplikasi CAS, pertahanan anti-forensik Chitin Shuffler, dan protokol Stinger Panic Purge.\"><!-- OpenGraph / Social Meta --><meta property=\"og:title\" content=\"Hornetz Drive - Zero-Trust Encrypted Cloud Storage\"><meta property=\"og:description\" content=\"Penyimpanan awan berkecepatan tinggi dengan enkripsi streaming AES-256-GCM, deduplikasi instan, dan arsitektur HOTW.\"><meta property=\"og:type\" content=\"website\"><!-- Styles & Frameworks --><script>\n\t\t\ttailwind.config = {\n\t\t\t\ttheme: {\n\t\t\t\t\textend: {\n\t\t\t\t\t\tfontFamily: {\n\t\t\t\t\t\t\tsans: ['\"Plus Jakarta Sans\"', 'sans-serif'],\n\t\t\t\t\t\t\tmono: ['\"JetBrains Mono\"', 'monospace'],\n\t\t\t\t\t\t}\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t}\n\t\t</script><script defer src=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<!doctype html><html lang=\"id\" class=\"scroll-smooth\"><head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"><title>Hornetz Drive - Zero-Trust Encrypted Cloud Storage & HOTW Architecture</title><meta name=\"description\" content=\"Penyimpanan awan terenkripsi berstandar enterprise dengan AES-256-GCM streaming, 0-second deduplikasi CAS, pertahanan anti-forensik Chitin Shuffler, dan protokol Stinger Panic Purge.\"><!-- OpenGraph / Social Meta --><meta property=\"og:title\" content=\"Hornetz Drive - Zero-Trust Encrypted Cloud Storage\"><meta property=\"og:description\" content=\"Penyimpanan awan berkecepatan tinggi dengan enkripsi streaming AES-256-GCM, deduplikasi instan, dan arsitektur HOTW.\"><meta property=\"og:type\" content=\"website\"><!-- Styles & Frameworks --><script>\n\t\t\tvar tailwind = window.tailwind || {};\n\t\t\ttailwind.config = {\n\t\t\t\ttheme: {\n\t\t\t\t\textend: {\n\t\t\t\t\t\tfontFamily: {\n\t\t\t\t\t\t\tsans: ['\"Plus Jakarta Sans\"', 'sans-serif'],\n\t\t\t\t\t\t\tmono: ['\"JetBrains Mono\"', 'monospace'],\n\t\t\t\t\t\t}\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t};\n\t\t</script><script defer src=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var2 string
 		templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.ResolveAttributeValue(fullstack.AssetURL("js/alpine.min.js"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/ui/components/landing.templ`, Line: 35, Col: 60}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/ui/components/landing.templ`, Line: 36, Col: 60}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var2)
 		if templ_7745c5c3_Err != nil {
@@ -54,7 +54,7 @@ func LandingPage(c *echo.Context) templ.Component {
 		var templ_7745c5c3_Var3 templ.SafeURL
 		templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinURLErrs(fullstack.AssetURL("css/main.css"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/ui/components/landing.templ`, Line: 39, Col: 66}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/ui/components/landing.templ`, Line: 40, Col: 66}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 		if templ_7745c5c3_Err != nil {
@@ -355,7 +355,7 @@ func LandingPage(c *echo.Context) templ.Component {
 		var templ_7745c5c3_Var4 string
 		templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs("if FileExists(casPath) { return LinkExistingCAS(fileID, hash) } /* 0-second dedup! */")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/ui/components/landing.templ`, Line: 909, Col: 127}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/ui/components/landing.templ`, Line: 910, Col: 127}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 		if templ_7745c5c3_Err != nil {

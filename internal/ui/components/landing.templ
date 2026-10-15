@@ -21,6 +21,7 @@ templ LandingPage(c *echo.Context) {
 		
 		<!-- Styles & Frameworks -->
 		<script>
+			var tailwind = window.tailwind || {};
 			tailwind.config = {
 				theme: {
 					extend: {
@@ -30,7 +31,7 @@ templ LandingPage(c *echo.Context) {
 						}
 					}
 				}
-			}
+			};
 		</script>
 		<script defer src={ fullstack.AssetURL("js/alpine.min.js") }></script>
 		<link rel="preconnect" href="https://fonts.googleapis.com"/>

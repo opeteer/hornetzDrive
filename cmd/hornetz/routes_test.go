@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -8,12 +9,21 @@ import (
 
 	"github.com/labstack/echo/v5"
 	"ztatic-go-framework"
+	"ztatic-go-framework/fullstack"
 	"ztatic-go-framework/internal/ui/components"
 	"ztatic-go-framework/security/web"
 )
 
 func setupTestApp() *echo.Echo {
 	e := echo.New()
+
+	subFS, err := fs.Sub(ztatic.AssetsFS, "assets")
+	if err == nil {
+		if assetMgr, err := fullstack.NewAssetManager(subFS, false, "/assets"); err == nil {
+			assetMgr.Mount(e)
+		}
+	}
+
 	e.GET("/", func(c *echo.Context) error {
 		return components.LandingPage(c).Render(c.Request().Context(), c.Response())
 	})
@@ -187,6 +197,74 @@ func TestRoutes_SecurityHeaders_CSP(t *testing.T) {
 	}
 	if !strings.Contains(csp, "frame-src 'self'") {
 		t.Errorf("Expected CSP to contain \"frame-src 'self'\", got %q", csp)
+	}
+}
+
+func TestStaticAssets_DeliveryAndIntegrity(t *testing.T) {
+	app := setupTestApp()
+
+	// 1. Verify CSS delivery
+	cssURL := fullstack.AssetURL("css/main.css")
+	if !strings.HasPrefix(cssURL, "/assets/css/main.css") {
+		t.Errorf("Expected AssetURL('css/main.css') to start with /assets/css/main.css, got %q", cssURL)
+	}
+
+	reqCSS := httptest.NewRequest(http.MethodGet, cssURL, nil)
+	recCSS := httptest.NewRecorder()
+	app.ServeHTTP(recCSS, reqCSS)
+
+	if recCSS.Code != http.StatusOK {
+		t.Fatalf("Expected HTTP 200 for main.css, got %d. Body: %s", recCSS.Code, recCSS.Body.String())
+	}
+	if ct := recCSS.Header().Get("Content-Type"); !strings.Contains(ct, "text/css") {
+		t.Errorf("Expected Content-Type text/css for main.css, got %q", ct)
+	}
+	cssBody := recCSS.Body.String()
+	if !strings.Contains(cssBody, ".hidden") {
+		t.Errorf("Expected main.css to define .hidden class, but it was missing")
+	}
+
+	// 2. Verify Alpine.js delivery
+	alpineURL := fullstack.AssetURL("js/alpine.min.js")
+	reqAlpine := httptest.NewRequest(http.MethodGet, alpineURL, nil)
+	recAlpine := httptest.NewRecorder()
+	app.ServeHTTP(recAlpine, reqAlpine)
+
+	if recAlpine.Code != http.StatusOK {
+		t.Fatalf("Expected HTTP 200 for alpine.min.js, got %d. Body: %s", recAlpine.Code, recAlpine.Body.String())
+	}
+	if len(recAlpine.Body.Bytes()) < 1000 {
+		t.Errorf("Expected valid alpine.min.js content, got length %d", len(recAlpine.Body.Bytes()))
+	}
+
+	// 3. Verify other vendored JS delivery
+	for _, jsAsset := range []string{"js/turbo_downloader.js", "js/reconcile_tree.js"} {
+		url := fullstack.AssetURL(jsAsset)
+		req := httptest.NewRequest(http.MethodGet, url, nil)
+		rec := httptest.NewRecorder()
+		app.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Errorf("Expected HTTP 200 for %s, got %d", jsAsset, rec.Code)
+		}
+	}
+}
+
+func TestStaticAssets_DefensiveAutoSub(t *testing.T) {
+	e := echo.New()
+	// Pass raw ztatic.AssetsFS without fs.Sub; NewAssetManager should auto-sub into "assets"
+	assetMgr, err := fullstack.NewAssetManager(ztatic.AssetsFS, false, "/assets")
+	if err != nil {
+		t.Fatalf("NewAssetManager failed: %v", err)
+	}
+	assetMgr.Mount(e)
+
+	cssURL := fullstack.AssetURL("css/main.css")
+	req := httptest.NewRequest(http.MethodGet, cssURL, nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Defensive auto-sub failed: expected 200 for main.css, got %d", rec.Code)
 	}
 }
 

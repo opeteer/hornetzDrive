@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"strings"
 	"time"
@@ -115,7 +116,12 @@ func main() {
 	app.GET("/sse", realtime.AuthorizedSSEHandler(broker, sseAuthorizer), auth.RequireAuth(dbEngine))
 
 	// Mount Static Assets from embedded FS
-	assetMgr, err := fullstack.NewAssetManager(ztatic.AssetsFS, false, "/assets")
+	assetsSubFS, err := fs.Sub(ztatic.AssetsFS, "assets")
+	if err != nil {
+		log.Error("Failed to sub embedded assets filesystem", "error", err)
+		return
+	}
+	assetMgr, err := fullstack.NewAssetManager(assetsSubFS, false, "/assets")
 	if err != nil {
 		log.Error("Failed to init asset manager", "error", err)
 		return
