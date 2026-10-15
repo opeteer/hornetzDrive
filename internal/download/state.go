@@ -148,27 +148,27 @@ func NewDownloadState(taskID, url, resolvedURL, etag, lastModified string, total
 func (s *DownloadState) Bitset() *Bitset {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	if s.bitset == nil {
-		s.bitset = NewBitsetFromBytes(s.BitsetBytes, s.TotalBlocks)
-	}
 	return s.bitset
 }
 
 // MarkBlockCompleted marks a block complete and refreshes BitsetBytes.
 func (s *DownloadState) MarkBlockCompleted(blockIndex int) {
-	b := s.Bitset()
-	b.Set(blockIndex)
-
 	s.mu.Lock()
-	s.BitsetBytes = b.Bytes()
+	defer s.mu.Unlock()
+	if s.bitset == nil {
+		s.bitset = NewBitsetFromBytes(s.BitsetBytes, s.TotalBlocks)
+	}
+	s.bitset.Set(blockIndex)
+	s.BitsetBytes = s.bitset.Bytes()
 	s.UpdatedAt = time.Now()
-	s.mu.Unlock()
 }
 
 // Save persists the state to disk atomically using a temporary file.
 func (s *DownloadState) Save(filePath string) error {
 	s.mu.Lock()
-	s.BitsetBytes = s.Bitset().Bytes()
+	if s.bitset != nil {
+		s.BitsetBytes = s.bitset.Bytes()
+	}
 	s.UpdatedAt = time.Now()
 	data, err := json.MarshalIndent(s, "", "  ")
 	s.mu.Unlock()
