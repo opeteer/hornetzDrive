@@ -84,6 +84,17 @@ templ DashboardContent() {
 					<span>Kunci Vault</span>
 				</button>
 				
+				<!-- Download Current Folder Button -->
+				<button 
+					x-show="$store.drive.currentFolderId && ($store.drive.activeTab === 'storage' || ($store.drive.activeTab === 'vault' && $store.drive.isVaultUnlocked))" 
+					@click="$store.drive.downloadCurrentFolder()" 
+					class="text-xs bg-[#F5BA13]/10 hover:bg-[#F5BA13]/20 text-[#F5BA13] border border-[#F5BA13]/30 px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5 transition-all backdrop-blur-md cursor-pointer"
+					title="Unduh folder saat ini sebagai arsip ZIP"
+				>
+					@IconDownload("w-3.5 h-3.5")
+					<span>Unduh Folder (ZIP)</span>
+				</button>
+				
 				<!-- Sort Controls -->
 				<div class="relative z-30" x-data="{ sortOpen: false }">
 					<button @click="sortOpen = !sortOpen" class="text-xs bg-white/[0.04] border border-white/[0.08] hover:border-white/[0.15] text-[#94A3B8] hover:text-white px-3 py-1.5 rounded-xl flex items-center gap-1.5 font-sans font-medium backdrop-blur-md transition-all cursor-pointer">
@@ -204,6 +215,13 @@ templ DashboardContent() {
 											style="display: none;"
 											class="absolute right-0 top-full mt-1 w-36 bg-[#141824]/95 backdrop-blur-xl border border-white/[0.1] rounded-xl shadow-xl p-1 z-30 font-sans text-xs space-y-0.5"
 										>
+											<button 
+												@click.stop="$store.drive.downloadFolder(folder); menuOpen = false" 
+												class="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-white/[0.08] text-white hover:text-[#F5BA13] flex items-center gap-2 transition-colors cursor-pointer"
+											>
+												@IconDownload("w-3.5 h-3.5")
+												<span>Unduh ZIP</span>
+											</button>
 											<button 
 												@click.stop="$store.drive.renameFolder(folder); menuOpen = false" 
 												class="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-white/[0.08] text-white hover:text-[#F5BA13] flex items-center gap-2 transition-colors cursor-pointer"

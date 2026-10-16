@@ -3593,6 +3593,51 @@ templ Layout(title string) {
 					}
 				},
 
+				downloadFolder(folder) {
+					if (!folder) return;
+
+					// Native browser streaming ZIP download for entire directory trees
+					this.isTransferring = true;
+					this.transferDirection = 'download';
+					this.currentSpeedText = 'Streaming ZIP folder...';
+
+					const downloadUrl = `/api/folders/${folder.id}/download`;
+					const a = document.createElement('a');
+					a.href = downloadUrl;
+					a.download = (folder.name || 'folder') + '.zip';
+					document.body.appendChild(a);
+					a.click();
+					a.remove();
+
+					setTimeout(() => {
+						this.isTransferring = false;
+						this.transferDirection = 'idle';
+						this.currentSpeedText = 'Idle';
+					}, 2500);
+				},
+
+				downloadCurrentFolder() {
+					if (!this.currentFolderId) return;
+					const currentFolder = this.folderHistory.length > 0 
+						? this.folderHistory[this.folderHistory.length - 1] 
+						: { id: this.currentFolderId, name: this.currentFolderName || 'folder' };
+					this.downloadFolder(currentFolder);
+				},
+
+				copyFolderDownloadLink(folder) {
+					if (!folder) return;
+					const url = window.location.origin + `/api/folders/${folder.id}/download`;
+					if (navigator.clipboard && navigator.clipboard.writeText) {
+						navigator.clipboard.writeText(url).then(() => {
+							alert("Tautan unduhan ZIP folder berhasil disalin ke papan klip:\n\n" + url);
+						}).catch(() => {
+							prompt("Salin tautan unduhan ZIP folder:", url);
+						});
+					} else {
+						prompt("Salin tautan unduhan ZIP folder:", url);
+					}
+				},
+
 				triggerPanicPurge() {
 					this.purgePassword = '';
 					this.showPurgeConfirmModal = true;

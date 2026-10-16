@@ -168,6 +168,8 @@ func main() {
 	apiGroup.POST("/folders", fileCtrl.CreateFolder)
 	apiGroup.DELETE("/folders/:id", fileCtrl.DeleteFolder)
 	apiGroup.PATCH("/folders/:id", fileCtrl.RenameFolder)
+	apiGroup.GET("/folders/:id/download", fileCtrl.DownloadFolder)
+	apiGroup.HEAD("/folders/:id/download", fileCtrl.DownloadFolder)
 	apiGroup.GET("/storage/stats", fileCtrl.GetStorageStats)
 	apiGroup.GET("/files/:id/download", fileCtrl.DownloadFile)
 	apiGroup.HEAD("/files/:id/download", fileCtrl.DownloadFile)

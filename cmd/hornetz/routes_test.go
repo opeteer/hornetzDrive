@@ -153,6 +153,18 @@ func TestRoutes_DashboardApp(t *testing.T) {
 	if !strings.Contains(body, "Unduh dari Tautan") {
 		t.Errorf("Expected 'Unduh dari Tautan' button in /app dashboard")
 	}
+	if !strings.Contains(body, "downloadFolder") {
+		t.Errorf("Expected 'downloadFolder' method in /app dashboard store")
+	}
+	if !strings.Contains(body, "downloadCurrentFolder") {
+		t.Errorf("Expected 'downloadCurrentFolder' method in /app dashboard store")
+	}
+	if !strings.Contains(body, "Unduh Folder (ZIP)") {
+		t.Errorf("Expected 'Unduh Folder (ZIP)' button in /app dashboard")
+	}
+	if !strings.Contains(body, "Unduh ZIP") {
+		t.Errorf("Expected 'Unduh ZIP' action in folder dropdown menu")
+	}
 }
 
 func TestRoutes_GzipCompression(t *testing.T) {

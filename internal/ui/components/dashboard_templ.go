@@ -120,7 +120,15 @@ func DashboardContent() templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "<span>Kunci Vault</span></button><!-- Sort Controls --><div class=\"relative z-30\" x-data=\"{ sortOpen: false }\"><button @click=\"sortOpen = !sortOpen\" class=\"text-xs bg-white/[0.04] border border-white/[0.08] hover:border-white/[0.15] text-[#94A3B8] hover:text-white px-3 py-1.5 rounded-xl flex items-center gap-1.5 font-sans font-medium backdrop-blur-md transition-all cursor-pointer\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "<span>Kunci Vault</span></button><!-- Download Current Folder Button --><button x-show=\"$store.drive.currentFolderId && ($store.drive.activeTab === 'storage' || ($store.drive.activeTab === 'vault' && $store.drive.isVaultUnlocked))\" @click=\"$store.drive.downloadCurrentFolder()\" class=\"text-xs bg-[#F5BA13]/10 hover:bg-[#F5BA13]/20 text-[#F5BA13] border border-[#F5BA13]/30 px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5 transition-all backdrop-blur-md cursor-pointer\" title=\"Unduh folder saat ini sebagai arsip ZIP\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = IconDownload("w-3.5 h-3.5").Render(ctx, templ_7745c5c3_Buffer)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "<span>Unduh Folder (ZIP)</span></button><!-- Sort Controls --><div class=\"relative z-30\" x-data=\"{ sortOpen: false }\"><button @click=\"sortOpen = !sortOpen\" class=\"text-xs bg-white/[0.04] border border-white/[0.08] hover:border-white/[0.15] text-[#94A3B8] hover:text-white px-3 py-1.5 rounded-xl flex items-center gap-1.5 font-sans font-medium backdrop-blur-md transition-all cursor-pointer\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -128,7 +136,7 @@ func DashboardContent() templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "<span>Urutkan</span></button><div x-show=\"sortOpen\" @click.away=\"sortOpen = false\" x-cloak style=\"display: none;\" class=\"absolute right-0 mt-2 w-48 bg-[#141824]/95 backdrop-blur-2xl border border-white/[0.1] rounded-2xl shadow-2xl py-1.5 z-50 font-sans text-xs divide-y divide-white/[0.06]\"><div class=\"py-1\"><button @click=\"$store.drive.setSort('name', 'asc'); sortOpen = false\" class=\"w-full text-left px-3.5 py-1.5 hover:bg-white/[0.08] text-[#94A3B8] hover:text-white transition-colors cursor-pointer\">Nama (A-Z)</button> <button @click=\"$store.drive.setSort('name', 'desc'); sortOpen = false\" class=\"w-full text-left px-3.5 py-1.5 hover:bg-white/[0.08] text-[#94A3B8] hover:text-white transition-colors cursor-pointer\">Nama (Z-A)</button></div><div class=\"py-1\"><button @click=\"$store.drive.setSort('size', 'desc'); sortOpen = false\" class=\"w-full text-left px-3.5 py-1.5 hover:bg-white/[0.08] text-[#94A3B8] hover:text-white transition-colors cursor-pointer\">Ukuran (Terbesar)</button> <button @click=\"$store.drive.setSort('size', 'asc'); sortOpen = false\" class=\"w-full text-left px-3.5 py-1.5 hover:bg-white/[0.08] text-[#94A3B8] hover:text-white transition-colors cursor-pointer\">Ukuran (Terkecil)</button></div><div class=\"py-1\"><button @click=\"$store.drive.setSort('created_at', 'desc'); sortOpen = false\" class=\"w-full text-left px-3.5 py-1.5 hover:bg-white/[0.08] text-[#94A3B8] hover:text-white transition-colors cursor-pointer\">Waktu (Terbaru)</button> <button @click=\"$store.drive.setSort('created_at', 'asc'); sortOpen = false\" class=\"w-full text-left px-3.5 py-1.5 hover:bg-white/[0.08] text-[#94A3B8] hover:text-white transition-colors cursor-pointer\">Waktu (Terlama)</button></div></div></div><!-- View Mode Segmented Switcher (Icon Only) --><div class=\"flex items-center bg-white/[0.04] border border-white/[0.08] p-1 rounded-xl backdrop-blur-md\"><button @click=\"$store.drive.setViewMode('grid')\" :class=\"$store.drive.viewMode === 'grid' ? 'bg-[#F5BA13] text-[#0A0D14] font-bold shadow-md' : 'text-[#94A3B8] hover:text-white'\" class=\"p-1.5 rounded-lg transition-all flex items-center justify-center cursor-pointer\" title=\"Tampilan Grid\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "<span>Urutkan</span></button><div x-show=\"sortOpen\" @click.away=\"sortOpen = false\" x-cloak style=\"display: none;\" class=\"absolute right-0 mt-2 w-48 bg-[#141824]/95 backdrop-blur-2xl border border-white/[0.1] rounded-2xl shadow-2xl py-1.5 z-50 font-sans text-xs divide-y divide-white/[0.06]\"><div class=\"py-1\"><button @click=\"$store.drive.setSort('name', 'asc'); sortOpen = false\" class=\"w-full text-left px-3.5 py-1.5 hover:bg-white/[0.08] text-[#94A3B8] hover:text-white transition-colors cursor-pointer\">Nama (A-Z)</button> <button @click=\"$store.drive.setSort('name', 'desc'); sortOpen = false\" class=\"w-full text-left px-3.5 py-1.5 hover:bg-white/[0.08] text-[#94A3B8] hover:text-white transition-colors cursor-pointer\">Nama (Z-A)</button></div><div class=\"py-1\"><button @click=\"$store.drive.setSort('size', 'desc'); sortOpen = false\" class=\"w-full text-left px-3.5 py-1.5 hover:bg-white/[0.08] text-[#94A3B8] hover:text-white transition-colors cursor-pointer\">Ukuran (Terbesar)</button> <button @click=\"$store.drive.setSort('size', 'asc'); sortOpen = false\" class=\"w-full text-left px-3.5 py-1.5 hover:bg-white/[0.08] text-[#94A3B8] hover:text-white transition-colors cursor-pointer\">Ukuran (Terkecil)</button></div><div class=\"py-1\"><button @click=\"$store.drive.setSort('created_at', 'desc'); sortOpen = false\" class=\"w-full text-left px-3.5 py-1.5 hover:bg-white/[0.08] text-[#94A3B8] hover:text-white transition-colors cursor-pointer\">Waktu (Terbaru)</button> <button @click=\"$store.drive.setSort('created_at', 'asc'); sortOpen = false\" class=\"w-full text-left px-3.5 py-1.5 hover:bg-white/[0.08] text-[#94A3B8] hover:text-white transition-colors cursor-pointer\">Waktu (Terlama)</button></div></div></div><!-- View Mode Segmented Switcher (Icon Only) --><div class=\"flex items-center bg-white/[0.04] border border-white/[0.08] p-1 rounded-xl backdrop-blur-md\"><button @click=\"$store.drive.setViewMode('grid')\" :class=\"$store.drive.viewMode === 'grid' ? 'bg-[#F5BA13] text-[#0A0D14] font-bold shadow-md' : 'text-[#94A3B8] hover:text-white'\" class=\"p-1.5 rounded-lg transition-all flex items-center justify-center cursor-pointer\" title=\"Tampilan Grid\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -136,7 +144,7 @@ func DashboardContent() templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "</button> <button @click=\"$store.drive.setViewMode('list')\" :class=\"$store.drive.viewMode === 'list' ? 'bg-[#F5BA13] text-[#0A0D14] font-bold shadow-md' : 'text-[#94A3B8] hover:text-white'\" class=\"p-1.5 rounded-lg transition-all flex items-center justify-center cursor-pointer\" title=\"Tampilan Daftar\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "</button> <button @click=\"$store.drive.setViewMode('list')\" :class=\"$store.drive.viewMode === 'list' ? 'bg-[#F5BA13] text-[#0A0D14] font-bold shadow-md' : 'text-[#94A3B8] hover:text-white'\" class=\"p-1.5 rounded-lg transition-all flex items-center justify-center cursor-pointer\" title=\"Tampilan Daftar\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -144,7 +152,7 @@ func DashboardContent() templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "</button></div></div></div><!-- WORKSPACE CONTENT AREA --><div class=\"flex-1 overflow-y-auto p-4 sm:p-6 space-y-7 relative z-10\"><!-- SECTION 1: FOLDERS / CELLS --><div x-show=\"($store.drive.activeTab === 'storage' || $store.drive.activeTab === 'vault') && ($store.drive.folders.length > 0 || !$store.drive.currentFolderId)\" class=\"space-y-3.5\"><div class=\"flex justify-between items-center\"><h3 class=\"text-sm font-bold text-white flex items-center gap-2\"><template x-if=\"$store.drive.activeTab === 'vault'\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "</button></div></div></div><!-- WORKSPACE CONTENT AREA --><div class=\"flex-1 overflow-y-auto p-4 sm:p-6 space-y-7 relative z-10\"><!-- SECTION 1: FOLDERS / CELLS --><div x-show=\"($store.drive.activeTab === 'storage' || $store.drive.activeTab === 'vault') && ($store.drive.folders.length > 0 || !$store.drive.currentFolderId)\" class=\"space-y-3.5\"><div class=\"flex justify-between items-center\"><h3 class=\"text-sm font-bold text-white flex items-center gap-2\"><template x-if=\"$store.drive.activeTab === 'vault'\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -152,7 +160,7 @@ func DashboardContent() templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "</template><template x-if=\"$store.drive.activeTab !== 'vault'\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "</template><template x-if=\"$store.drive.activeTab !== 'vault'\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -160,7 +168,7 @@ func DashboardContent() templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "</template><span x-text=\"$store.drive.currentFolderId ? 'Subfolder' : ($store.drive.activeTab === 'vault' ? 'Vault Cells Terenkripsi' : 'Folder')\"></span></h3><div class=\"flex items-center gap-2\"><button @click=\"$store.drive.openAddDownloadModal()\" class=\"text-xs bg-[#F5BA13]/10 hover:bg-[#F5BA13]/20 text-[#F5BA13] border border-[#F5BA13]/30 px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5 transition-all backdrop-blur-md shadow-sm cursor-pointer\" title=\"Unduh berkas dari tautan web atau magnet\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "</template><span x-text=\"$store.drive.currentFolderId ? 'Subfolder' : ($store.drive.activeTab === 'vault' ? 'Vault Cells Terenkripsi' : 'Folder')\"></span></h3><div class=\"flex items-center gap-2\"><button @click=\"$store.drive.openAddDownloadModal()\" class=\"text-xs bg-[#F5BA13]/10 hover:bg-[#F5BA13]/20 text-[#F5BA13] border border-[#F5BA13]/30 px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5 transition-all backdrop-blur-md shadow-sm cursor-pointer\" title=\"Unduh berkas dari tautan web atau magnet\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -168,7 +176,7 @@ func DashboardContent() templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "<span>Unduh dari Tautan</span></button> <button @click=\"$store.drive.showCreateFolderModal = true\" class=\"text-xs bg-white/[0.04] hover:bg-white/[0.08] text-white hover:text-[#F5BA13] border border-white/[0.08] px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5 transition-all backdrop-blur-md shadow-sm cursor-pointer\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "<span>Unduh dari Tautan</span></button> <button @click=\"$store.drive.showCreateFolderModal = true\" class=\"text-xs bg-white/[0.04] hover:bg-white/[0.08] text-white hover:text-[#F5BA13] border border-white/[0.08] px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5 transition-all backdrop-blur-md shadow-sm cursor-pointer\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -176,7 +184,7 @@ func DashboardContent() templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "<span>Buat Folder</span></button></div></div><div class=\"grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3.5\"><template x-for=\"folder in $store.drive.folders\" :key=\"folder.id\"><div @click=\"$store.drive.openFolder(folder)\" @dragover.prevent.stop=\"$store.drive.handleFolderDragOver($event, folder)\" @dragleave.prevent.stop=\"$store.drive.handleFolderDragLeave($event, folder)\" @drop.prevent.stop=\"$store.drive.handleFolderDrop($event, folder)\" :class=\"[\n\t\t\t\t\t\t\t\t$store.drive.dragTargetFolderId === folder.id \n\t\t\t\t\t\t\t\t\t? 'border-[#F5BA13] ring-2 ring-[#F5BA13]/60 scale-[1.02] bg-[#1E2638] shadow-2xl' \n\t\t\t\t\t\t\t\t\t: 'border-white/[0.07] hover:border-[#F5BA13]/40 bg-[#141824]/60 hover:bg-[#1A2030]/80'\n\t\t\t\t\t\t\t]\" class=\"p-4 rounded-2xl cursor-pointer group transition-all shadow-sm hover:shadow-xl hover:-translate-y-0.5 relative backdrop-blur-md\"><div class=\"flex justify-between items-start mb-3\"><div class=\"w-10 h-10 rounded-xl bg-gradient-to-br from-[#1E2638] to-[#141824] border border-white/[0.08] text-[#F5BA13] flex items-center justify-center group-hover:bg-gradient-to-br group-hover:from-[#F5BA13] group-hover:to-[#D97706] group-hover:text-[#0A0D14] transition-all shadow-sm\"><template x-if=\"$store.drive.activeTab === 'vault'\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "<span>Buat Folder</span></button></div></div><div class=\"grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3.5\"><template x-for=\"folder in $store.drive.folders\" :key=\"folder.id\"><div @click=\"$store.drive.openFolder(folder)\" @dragover.prevent.stop=\"$store.drive.handleFolderDragOver($event, folder)\" @dragleave.prevent.stop=\"$store.drive.handleFolderDragLeave($event, folder)\" @drop.prevent.stop=\"$store.drive.handleFolderDrop($event, folder)\" :class=\"[\n\t\t\t\t\t\t\t\t$store.drive.dragTargetFolderId === folder.id \n\t\t\t\t\t\t\t\t\t? 'border-[#F5BA13] ring-2 ring-[#F5BA13]/60 scale-[1.02] bg-[#1E2638] shadow-2xl' \n\t\t\t\t\t\t\t\t\t: 'border-white/[0.07] hover:border-[#F5BA13]/40 bg-[#141824]/60 hover:bg-[#1A2030]/80'\n\t\t\t\t\t\t\t]\" class=\"p-4 rounded-2xl cursor-pointer group transition-all shadow-sm hover:shadow-xl hover:-translate-y-0.5 relative backdrop-blur-md\"><div class=\"flex justify-between items-start mb-3\"><div class=\"w-10 h-10 rounded-xl bg-gradient-to-br from-[#1E2638] to-[#141824] border border-white/[0.08] text-[#F5BA13] flex items-center justify-center group-hover:bg-gradient-to-br group-hover:from-[#F5BA13] group-hover:to-[#D97706] group-hover:text-[#0A0D14] transition-all shadow-sm\"><template x-if=\"$store.drive.activeTab === 'vault'\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -184,7 +192,7 @@ func DashboardContent() templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "</template><template x-if=\"$store.drive.activeTab !== 'vault'\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "</template><template x-if=\"$store.drive.activeTab !== 'vault'\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -192,7 +200,7 @@ func DashboardContent() templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "</template></div><div class=\"flex items-center gap-1\"><template x-if=\"$store.drive.activeTab === 'vault'\"><span class=\"text-[9px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20 font-bold\">TERENKRIPSI</span></template><!-- Context 3-dot dropdown menu for folder --><div class=\"relative\" x-data=\"{ menuOpen: false }\" @click.stop><button @click.stop=\"menuOpen = !menuOpen\" title=\"Opsi Folder\" class=\"p-1.5 text-[#94A3B8] hover:text-white hover:bg-white/10 rounded-lg transition-colors cursor-pointer\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "</template></div><div class=\"flex items-center gap-1\"><template x-if=\"$store.drive.activeTab === 'vault'\"><span class=\"text-[9px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20 font-bold\">TERENKRIPSI</span></template><!-- Context 3-dot dropdown menu for folder --><div class=\"relative\" x-data=\"{ menuOpen: false }\" @click.stop><button @click.stop=\"menuOpen = !menuOpen\" title=\"Opsi Folder\" class=\"p-1.5 text-[#94A3B8] hover:text-white hover:bg-white/10 rounded-lg transition-colors cursor-pointer\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -200,127 +208,7 @@ func DashboardContent() templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "</button><div x-show=\"menuOpen\" @click.away=\"menuOpen = false\" x-cloak style=\"display: none;\" class=\"absolute right-0 top-full mt-1 w-36 bg-[#141824]/95 backdrop-blur-xl border border-white/[0.1] rounded-xl shadow-xl p-1 z-30 font-sans text-xs space-y-0.5\"><button @click.stop=\"$store.drive.renameFolder(folder); menuOpen = false\" class=\"w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-white/[0.08] text-white hover:text-[#F5BA13] flex items-center gap-2 transition-colors cursor-pointer\">")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = IconEdit("w-3.5 h-3.5").Render(ctx, templ_7745c5c3_Buffer)
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "<span>Ubah Nama</span></button> <button @click.stop=\"$store.drive.deleteFolder(folder); menuOpen = false\" class=\"w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-red-500/15 text-red-400 flex items-center gap-2 transition-colors cursor-pointer\">")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = IconTrash("w-3.5 h-3.5").Render(ctx, templ_7745c5c3_Buffer)
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "<span>Hapus</span></button></div></div></div></div><div class=\"font-bold text-sm text-white group-hover:text-[#F5BA13] transition-colors truncate\" x-text=\"folder.name\"></div><div class=\"text-[11px] text-[#94A3B8] mt-1 font-sans\" x-text=\"$store.drive.activeTab === 'vault' ? `${folder.file_count || 0} Berkas • AES-256-GCM` : `${folder.file_count || 0} Berkas`\"></div></div></template></div></div><!-- SECTION 2: FILES LIST / GRID --><div class=\"space-y-3.5\"><div class=\"flex justify-between items-center\"><h3 class=\"text-sm font-bold text-white flex items-center gap-2\"><template x-if=\"$store.drive.activeTab === 'vault'\">")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = IconShield("w-4 h-4 text-emerald-400").Render(ctx, templ_7745c5c3_Buffer)
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "</template><template x-if=\"$store.drive.activeTab === 'trash'\">")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = IconTrash("w-4 h-4 text-red-400").Render(ctx, templ_7745c5c3_Buffer)
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "</template><template x-if=\"$store.drive.activeTab === 'starred'\">")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = IconStar("w-4 h-4 text-[#F5BA13]", true).Render(ctx, templ_7745c5c3_Buffer)
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "</template><template x-if=\"$store.drive.activeTab === 'recent'\">")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = IconClock("w-4 h-4 text-blue-400").Render(ctx, templ_7745c5c3_Buffer)
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "</template><template x-if=\"$store.drive.activeTab === 'storage'\">")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = IconHardDrive("w-4 h-4 text-[#F5BA13]").Render(ctx, templ_7745c5c3_Buffer)
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "</template><span x-text=\"$store.drive.searchQuery ? `Hasil Pencarian (${$store.drive.files.length})` : ($store.drive.activeTab === 'vault' ? 'Berkas Terenkripsi Vault' : ($store.drive.activeTab === 'trash' ? 'Berkas di Tempat Sampah' : ($store.drive.activeTab === 'starred' ? 'Berkas Berbintang' : ($store.drive.activeTab === 'recent' ? 'Berkas Terbaru' : 'Berkas Tersinkron'))))\"></span></h3><span class=\"text-xs text-[#94A3B8] font-sans\" x-text=\"`Menampilkan ${$store.drive.files.length} berkas`\"></span></div><!-- LOADING SKELETON PLACEHOLDER --><div x-show=\"$store.drive.isLoadingFiles && $store.drive.files.length === 0\" x-cloak class=\"space-y-4 animate-pulse\"><div class=\"grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3.5\"><template x-for=\"i in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]\" :key=\"i\"><div class=\"bg-[#141824]/40 border border-white/[0.05] p-3 rounded-2xl h-52 flex flex-col justify-between\"><div class=\"h-28 bg-white/[0.04] rounded-xl\"></div><div class=\"space-y-2 mt-2\"><div class=\"h-3 bg-white/[0.07] rounded-md w-3/4\"></div><div class=\"h-2.5 bg-white/[0.04] rounded-md w-1/2\"></div></div></div></template></div></div><!-- EMPTY STATE / HERO DROPZONE --><div x-show=\"!$store.drive.isLoadingFiles && $store.drive.files.length === 0\" class=\"text-center py-14 px-6 border-2 border-dashed border-white/[0.1] hover:border-[#F5BA13]/40 rounded-3xl bg-gradient-to-b from-[#141824]/40 to-[#0B0E14]/60 backdrop-blur-md flex flex-col items-center justify-center transition-all\"><template x-if=\"$store.drive.searchQuery && $store.drive.searchQuery.trim().length > 0\"><div class=\"flex flex-col items-center space-y-3 max-w-sm\"><div class=\"w-14 h-14 rounded-2xl bg-white/[0.04] text-[#94A3B8] flex items-center justify-center border border-white/[0.08] shadow-inner\">")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = IconSearch("w-6 h-6").Render(ctx, templ_7745c5c3_Buffer)
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "</div><div class=\"space-y-1\"><h4 class=\"text-white font-bold text-sm\">Tidak Ditemukan</h4><p class=\"text-xs text-[#94A3B8]\">Tidak ada berkas yang cocok dengan <span class=\"text-[#F5BA13] font-bold\" x-text=\"'“' + $store.drive.searchQuery + '”'\"></span></p></div><button type=\"button\" @click=\"$store.drive.clearSearch()\" class=\"text-xs text-[#F5BA13] hover:underline font-medium mt-1 cursor-pointer\">Bersihkan Pencarian</button></div></template><template x-if=\"!$store.drive.searchQuery && $store.drive.activeTab === 'trash'\"><div class=\"flex flex-col items-center space-y-3 max-w-sm\"><div class=\"w-14 h-14 rounded-2xl bg-red-500/10 text-red-400 flex items-center justify-center border border-red-500/20 shadow-inner\">")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = IconTrash("w-7 h-7").Render(ctx, templ_7745c5c3_Buffer)
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "</div><div class=\"space-y-1\"><h4 class=\"text-white font-bold text-sm\">Tempat Sampah Kosong</h4><p class=\"text-xs text-[#94A3B8]\">Tidak ada berkas yang dihapus saat ini.</p></div></div></template><template x-if=\"!$store.drive.searchQuery && $store.drive.activeTab === 'starred'\"><div class=\"flex flex-col items-center space-y-3 max-w-sm\"><div class=\"w-14 h-14 rounded-2xl bg-[#F5BA13]/10 text-[#F5BA13] flex items-center justify-center border border-[#F5BA13]/25 shadow-inner\">")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = IconStar("w-7 h-7", false).Render(ctx, templ_7745c5c3_Buffer)
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "</div><div class=\"space-y-1\"><h4 class=\"text-white font-bold text-sm\">Belum Ada Berkas Berbintang</h4><p class=\"text-xs text-[#94A3B8]\">Tandai berkas favorit Anda dengan bintang untuk akses cepat di sini.</p></div></div></template><template x-if=\"!$store.drive.searchQuery && $store.drive.activeTab === 'recent'\"><div class=\"flex flex-col items-center space-y-3 max-w-sm\"><div class=\"w-14 h-14 rounded-2xl bg-blue-500/10 text-blue-400 flex items-center justify-center border border-blue-500/20 shadow-inner\">")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = IconClock("w-7 h-7").Render(ctx, templ_7745c5c3_Buffer)
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "</div><div class=\"space-y-1\"><h4 class=\"text-white font-bold text-sm\">Belum Ada Berkas Terbaru</h4><p class=\"text-xs text-[#94A3B8]\">Riwayat berkas yang baru dibuka atau diunggah akan muncul di sini.</p></div></div></template><template x-if=\"!$store.drive.searchQuery && $store.drive.activeTab !== 'trash' && $store.drive.activeTab !== 'starred' && $store.drive.activeTab !== 'recent'\"><div class=\"flex flex-col items-center space-y-3 max-w-md\"><div class=\"w-16 h-16 rounded-3xl bg-gradient-to-br from-[#F5BA13]/15 to-[#F5BA13]/5 text-[#F5BA13] flex items-center justify-center border border-[#F5BA13]/25 shadow-lg shadow-[#F5BA13]/10\">")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = IconUploadCloud("w-8 h-8").Render(ctx, templ_7745c5c3_Buffer)
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "</div><div class=\"space-y-1 text-center\"><h4 class=\"text-white font-bold text-base\">Belum Ada Berkas di Folder Ini</h4><p class=\"text-xs text-[#94A3B8] leading-relaxed\">Tarik dan lepas berkas ke mana saja di layar ini, atau pilih salah satu tombol aksi di bawah untuk menambahkan berkas baru.</p></div><div class=\"flex flex-wrap items-center justify-center gap-3 pt-2\"><button type=\"button\" @click=\"$refs.fileInput.click()\" class=\"hornetz-btn px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer shadow-md\">")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = IconUploadCloud("w-4 h-4").Render(ctx, templ_7745c5c3_Buffer)
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, "<span>Unggah Berkas</span></button> <button type=\"button\" @click=\"$store.drive.openAddDownloadModal()\" class=\"px-4 py-2.5 rounded-xl text-xs font-semibold text-white bg-white/[0.05] hover:bg-white/[0.09] border border-white/[0.1] flex items-center gap-2 transition-all cursor-pointer\">")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = IconDownload("w-4 h-4 text-[#F5BA13]").Render(ctx, templ_7745c5c3_Buffer)
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "<span>Unduh dari Tautan</span></button></div></div></template></div><!-- GRID VIEW --><div x-show=\"$store.drive.viewMode === 'grid' && $store.drive.files.length > 0\" class=\"grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3.5\"><template x-for=\"file in $store.drive.files\" :key=\"file.id\"><div @click=\"$store.drive.selectFile(file)\" draggable=\"true\" @dragstart=\"$store.drive.handleFileDragStart($event, file)\" @dragend=\"$store.drive.handleFileDragEnd($event)\" :class=\"$store.drive.draggedFile && $store.drive.draggedFile.id === file.id ? 'opacity-40 scale-95 border-[#F5BA13]' : ''\" class=\"bg-[#141824]/60 hover:bg-[#1A2030]/80 border border-white/[0.07] hover:border-[#F5BA13]/40 p-3 rounded-2xl cursor-pointer group transition-all flex flex-col justify-between h-52 shadow-sm hover:shadow-xl hover:-translate-y-0.5 relative backdrop-blur-md select-none\"><div class=\"h-28 bg-[#0D1017]/80 border border-white/[0.06] rounded-xl flex items-center justify-center text-[#F5BA13] relative overflow-hidden group-hover:border-[#F5BA13]/30 transition-all backdrop-blur-sm\"><!-- Preview for readable files (PDFs, images, documents, text) --><template x-if=\"file.has_preview\"><div class=\"w-full h-full flex items-center justify-center relative overflow-hidden bg-[#0A0D14]/80 p-1.5\"><template x-if=\"file.mime_type && file.mime_type.startsWith('image/')\"><img :src=\"'/api/files/' + file.id + '/thumbnail'\" class=\"w-full h-full object-cover rounded-lg\" alt=\"\" loading=\"lazy\"></template><template x-if=\"!file.mime_type || !file.mime_type.startsWith('image/')\"><img :src=\"'/api/files/' + file.id + '/thumbnail'\" class=\"h-[96px] w-auto max-w-[85%] object-contain rounded shadow-lg transition-transform group-hover:scale-105\" alt=\"Preview\" loading=\"lazy\"></template><div class=\"absolute bottom-1.5 right-1.5 text-[9px] bg-[#0A0D14]/90 border border-white/[0.1] text-white font-mono px-1.5 py-0.5 rounded-md font-bold uppercase truncate max-w-[55px] shadow-sm backdrop-blur-sm\" x-text=\"(file.ext || 'FILE').slice(0, 4)\"></div></div></template><!-- No preview for archives / binaries (.zip, .iso, etc.) as in Google Drive --><template x-if=\"!file.has_preview\"><div class=\"w-full h-full flex items-center justify-center relative\"><div x-html=\"$store.drive.getFileIconSvg(file.icon, 'w-10 h-10')\"></div><div class=\"absolute bottom-1.5 right-1.5 text-[9px] bg-gradient-to-r from-[#F5BA13] to-[#D97706] text-[#0A0D14] font-mono px-2 py-0.5 rounded-md font-bold uppercase truncate max-w-[55px] shadow-sm\" x-text=\"(file.ext || 'FILE').slice(0, 4)\"></div></div></template></div><div class=\"mt-2\"><div class=\"font-semibold text-xs text-white truncate group-hover:text-[#F5BA13] transition-colors\" :title=\"file.name\" x-text=\"file.name\"></div><div class=\"flex justify-between items-center text-[10px] text-[#94A3B8] font-mono mt-1\"><span x-text=\"file.size_formatted || ((file.size >= 1073741824) ? (file.size / 1073741824).toFixed(2) + ' GB' : (file.size >= 1048576) ? (file.size / 1048576).toFixed(1) + ' MB' : (file.size >= 1024) ? (file.size / 1024).toFixed(1) + ' KB' : file.size + ' B')\"></span> <span :class=\"file.is_deleted ? 'text-red-400' : 'text-emerald-400'\" class=\"flex items-center gap-1 font-semibold text-[9px]\"><span class=\"w-1.5 h-1.5 rounded-full\" :class=\"file.is_deleted ? 'bg-red-400' : 'bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.6)]'\"></span> <span x-text=\"file.is_deleted ? 'DI SAMPAH' : 'TERSINKRON'\"></span></span></div><div class=\"text-[9px] text-[#94A3B8]/60 font-mono truncate mt-0.5\" x-text=\"file.date_formatted || (file.created_at ? new Date(file.created_at).toLocaleDateString('id-ID') : '')\"></div></div></div></template></div><!-- DENSE LIST VIEW --><div x-show=\"$store.drive.viewMode === 'list' && $store.drive.files.length > 0\" class=\"border border-white/[0.08] rounded-2xl overflow-hidden bg-[#141824]/40 backdrop-blur-xl divide-y divide-white/[0.06]\"><template x-for=\"file in $store.drive.files\" :key=\"file.id\"><div @click=\"$store.drive.selectFile(file)\" draggable=\"true\" @dragstart=\"$store.drive.handleFileDragStart($event, file)\" @dragend=\"$store.drive.handleFileDragEnd($event)\" :class=\"$store.drive.draggedFile && $store.drive.draggedFile.id === file.id ? 'opacity-40 border-[#F5BA13] bg-[#1E2638]' : ''\" class=\"flex items-center justify-between px-4 py-3 hover:bg-white/[0.05] cursor-pointer transition-colors group select-none\"><div class=\"flex items-center gap-3\"><div class=\"w-8 h-8 rounded-lg bg-white/[0.05] border border-white/[0.08] flex items-center justify-center text-[#F5BA13] shrink-0\" x-html=\"$store.drive.getFileIconSvg(file.icon, 'w-4 h-4')\"></div><div><div class=\"font-bold text-sm text-white group-hover:text-[#F5BA13] transition-colors\" :title=\"file.name\" x-text=\"file.name\"></div><div class=\"text-[11px] text-[#94A3B8] font-mono\" x-text=\"`SHA-256: ${file.cas_hash}`\"></div></div></div><div class=\"flex items-center gap-6 text-xs font-mono\"><span class=\"text-[#94A3B8]/60 text-[11px] hidden sm:inline\" x-text=\"file.date_formatted || (file.created_at ? new Date(file.created_at).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' }) : '')\"></span> <span class=\"text-[#94A3B8]\" x-text=\"file.size_formatted || ((file.size >= 1073741824) ? (file.size / 1073741824).toFixed(2) + ' GB' : (file.size >= 1048576) ? (file.size / 1048576).toFixed(1) + ' MB' : (file.size >= 1024) ? (file.size / 1024).toFixed(1) + ' KB' : file.size + ' B')\"></span> <span :class=\"file.is_deleted ? 'bg-red-500/10 text-red-400 border-red-500/20' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'\" class=\"px-2.5 py-0.5 border rounded-md font-semibold text-[10px] flex items-center gap-1\"><span class=\"w-1.5 h-1.5 rounded-full\" :class=\"file.is_deleted ? 'bg-red-400' : 'bg-emerald-400'\"></span> <span x-text=\"file.is_deleted ? 'DI SAMPAH' : 'TERSINKRON'\"></span></span> <button class=\"text-[#F5BA13] hover:underline font-bold\">Detail →</button></div></div></template></div></div></div><!-- FILE DETAILS & ACTIONS MODAL --><div x-show=\"$store.drive && $store.drive.selectedFile\" x-cloak style=\"display: none;\" x-transition class=\"fixed inset-0 bg-black/80 backdrop-blur-xl flex items-center justify-center z-50 p-4\"><div @click.away=\"$store.drive.closeFileModal()\" class=\"bg-[#121519]/95 backdrop-blur-2xl border border-[#3F4247]/60 w-full max-w-2xl max-h-[90vh] flex flex-col rounded-2xl p-6 shadow-2xl space-y-4 overflow-hidden\"><div class=\"flex justify-between items-start border-b border-[#3F4247]/60 pb-3 shrink-0\"><div class=\"flex items-center gap-3 min-w-0\"><div class=\"w-10 h-10 rounded-xl bg-[#2E3137] border border-[#F5CE0D]/40 flex items-center justify-center text-[#F5CE0D] shrink-0\" x-html=\"$store.drive.selectedFile ? $store.drive.getFileIconSvg($store.drive.selectedFile.icon, 'w-5 h-5') : ''\"></div><div class=\"min-w-0\"><h3 class=\"font-bold text-sm sm:text-base text-white truncate\" x-text=\"$store.drive.selectedFile ? $store.drive.selectedFile.name : ''\"></h3><p class=\"text-xs text-[#86898B] font-mono\" x-text=\"$store.drive.selectedFile ? 'Ukuran: ' + ($store.drive.selectedFile.size >= 1073741824 ? ($store.drive.selectedFile.size / 1073741824).toFixed(2) + ' GB' : $store.drive.selectedFile.size >= 1048576 ? ($store.drive.selectedFile.size / 1048576).toFixed(1) + ' MB' : $store.drive.selectedFile.size >= 1024 ? ($store.drive.selectedFile.size / 1024).toFixed(1) + ' KB' : $store.drive.selectedFile.size + ' B') : ''\"></p></div></div><button @click=\"$store.drive.closeFileModal()\" class=\"text-[#86898B] hover:text-white transition-colors shrink-0 ml-2\">")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = IconX("w-5 h-5").Render(ctx, templ_7745c5c3_Buffer)
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "</button></div><!-- SCROLLABLE BODY (Preview + Cryptographic Details) --><div class=\"flex-1 overflow-y-auto space-y-4 pr-1\"><!-- FILE PREVIEW CONTAINER --><div class=\"w-full bg-[#0D0F12] border border-[#3F4247]/50 rounded-xl overflow-hidden flex flex-col items-center justify-center relative min-h-[160px]\"><!-- Image Preview --><template x-if=\"$store.drive.selectedFile && $store.drive.selectedFile.mime_type && $store.drive.selectedFile.mime_type.startsWith('image/')\"><div class=\"w-full flex items-center justify-center p-3\"><img :src=\"'/api/files/' + $store.drive.selectedFile.id + '/preview'\" class=\"max-h-80 w-auto object-contain rounded-lg shadow-lg\" alt=\"Image Preview\"></div></template><!-- PDF Preview (Embedded Viewer) --><template x-if=\"$store.drive.selectedFile && ($store.drive.selectedFile.ext === 'pdf' || $store.drive.selectedFile.mime_type === 'application/pdf')\"><div class=\"w-full h-80 flex flex-col bg-white\"><iframe :src=\"'/api/files/' + $store.drive.selectedFile.id + '/preview#toolbar=0'\" class=\"w-full h-full border-0\" title=\"PDF Viewer\"></iframe></div></template><!-- Office Document / Presentation Preview --><template x-if=\"$store.drive.selectedFile && $store.drive.isOfficeFile($store.drive.selectedFile)\"><div class=\"w-full flex items-center justify-center p-4 bg-black/40\"><img :src=\"'/api/files/' + $store.drive.selectedFile.id + '/thumbnail'\" class=\"max-h-80 w-auto object-contain rounded-lg shadow-xl\" alt=\"Presentation Preview\"></div></template><!-- Text / Code Preview --><template x-if=\"$store.drive.selectedFile && $store.drive.isTextOrCodeFile($store.drive.selectedFile)\"><div class=\"w-full p-4 font-mono text-xs text-[#EDEBE8]/90 max-h-72 overflow-y-auto whitespace-pre-wrap select-text leading-relaxed bg-[#121519]/60\"><template x-if=\"$store.drive.filePreviewLoading\"><div class=\"flex items-center justify-center py-8 text-[#86898B]\"><span class=\"animate-pulse\">Memuat pratinjau berkas...</span></div></template><template x-if=\"!$store.drive.filePreviewLoading\"><div x-text=\"$store.drive.filePreviewText\"></div></template></div></template><!-- Video Preview --><template x-if=\"$store.drive.selectedFile && $store.drive.selectedFile.mime_type && $store.drive.selectedFile.mime_type.startsWith('video/')\"><video controls class=\"max-h-80 w-full rounded-lg\" :src=\"'/api/files/' + $store.drive.selectedFile.id + '/preview'\"></video></template><!-- Audio Preview --><template x-if=\"$store.drive.selectedFile && $store.drive.selectedFile.mime_type && $store.drive.selectedFile.mime_type.startsWith('audio/')\"><div class=\"p-6 w-full flex justify-center\"><audio controls class=\"w-full max-w-md\" :src=\"'/api/files/' + $store.drive.selectedFile.id + '/preview'\"></audio></div></template><!-- Non-previewable Notice (For .zip, .iso, .rar, binaries, etc.) --><template x-if=\"$store.drive.selectedFile && !$store.drive.selectedFile.has_preview\"><div class=\"py-10 px-4 flex flex-col items-center justify-center text-center space-y-2.5\"><div class=\"w-14 h-14 rounded-2xl bg-[#2E3137]/80 border border-[#3F4247]/60 flex items-center justify-center text-[#86898B] shadow-inner\"><div x-html=\"$store.drive.getFileIconSvg($store.drive.selectedFile.icon, 'w-7 h-7')\"></div></div><div><h4 class=\"text-xs font-bold text-white font-mono uppercase tracking-wider\">Pratinjau Tidak Tersedia</h4><p class=\"text-[11px] text-[#86898B] mt-1 max-w-sm\">Berkas jenis ini tidak dapat dipratinjau langsung di peramban. Silakan unduh berkas untuk membukanya.</p></div><button @click=\"$store.drive.downloadFile($store.drive.selectedFile)\" class=\"hornetz-btn py-1.5 px-4 rounded-xl text-xs font-bold flex items-center gap-1.5 mt-2\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "</button><div x-show=\"menuOpen\" @click.away=\"menuOpen = false\" x-cloak style=\"display: none;\" class=\"absolute right-0 top-full mt-1 w-36 bg-[#141824]/95 backdrop-blur-xl border border-white/[0.1] rounded-xl shadow-xl p-1 z-30 font-sans text-xs space-y-0.5\"><button @click.stop=\"$store.drive.downloadFolder(folder); menuOpen = false\" class=\"w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-white/[0.08] text-white hover:text-[#F5BA13] flex items-center gap-2 transition-colors cursor-pointer\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -328,7 +216,135 @@ func DashboardContent() templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "<span>Unduh Sekarang</span></button></div></template></div><!-- Security & Cryptographic Details --><div class=\"bg-[#2E3137]/30 border border-[#3F4247]/60 rounded-xl p-3.5 space-y-2 font-mono text-xs backdrop-blur-md\"><div class=\"flex justify-between text-[#86898B]\"><span>Status Enkripsi:</span> <strong :class=\"($store.drive.selectedFile && $store.drive.selectedFile.is_vault) ? 'text-emerald-400' : 'text-[#F5CE0D]'\" x-text=\"($store.drive.selectedFile && $store.drive.selectedFile.is_vault) ? 'AES-256-GCM (Swarm Vault)' : 'Penyimpanan Standar'\"></strong></div><div class=\"flex justify-between text-[#86898B]\"><span>Content Address (CAS):</span> <strong class=\"text-[#F5CE0D] truncate max-w-[200px]\" x-text=\"$store.drive.selectedFile ? $store.drive.selectedFile.cas_hash : ''\"></strong></div><div class=\"flex justify-between text-[#86898B]\"><span>MIME Type:</span> <strong class=\"text-white\" x-text=\"$store.drive.selectedFile ? $store.drive.selectedFile.mime_type : ''\"></strong></div><div class=\"flex justify-between text-[#86898B]\"><span>Waktu Dibuat:</span> <strong class=\"text-white\" x-text=\"$store.drive.selectedFile && $store.drive.selectedFile.created_at ? new Date($store.drive.selectedFile.created_at).toLocaleString('id-ID') : '-'\"></strong></div></div></div><!-- Action Buttons --><div class=\"flex gap-3 pt-2 border-t border-[#3F4247]/60 shrink-0\"><template x-if=\"$store.drive.activeTab === 'trash'\"><div class=\"flex gap-3 w-full\"><button @click=\"$store.drive.restoreFile($store.drive.selectedFile)\" class=\"flex-1 hornetz-btn py-2.5 px-4 rounded-xl flex items-center justify-center gap-2 text-xs font-bold\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "<span>Unduh ZIP</span></button> <button @click.stop=\"$store.drive.renameFolder(folder); menuOpen = false\" class=\"w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-white/[0.08] text-white hover:text-[#F5BA13] flex items-center gap-2 transition-colors cursor-pointer\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = IconEdit("w-3.5 h-3.5").Render(ctx, templ_7745c5c3_Buffer)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "<span>Ubah Nama</span></button> <button @click.stop=\"$store.drive.deleteFolder(folder); menuOpen = false\" class=\"w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-red-500/15 text-red-400 flex items-center gap-2 transition-colors cursor-pointer\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = IconTrash("w-3.5 h-3.5").Render(ctx, templ_7745c5c3_Buffer)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "<span>Hapus</span></button></div></div></div></div><div class=\"font-bold text-sm text-white group-hover:text-[#F5BA13] transition-colors truncate\" x-text=\"folder.name\"></div><div class=\"text-[11px] text-[#94A3B8] mt-1 font-sans\" x-text=\"$store.drive.activeTab === 'vault' ? `${folder.file_count || 0} Berkas • AES-256-GCM` : `${folder.file_count || 0} Berkas`\"></div></div></template></div></div><!-- SECTION 2: FILES LIST / GRID --><div class=\"space-y-3.5\"><div class=\"flex justify-between items-center\"><h3 class=\"text-sm font-bold text-white flex items-center gap-2\"><template x-if=\"$store.drive.activeTab === 'vault'\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = IconShield("w-4 h-4 text-emerald-400").Render(ctx, templ_7745c5c3_Buffer)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "</template><template x-if=\"$store.drive.activeTab === 'trash'\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = IconTrash("w-4 h-4 text-red-400").Render(ctx, templ_7745c5c3_Buffer)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "</template><template x-if=\"$store.drive.activeTab === 'starred'\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = IconStar("w-4 h-4 text-[#F5BA13]", true).Render(ctx, templ_7745c5c3_Buffer)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "</template><template x-if=\"$store.drive.activeTab === 'recent'\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = IconClock("w-4 h-4 text-blue-400").Render(ctx, templ_7745c5c3_Buffer)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "</template><template x-if=\"$store.drive.activeTab === 'storage'\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = IconHardDrive("w-4 h-4 text-[#F5BA13]").Render(ctx, templ_7745c5c3_Buffer)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "</template><span x-text=\"$store.drive.searchQuery ? `Hasil Pencarian (${$store.drive.files.length})` : ($store.drive.activeTab === 'vault' ? 'Berkas Terenkripsi Vault' : ($store.drive.activeTab === 'trash' ? 'Berkas di Tempat Sampah' : ($store.drive.activeTab === 'starred' ? 'Berkas Berbintang' : ($store.drive.activeTab === 'recent' ? 'Berkas Terbaru' : 'Berkas Tersinkron'))))\"></span></h3><span class=\"text-xs text-[#94A3B8] font-sans\" x-text=\"`Menampilkan ${$store.drive.files.length} berkas`\"></span></div><!-- LOADING SKELETON PLACEHOLDER --><div x-show=\"$store.drive.isLoadingFiles && $store.drive.files.length === 0\" x-cloak class=\"space-y-4 animate-pulse\"><div class=\"grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3.5\"><template x-for=\"i in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]\" :key=\"i\"><div class=\"bg-[#141824]/40 border border-white/[0.05] p-3 rounded-2xl h-52 flex flex-col justify-between\"><div class=\"h-28 bg-white/[0.04] rounded-xl\"></div><div class=\"space-y-2 mt-2\"><div class=\"h-3 bg-white/[0.07] rounded-md w-3/4\"></div><div class=\"h-2.5 bg-white/[0.04] rounded-md w-1/2\"></div></div></div></template></div></div><!-- EMPTY STATE / HERO DROPZONE --><div x-show=\"!$store.drive.isLoadingFiles && $store.drive.files.length === 0\" class=\"text-center py-14 px-6 border-2 border-dashed border-white/[0.1] hover:border-[#F5BA13]/40 rounded-3xl bg-gradient-to-b from-[#141824]/40 to-[#0B0E14]/60 backdrop-blur-md flex flex-col items-center justify-center transition-all\"><template x-if=\"$store.drive.searchQuery && $store.drive.searchQuery.trim().length > 0\"><div class=\"flex flex-col items-center space-y-3 max-w-sm\"><div class=\"w-14 h-14 rounded-2xl bg-white/[0.04] text-[#94A3B8] flex items-center justify-center border border-white/[0.08] shadow-inner\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = IconSearch("w-6 h-6").Render(ctx, templ_7745c5c3_Buffer)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "</div><div class=\"space-y-1\"><h4 class=\"text-white font-bold text-sm\">Tidak Ditemukan</h4><p class=\"text-xs text-[#94A3B8]\">Tidak ada berkas yang cocok dengan <span class=\"text-[#F5BA13] font-bold\" x-text=\"'“' + $store.drive.searchQuery + '”'\"></span></p></div><button type=\"button\" @click=\"$store.drive.clearSearch()\" class=\"text-xs text-[#F5BA13] hover:underline font-medium mt-1 cursor-pointer\">Bersihkan Pencarian</button></div></template><template x-if=\"!$store.drive.searchQuery && $store.drive.activeTab === 'trash'\"><div class=\"flex flex-col items-center space-y-3 max-w-sm\"><div class=\"w-14 h-14 rounded-2xl bg-red-500/10 text-red-400 flex items-center justify-center border border-red-500/20 shadow-inner\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = IconTrash("w-7 h-7").Render(ctx, templ_7745c5c3_Buffer)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "</div><div class=\"space-y-1\"><h4 class=\"text-white font-bold text-sm\">Tempat Sampah Kosong</h4><p class=\"text-xs text-[#94A3B8]\">Tidak ada berkas yang dihapus saat ini.</p></div></div></template><template x-if=\"!$store.drive.searchQuery && $store.drive.activeTab === 'starred'\"><div class=\"flex flex-col items-center space-y-3 max-w-sm\"><div class=\"w-14 h-14 rounded-2xl bg-[#F5BA13]/10 text-[#F5BA13] flex items-center justify-center border border-[#F5BA13]/25 shadow-inner\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = IconStar("w-7 h-7", false).Render(ctx, templ_7745c5c3_Buffer)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "</div><div class=\"space-y-1\"><h4 class=\"text-white font-bold text-sm\">Belum Ada Berkas Berbintang</h4><p class=\"text-xs text-[#94A3B8]\">Tandai berkas favorit Anda dengan bintang untuk akses cepat di sini.</p></div></div></template><template x-if=\"!$store.drive.searchQuery && $store.drive.activeTab === 'recent'\"><div class=\"flex flex-col items-center space-y-3 max-w-sm\"><div class=\"w-14 h-14 rounded-2xl bg-blue-500/10 text-blue-400 flex items-center justify-center border border-blue-500/20 shadow-inner\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = IconClock("w-7 h-7").Render(ctx, templ_7745c5c3_Buffer)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, "</div><div class=\"space-y-1\"><h4 class=\"text-white font-bold text-sm\">Belum Ada Berkas Terbaru</h4><p class=\"text-xs text-[#94A3B8]\">Riwayat berkas yang baru dibuka atau diunggah akan muncul di sini.</p></div></div></template><template x-if=\"!$store.drive.searchQuery && $store.drive.activeTab !== 'trash' && $store.drive.activeTab !== 'starred' && $store.drive.activeTab !== 'recent'\"><div class=\"flex flex-col items-center space-y-3 max-w-md\"><div class=\"w-16 h-16 rounded-3xl bg-gradient-to-br from-[#F5BA13]/15 to-[#F5BA13]/5 text-[#F5BA13] flex items-center justify-center border border-[#F5BA13]/25 shadow-lg shadow-[#F5BA13]/10\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = IconUploadCloud("w-8 h-8").Render(ctx, templ_7745c5c3_Buffer)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "</div><div class=\"space-y-1 text-center\"><h4 class=\"text-white font-bold text-base\">Belum Ada Berkas di Folder Ini</h4><p class=\"text-xs text-[#94A3B8] leading-relaxed\">Tarik dan lepas berkas ke mana saja di layar ini, atau pilih salah satu tombol aksi di bawah untuk menambahkan berkas baru.</p></div><div class=\"flex flex-wrap items-center justify-center gap-3 pt-2\"><button type=\"button\" @click=\"$refs.fileInput.click()\" class=\"hornetz-btn px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer shadow-md\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = IconUploadCloud("w-4 h-4").Render(ctx, templ_7745c5c3_Buffer)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "<span>Unggah Berkas</span></button> <button type=\"button\" @click=\"$store.drive.openAddDownloadModal()\" class=\"px-4 py-2.5 rounded-xl text-xs font-semibold text-white bg-white/[0.05] hover:bg-white/[0.09] border border-white/[0.1] flex items-center gap-2 transition-all cursor-pointer\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = IconDownload("w-4 h-4 text-[#F5BA13]").Render(ctx, templ_7745c5c3_Buffer)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "<span>Unduh dari Tautan</span></button></div></div></template></div><!-- GRID VIEW --><div x-show=\"$store.drive.viewMode === 'grid' && $store.drive.files.length > 0\" class=\"grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3.5\"><template x-for=\"file in $store.drive.files\" :key=\"file.id\"><div @click=\"$store.drive.selectFile(file)\" draggable=\"true\" @dragstart=\"$store.drive.handleFileDragStart($event, file)\" @dragend=\"$store.drive.handleFileDragEnd($event)\" :class=\"$store.drive.draggedFile && $store.drive.draggedFile.id === file.id ? 'opacity-40 scale-95 border-[#F5BA13]' : ''\" class=\"bg-[#141824]/60 hover:bg-[#1A2030]/80 border border-white/[0.07] hover:border-[#F5BA13]/40 p-3 rounded-2xl cursor-pointer group transition-all flex flex-col justify-between h-52 shadow-sm hover:shadow-xl hover:-translate-y-0.5 relative backdrop-blur-md select-none\"><div class=\"h-28 bg-[#0D1017]/80 border border-white/[0.06] rounded-xl flex items-center justify-center text-[#F5BA13] relative overflow-hidden group-hover:border-[#F5BA13]/30 transition-all backdrop-blur-sm\"><!-- Preview for readable files (PDFs, images, documents, text) --><template x-if=\"file.has_preview\"><div class=\"w-full h-full flex items-center justify-center relative overflow-hidden bg-[#0A0D14]/80 p-1.5\"><template x-if=\"file.mime_type && file.mime_type.startsWith('image/')\"><img :src=\"'/api/files/' + file.id + '/thumbnail'\" class=\"w-full h-full object-cover rounded-lg\" alt=\"\" loading=\"lazy\"></template><template x-if=\"!file.mime_type || !file.mime_type.startsWith('image/')\"><img :src=\"'/api/files/' + file.id + '/thumbnail'\" class=\"h-[96px] w-auto max-w-[85%] object-contain rounded shadow-lg transition-transform group-hover:scale-105\" alt=\"Preview\" loading=\"lazy\"></template><div class=\"absolute bottom-1.5 right-1.5 text-[9px] bg-[#0A0D14]/90 border border-white/[0.1] text-white font-mono px-1.5 py-0.5 rounded-md font-bold uppercase truncate max-w-[55px] shadow-sm backdrop-blur-sm\" x-text=\"(file.ext || 'FILE').slice(0, 4)\"></div></div></template><!-- No preview for archives / binaries (.zip, .iso, etc.) as in Google Drive --><template x-if=\"!file.has_preview\"><div class=\"w-full h-full flex items-center justify-center relative\"><div x-html=\"$store.drive.getFileIconSvg(file.icon, 'w-10 h-10')\"></div><div class=\"absolute bottom-1.5 right-1.5 text-[9px] bg-gradient-to-r from-[#F5BA13] to-[#D97706] text-[#0A0D14] font-mono px-2 py-0.5 rounded-md font-bold uppercase truncate max-w-[55px] shadow-sm\" x-text=\"(file.ext || 'FILE').slice(0, 4)\"></div></div></template></div><div class=\"mt-2\"><div class=\"font-semibold text-xs text-white truncate group-hover:text-[#F5BA13] transition-colors\" :title=\"file.name\" x-text=\"file.name\"></div><div class=\"flex justify-between items-center text-[10px] text-[#94A3B8] font-mono mt-1\"><span x-text=\"file.size_formatted || ((file.size >= 1073741824) ? (file.size / 1073741824).toFixed(2) + ' GB' : (file.size >= 1048576) ? (file.size / 1048576).toFixed(1) + ' MB' : (file.size >= 1024) ? (file.size / 1024).toFixed(1) + ' KB' : file.size + ' B')\"></span> <span :class=\"file.is_deleted ? 'text-red-400' : 'text-emerald-400'\" class=\"flex items-center gap-1 font-semibold text-[9px]\"><span class=\"w-1.5 h-1.5 rounded-full\" :class=\"file.is_deleted ? 'bg-red-400' : 'bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.6)]'\"></span> <span x-text=\"file.is_deleted ? 'DI SAMPAH' : 'TERSINKRON'\"></span></span></div><div class=\"text-[9px] text-[#94A3B8]/60 font-mono truncate mt-0.5\" x-text=\"file.date_formatted || (file.created_at ? new Date(file.created_at).toLocaleDateString('id-ID') : '')\"></div></div></div></template></div><!-- DENSE LIST VIEW --><div x-show=\"$store.drive.viewMode === 'list' && $store.drive.files.length > 0\" class=\"border border-white/[0.08] rounded-2xl overflow-hidden bg-[#141824]/40 backdrop-blur-xl divide-y divide-white/[0.06]\"><template x-for=\"file in $store.drive.files\" :key=\"file.id\"><div @click=\"$store.drive.selectFile(file)\" draggable=\"true\" @dragstart=\"$store.drive.handleFileDragStart($event, file)\" @dragend=\"$store.drive.handleFileDragEnd($event)\" :class=\"$store.drive.draggedFile && $store.drive.draggedFile.id === file.id ? 'opacity-40 border-[#F5BA13] bg-[#1E2638]' : ''\" class=\"flex items-center justify-between px-4 py-3 hover:bg-white/[0.05] cursor-pointer transition-colors group select-none\"><div class=\"flex items-center gap-3\"><div class=\"w-8 h-8 rounded-lg bg-white/[0.05] border border-white/[0.08] flex items-center justify-center text-[#F5BA13] shrink-0\" x-html=\"$store.drive.getFileIconSvg(file.icon, 'w-4 h-4')\"></div><div><div class=\"font-bold text-sm text-white group-hover:text-[#F5BA13] transition-colors\" :title=\"file.name\" x-text=\"file.name\"></div><div class=\"text-[11px] text-[#94A3B8] font-mono\" x-text=\"`SHA-256: ${file.cas_hash}`\"></div></div></div><div class=\"flex items-center gap-6 text-xs font-mono\"><span class=\"text-[#94A3B8]/60 text-[11px] hidden sm:inline\" x-text=\"file.date_formatted || (file.created_at ? new Date(file.created_at).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' }) : '')\"></span> <span class=\"text-[#94A3B8]\" x-text=\"file.size_formatted || ((file.size >= 1073741824) ? (file.size / 1073741824).toFixed(2) + ' GB' : (file.size >= 1048576) ? (file.size / 1048576).toFixed(1) + ' MB' : (file.size >= 1024) ? (file.size / 1024).toFixed(1) + ' KB' : file.size + ' B')\"></span> <span :class=\"file.is_deleted ? 'bg-red-500/10 text-red-400 border-red-500/20' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'\" class=\"px-2.5 py-0.5 border rounded-md font-semibold text-[10px] flex items-center gap-1\"><span class=\"w-1.5 h-1.5 rounded-full\" :class=\"file.is_deleted ? 'bg-red-400' : 'bg-emerald-400'\"></span> <span x-text=\"file.is_deleted ? 'DI SAMPAH' : 'TERSINKRON'\"></span></span> <button class=\"text-[#F5BA13] hover:underline font-bold\">Detail →</button></div></div></template></div></div></div><!-- FILE DETAILS & ACTIONS MODAL --><div x-show=\"$store.drive && $store.drive.selectedFile\" x-cloak style=\"display: none;\" x-transition class=\"fixed inset-0 bg-black/80 backdrop-blur-xl flex items-center justify-center z-50 p-4\"><div @click.away=\"$store.drive.closeFileModal()\" class=\"bg-[#121519]/95 backdrop-blur-2xl border border-[#3F4247]/60 w-full max-w-2xl max-h-[90vh] flex flex-col rounded-2xl p-6 shadow-2xl space-y-4 overflow-hidden\"><div class=\"flex justify-between items-start border-b border-[#3F4247]/60 pb-3 shrink-0\"><div class=\"flex items-center gap-3 min-w-0\"><div class=\"w-10 h-10 rounded-xl bg-[#2E3137] border border-[#F5CE0D]/40 flex items-center justify-center text-[#F5CE0D] shrink-0\" x-html=\"$store.drive.selectedFile ? $store.drive.getFileIconSvg($store.drive.selectedFile.icon, 'w-5 h-5') : ''\"></div><div class=\"min-w-0\"><h3 class=\"font-bold text-sm sm:text-base text-white truncate\" x-text=\"$store.drive.selectedFile ? $store.drive.selectedFile.name : ''\"></h3><p class=\"text-xs text-[#86898B] font-mono\" x-text=\"$store.drive.selectedFile ? 'Ukuran: ' + ($store.drive.selectedFile.size >= 1073741824 ? ($store.drive.selectedFile.size / 1073741824).toFixed(2) + ' GB' : $store.drive.selectedFile.size >= 1048576 ? ($store.drive.selectedFile.size / 1048576).toFixed(1) + ' MB' : $store.drive.selectedFile.size >= 1024 ? ($store.drive.selectedFile.size / 1024).toFixed(1) + ' KB' : $store.drive.selectedFile.size + ' B') : ''\"></p></div></div><button @click=\"$store.drive.closeFileModal()\" class=\"text-[#86898B] hover:text-white transition-colors shrink-0 ml-2\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = IconX("w-5 h-5").Render(ctx, templ_7745c5c3_Buffer)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, "</button></div><!-- SCROLLABLE BODY (Preview + Cryptographic Details) --><div class=\"flex-1 overflow-y-auto space-y-4 pr-1\"><!-- FILE PREVIEW CONTAINER --><div class=\"w-full bg-[#0D0F12] border border-[#3F4247]/50 rounded-xl overflow-hidden flex flex-col items-center justify-center relative min-h-[160px]\"><!-- Image Preview --><template x-if=\"$store.drive.selectedFile && $store.drive.selectedFile.mime_type && $store.drive.selectedFile.mime_type.startsWith('image/')\"><div class=\"w-full flex items-center justify-center p-3\"><img :src=\"'/api/files/' + $store.drive.selectedFile.id + '/preview'\" class=\"max-h-80 w-auto object-contain rounded-lg shadow-lg\" alt=\"Image Preview\"></div></template><!-- PDF Preview (Embedded Viewer) --><template x-if=\"$store.drive.selectedFile && ($store.drive.selectedFile.ext === 'pdf' || $store.drive.selectedFile.mime_type === 'application/pdf')\"><div class=\"w-full h-80 flex flex-col bg-white\"><iframe :src=\"'/api/files/' + $store.drive.selectedFile.id + '/preview#toolbar=0'\" class=\"w-full h-full border-0\" title=\"PDF Viewer\"></iframe></div></template><!-- Office Document / Presentation Preview --><template x-if=\"$store.drive.selectedFile && $store.drive.isOfficeFile($store.drive.selectedFile)\"><div class=\"w-full flex items-center justify-center p-4 bg-black/40\"><img :src=\"'/api/files/' + $store.drive.selectedFile.id + '/thumbnail'\" class=\"max-h-80 w-auto object-contain rounded-lg shadow-xl\" alt=\"Presentation Preview\"></div></template><!-- Text / Code Preview --><template x-if=\"$store.drive.selectedFile && $store.drive.isTextOrCodeFile($store.drive.selectedFile)\"><div class=\"w-full p-4 font-mono text-xs text-[#EDEBE8]/90 max-h-72 overflow-y-auto whitespace-pre-wrap select-text leading-relaxed bg-[#121519]/60\"><template x-if=\"$store.drive.filePreviewLoading\"><div class=\"flex items-center justify-center py-8 text-[#86898B]\"><span class=\"animate-pulse\">Memuat pratinjau berkas...</span></div></template><template x-if=\"!$store.drive.filePreviewLoading\"><div x-text=\"$store.drive.filePreviewText\"></div></template></div></template><!-- Video Preview --><template x-if=\"$store.drive.selectedFile && $store.drive.selectedFile.mime_type && $store.drive.selectedFile.mime_type.startsWith('video/')\"><video controls class=\"max-h-80 w-full rounded-lg\" :src=\"'/api/files/' + $store.drive.selectedFile.id + '/preview'\"></video></template><!-- Audio Preview --><template x-if=\"$store.drive.selectedFile && $store.drive.selectedFile.mime_type && $store.drive.selectedFile.mime_type.startsWith('audio/')\"><div class=\"p-6 w-full flex justify-center\"><audio controls class=\"w-full max-w-md\" :src=\"'/api/files/' + $store.drive.selectedFile.id + '/preview'\"></audio></div></template><!-- Non-previewable Notice (For .zip, .iso, .rar, binaries, etc.) --><template x-if=\"$store.drive.selectedFile && !$store.drive.selectedFile.has_preview\"><div class=\"py-10 px-4 flex flex-col items-center justify-center text-center space-y-2.5\"><div class=\"w-14 h-14 rounded-2xl bg-[#2E3137]/80 border border-[#3F4247]/60 flex items-center justify-center text-[#86898B] shadow-inner\"><div x-html=\"$store.drive.getFileIconSvg($store.drive.selectedFile.icon, 'w-7 h-7')\"></div></div><div><h4 class=\"text-xs font-bold text-white font-mono uppercase tracking-wider\">Pratinjau Tidak Tersedia</h4><p class=\"text-[11px] text-[#86898B] mt-1 max-w-sm\">Berkas jenis ini tidak dapat dipratinjau langsung di peramban. Silakan unduh berkas untuk membukanya.</p></div><button @click=\"$store.drive.downloadFile($store.drive.selectedFile)\" class=\"hornetz-btn py-1.5 px-4 rounded-xl text-xs font-bold flex items-center gap-1.5 mt-2\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = IconDownload("w-3.5 h-3.5").Render(ctx, templ_7745c5c3_Buffer)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, "<span>Unduh Sekarang</span></button></div></template></div><!-- Security & Cryptographic Details --><div class=\"bg-[#2E3137]/30 border border-[#3F4247]/60 rounded-xl p-3.5 space-y-2 font-mono text-xs backdrop-blur-md\"><div class=\"flex justify-between text-[#86898B]\"><span>Status Enkripsi:</span> <strong :class=\"($store.drive.selectedFile && $store.drive.selectedFile.is_vault) ? 'text-emerald-400' : 'text-[#F5CE0D]'\" x-text=\"($store.drive.selectedFile && $store.drive.selectedFile.is_vault) ? 'AES-256-GCM (Swarm Vault)' : 'Penyimpanan Standar'\"></strong></div><div class=\"flex justify-between text-[#86898B]\"><span>Content Address (CAS):</span> <strong class=\"text-[#F5CE0D] truncate max-w-[200px]\" x-text=\"$store.drive.selectedFile ? $store.drive.selectedFile.cas_hash : ''\"></strong></div><div class=\"flex justify-between text-[#86898B]\"><span>MIME Type:</span> <strong class=\"text-white\" x-text=\"$store.drive.selectedFile ? $store.drive.selectedFile.mime_type : ''\"></strong></div><div class=\"flex justify-between text-[#86898B]\"><span>Waktu Dibuat:</span> <strong class=\"text-white\" x-text=\"$store.drive.selectedFile && $store.drive.selectedFile.created_at ? new Date($store.drive.selectedFile.created_at).toLocaleString('id-ID') : '-'\"></strong></div></div></div><!-- Action Buttons --><div class=\"flex gap-3 pt-2 border-t border-[#3F4247]/60 shrink-0\"><template x-if=\"$store.drive.activeTab === 'trash'\"><div class=\"flex gap-3 w-full\"><button @click=\"$store.drive.restoreFile($store.drive.selectedFile)\" class=\"flex-1 hornetz-btn py-2.5 px-4 rounded-xl flex items-center justify-center gap-2 text-xs font-bold\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -336,7 +352,7 @@ func DashboardContent() templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, "<span>Pulihkan Berkas</span></button> <button @click=\"$store.drive.deleteFile($store.drive.selectedFile, true)\" class=\"bg-red-500/20 hover:bg-red-600 text-red-400 hover:text-white border border-red-500/40 py-2.5 px-4 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-colors\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "<span>Pulihkan Berkas</span></button> <button @click=\"$store.drive.deleteFile($store.drive.selectedFile, true)\" class=\"bg-red-500/20 hover:bg-red-600 text-red-400 hover:text-white border border-red-500/40 py-2.5 px-4 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-colors\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -344,7 +360,7 @@ func DashboardContent() templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, "<span>Hapus Permanen</span></button></div></template><template x-if=\"$store.drive.activeTab !== 'trash'\"><div class=\"flex gap-3 w-full\"><button @click=\"$store.drive.toggleStar($store.drive.selectedFile)\" class=\"bg-[#2E3137]/40 hover:bg-[#2E3137]/80 text-[#F5CE0D] border border-[#F5CE0D]/40 py-2.5 px-3 rounded-xl text-xs font-semibold transition-all backdrop-blur-md flex items-center gap-1.5\"><template x-if=\"$store.drive.selectedFile && $store.drive.selectedFile.is_starred\"><span class=\"flex items-center gap-1.5\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "<span>Hapus Permanen</span></button></div></template><template x-if=\"$store.drive.activeTab !== 'trash'\"><div class=\"flex gap-3 w-full\"><button @click=\"$store.drive.toggleStar($store.drive.selectedFile)\" class=\"bg-[#2E3137]/40 hover:bg-[#2E3137]/80 text-[#F5CE0D] border border-[#F5CE0D]/40 py-2.5 px-3 rounded-xl text-xs font-semibold transition-all backdrop-blur-md flex items-center gap-1.5\"><template x-if=\"$store.drive.selectedFile && $store.drive.selectedFile.is_starred\"><span class=\"flex items-center gap-1.5\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -352,7 +368,7 @@ func DashboardContent() templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "<span>Berbintang</span></span></template><template x-if=\"!$store.drive.selectedFile || !$store.drive.selectedFile.is_starred\"><span class=\"flex items-center gap-1.5\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, "<span>Berbintang</span></span></template><template x-if=\"!$store.drive.selectedFile || !$store.drive.selectedFile.is_starred\"><span class=\"flex items-center gap-1.5\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -360,7 +376,7 @@ func DashboardContent() templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "<span>Beri Bintang</span></span></template></button> <button @click=\"$store.drive.downloadFile($store.drive.selectedFile)\" class=\"flex-1 hornetz-btn py-2.5 px-4 rounded-xl flex items-center justify-center gap-2 text-xs font-bold\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, "<span>Beri Bintang</span></span></template></button> <button @click=\"$store.drive.downloadFile($store.drive.selectedFile)\" class=\"flex-1 hornetz-btn py-2.5 px-4 rounded-xl flex items-center justify-center gap-2 text-xs font-bold\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -368,7 +384,7 @@ func DashboardContent() templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, "<span x-text=\"$store.drive.activeTab === 'vault' ? 'Dekripsi & Unduh' : 'Unduh Berkas'\"></span></button> <button @click=\"$store.drive.copyDownloadLink($store.drive.selectedFile)\" class=\"bg-white/[0.04] hover:bg-white/[0.08] text-[#EDEBE8] hover:text-[#F5CE0D] border border-[#3F4247]/60 py-2.5 px-3 rounded-xl text-xs font-semibold transition-all backdrop-blur-md flex items-center gap-1.5\" title=\"Salin tautan unduhan langsung untuk download manager (Motrix, Aria2, curl, wget)\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, "<span x-text=\"$store.drive.activeTab === 'vault' ? 'Dekripsi & Unduh' : 'Unduh Berkas'\"></span></button> <button @click=\"$store.drive.copyDownloadLink($store.drive.selectedFile)\" class=\"bg-white/[0.04] hover:bg-white/[0.08] text-[#EDEBE8] hover:text-[#F5CE0D] border border-[#3F4247]/60 py-2.5 px-3 rounded-xl text-xs font-semibold transition-all backdrop-blur-md flex items-center gap-1.5\" title=\"Salin tautan unduhan langsung untuk download manager (Motrix, Aria2, curl, wget)\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -376,7 +392,7 @@ func DashboardContent() templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, "<span>Salin Tautan</span></button> <button @click=\"$store.drive.openMoveModal($store.drive.selectedFile)\" class=\"bg-white/[0.04] hover:bg-white/[0.08] text-[#EDEBE8] hover:text-[#F5CE0D] border border-[#3F4247]/60 py-2.5 px-3 rounded-xl text-xs font-semibold transition-all backdrop-blur-md flex items-center gap-1.5\" title=\"Pindahkan berkas ke folder lain\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "<span>Salin Tautan</span></button> <button @click=\"$store.drive.openMoveModal($store.drive.selectedFile)\" class=\"bg-white/[0.04] hover:bg-white/[0.08] text-[#EDEBE8] hover:text-[#F5CE0D] border border-[#3F4247]/60 py-2.5 px-3 rounded-xl text-xs font-semibold transition-all backdrop-blur-md flex items-center gap-1.5\" title=\"Pindahkan berkas ke folder lain\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -384,7 +400,7 @@ func DashboardContent() templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, "<span>Pindahkan</span></button> <button @click=\"$store.drive.renameFile($store.drive.selectedFile)\" class=\"bg-white/[0.04] hover:bg-white/[0.08] text-[#EDEBE8] border border-[#3F4247]/60 py-2.5 px-3 rounded-xl text-xs font-semibold transition-all backdrop-blur-md flex items-center gap-1.5\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, "<span>Pindahkan</span></button> <button @click=\"$store.drive.renameFile($store.drive.selectedFile)\" class=\"bg-white/[0.04] hover:bg-white/[0.08] text-[#EDEBE8] border border-[#3F4247]/60 py-2.5 px-3 rounded-xl text-xs font-semibold transition-all backdrop-blur-md flex items-center gap-1.5\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -392,7 +408,7 @@ func DashboardContent() templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "<span>Ubah Nama</span></button> <button @click=\"$store.drive.deleteFile($store.drive.selectedFile, false)\" class=\"bg-red-500/10 hover:bg-red-600 text-red-400 hover:text-white border border-red-500/30 py-2.5 px-4 rounded-xl text-xs font-semibold transition-colors backdrop-blur-md flex items-center gap-1.5\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "<span>Ubah Nama</span></button> <button @click=\"$store.drive.deleteFile($store.drive.selectedFile, false)\" class=\"bg-red-500/10 hover:bg-red-600 text-red-400 hover:text-white border border-red-500/30 py-2.5 px-4 rounded-xl text-xs font-semibold transition-colors backdrop-blur-md flex items-center gap-1.5\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -400,7 +416,7 @@ func DashboardContent() templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, "<span>Ke Sampah</span></button></div></template></div></div></div><!-- MOVE FILE MODAL --><div x-show=\"$store.drive && $store.drive.showMoveModal\" x-cloak style=\"display: none;\" x-transition class=\"fixed inset-0 bg-black/80 backdrop-blur-xl flex items-center justify-center z-[110] p-4\"><div @click.away=\"$store.drive.showMoveModal = false\" class=\"bg-[#121519]/95 backdrop-blur-2xl border border-[#3F4247]/60 w-full max-w-md rounded-2xl p-6 shadow-2xl space-y-4\"><div class=\"flex justify-between items-center border-b border-[#3F4247]/60 pb-3\"><div class=\"flex items-center gap-2\"><div class=\"w-8 h-8 rounded-lg bg-[#2E3137] border border-[#F5CE0D]/40 text-[#F5CE0D] flex items-center justify-center\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, "<span>Ke Sampah</span></button></div></template></div></div></div><!-- MOVE FILE MODAL --><div x-show=\"$store.drive && $store.drive.showMoveModal\" x-cloak style=\"display: none;\" x-transition class=\"fixed inset-0 bg-black/80 backdrop-blur-xl flex items-center justify-center z-[110] p-4\"><div @click.away=\"$store.drive.showMoveModal = false\" class=\"bg-[#121519]/95 backdrop-blur-2xl border border-[#3F4247]/60 w-full max-w-md rounded-2xl p-6 shadow-2xl space-y-4\"><div class=\"flex justify-between items-center border-b border-[#3F4247]/60 pb-3\"><div class=\"flex items-center gap-2\"><div class=\"w-8 h-8 rounded-lg bg-[#2E3137] border border-[#F5CE0D]/40 text-[#F5CE0D] flex items-center justify-center\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -408,7 +424,7 @@ func DashboardContent() templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "</div><h3 class=\"font-bold text-sm text-white\">Pindahkan Berkas</h3></div><button @click=\"$store.drive.showMoveModal = false\" class=\"text-[#86898B] hover:text-white transition-colors\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 43, "</div><h3 class=\"font-bold text-sm text-white\">Pindahkan Berkas</h3></div><button @click=\"$store.drive.showMoveModal = false\" class=\"text-[#86898B] hover:text-white transition-colors\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -416,7 +432,7 @@ func DashboardContent() templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, "</button></div><div class=\"space-y-1 bg-[#2E3137]/30 border border-[#3F4247]/50 p-3 rounded-xl\"><div class=\"flex items-center justify-between text-xs\"><span class=\"text-[#86898B]\">Berkas yang dipindah:</span> <span class=\"font-bold text-white truncate max-w-[200px] font-mono\" x-text=\"$store.drive.fileToMove ? $store.drive.fileToMove.name : ''\"></span></div><div class=\"flex items-center justify-between text-xs pt-2 border-t border-white/[0.04]\"><span class=\"text-[#86898B]\">Lokasi Tujuan:</span> <span class=\"font-bold text-[#F5CE0D] truncate max-w-[220px] font-mono text-right\" x-text=\"$store.drive.getMoveTargetFolderPath()\"></span></div></div><!-- Target Folder Selection Directory Tree --><div class=\"space-y-1.5 max-h-64 overflow-y-auto pr-1 select-none\"><!-- Root Folder Option --><div @click=\"$store.drive.targetMoveFolderId = ''\" :class=\"$store.drive.targetMoveFolderId === '' ? 'border-[#F5CE0D] bg-[#F5CE0D]/10 text-white font-bold shadow-sm' : 'border-[#3F4247]/50 hover:bg-[#2E3137]/40 text-[#86898B] hover:text-white'\" class=\"p-2.5 rounded-xl border flex items-center justify-between cursor-pointer transition-all\"><div class=\"flex items-center gap-2\"><span class=\"w-5 h-5 flex items-center justify-center text-[#86898B]/50 shrink-0\"><span class=\"w-1.5 h-1.5 rounded-full bg-[#86898B]/60\"></span></span><div class=\"text-[#F5CE0D] shrink-0\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, "</button></div><div class=\"space-y-1 bg-[#2E3137]/30 border border-[#3F4247]/50 p-3 rounded-xl\"><div class=\"flex items-center justify-between text-xs\"><span class=\"text-[#86898B]\">Berkas yang dipindah:</span> <span class=\"font-bold text-white truncate max-w-[200px] font-mono\" x-text=\"$store.drive.fileToMove ? $store.drive.fileToMove.name : ''\"></span></div><div class=\"flex items-center justify-between text-xs pt-2 border-t border-white/[0.04]\"><span class=\"text-[#86898B]\">Lokasi Tujuan:</span> <span class=\"font-bold text-[#F5CE0D] truncate max-w-[220px] font-mono text-right\" x-text=\"$store.drive.getMoveTargetFolderPath()\"></span></div></div><!-- Target Folder Selection Directory Tree --><div class=\"space-y-1.5 max-h-64 overflow-y-auto pr-1 select-none\"><!-- Root Folder Option --><div @click=\"$store.drive.targetMoveFolderId = ''\" :class=\"$store.drive.targetMoveFolderId === '' ? 'border-[#F5CE0D] bg-[#F5CE0D]/10 text-white font-bold shadow-sm' : 'border-[#3F4247]/50 hover:bg-[#2E3137]/40 text-[#86898B] hover:text-white'\" class=\"p-2.5 rounded-xl border flex items-center justify-between cursor-pointer transition-all\"><div class=\"flex items-center gap-2\"><span class=\"w-5 h-5 flex items-center justify-center text-[#86898B]/50 shrink-0\"><span class=\"w-1.5 h-1.5 rounded-full bg-[#86898B]/60\"></span></span><div class=\"text-[#F5CE0D] shrink-0\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -424,7 +440,7 @@ func DashboardContent() templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 43, "</div><span class=\"text-xs font-semibold\">Penyimpanan Utama (Root)</span><template x-if=\"$store.drive.fileToMove && (!$store.drive.fileToMove.folder_id || $store.drive.fileToMove.folder_id === '')\"><span class=\"text-[9px] text-[#86898B] font-mono bg-white/5 px-1.5 py-0.5 rounded border border-white/10 shrink-0\">(Saat Ini)</span></template></div><span x-show=\"$store.drive.targetMoveFolderId === ''\" class=\"text-[#F5CE0D] text-[11px] font-bold font-mono shrink-0\">Pilihan</span></div><!-- Directory Tree Nodes --><template x-for=\"node in $store.drive.getMoveTreeNodes()\" :key=\"node.id\"><div @click=\"$store.drive.targetMoveFolderId = node.id\" :style=\"'padding-left: ' + (10 + node.level * 22) + 'px'\" :class=\"[\n\t\t\t\t\t\t\t\t$store.drive.targetMoveFolderId === node.id ? 'border-[#F5CE0D] bg-[#F5CE0D]/10 text-white font-bold shadow-sm' : 'border-[#3F4247]/40 hover:bg-[#2E3137]/40 text-[#86898B] hover:text-white',\n\t\t\t\t\t\t\t]\" class=\"p-2 rounded-xl border flex items-center justify-between cursor-pointer transition-all relative group\"><div class=\"flex items-center gap-2 min-w-0\"><!-- Expand / Collapse chevron toggle --><button type=\"button\" x-show=\"node.hasChildren\" @click.stop=\"$store.drive.toggleMoveFolderExpand(node.id, $event)\" class=\"w-5 h-5 flex items-center justify-center rounded hover:bg-white/10 text-[#86898B] hover:text-[#F5CE0D] transition-colors shrink-0\"><template x-if=\"node.isExpanded\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 45, "</div><span class=\"text-xs font-semibold\">Penyimpanan Utama (Root)</span><template x-if=\"$store.drive.fileToMove && (!$store.drive.fileToMove.folder_id || $store.drive.fileToMove.folder_id === '')\"><span class=\"text-[9px] text-[#86898B] font-mono bg-white/5 px-1.5 py-0.5 rounded border border-white/10 shrink-0\">(Saat Ini)</span></template></div><span x-show=\"$store.drive.targetMoveFolderId === ''\" class=\"text-[#F5CE0D] text-[11px] font-bold font-mono shrink-0\">Pilihan</span></div><!-- Directory Tree Nodes --><template x-for=\"node in $store.drive.getMoveTreeNodes()\" :key=\"node.id\"><div @click=\"$store.drive.targetMoveFolderId = node.id\" :style=\"'padding-left: ' + (10 + node.level * 22) + 'px'\" :class=\"[\n\t\t\t\t\t\t\t\t$store.drive.targetMoveFolderId === node.id ? 'border-[#F5CE0D] bg-[#F5CE0D]/10 text-white font-bold shadow-sm' : 'border-[#3F4247]/40 hover:bg-[#2E3137]/40 text-[#86898B] hover:text-white',\n\t\t\t\t\t\t\t]\" class=\"p-2 rounded-xl border flex items-center justify-between cursor-pointer transition-all relative group\"><div class=\"flex items-center gap-2 min-w-0\"><!-- Expand / Collapse chevron toggle --><button type=\"button\" x-show=\"node.hasChildren\" @click.stop=\"$store.drive.toggleMoveFolderExpand(node.id, $event)\" class=\"w-5 h-5 flex items-center justify-center rounded hover:bg-white/10 text-[#86898B] hover:text-[#F5CE0D] transition-colors shrink-0\"><template x-if=\"node.isExpanded\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -432,7 +448,7 @@ func DashboardContent() templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, "</template><template x-if=\"!node.isExpanded\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 46, "</template><template x-if=\"!node.isExpanded\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -440,7 +456,7 @@ func DashboardContent() templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 45, "</template></button> <span x-show=\"!node.hasChildren\" class=\"w-5 h-5 flex items-center justify-center text-[#86898B]/40 shrink-0\"><span class=\"text-xs font-mono\">└</span></span><!-- Folder Icon --><div class=\"text-[#F5CE0D] shrink-0\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 47, "</template></button> <span x-show=\"!node.hasChildren\" class=\"w-5 h-5 flex items-center justify-center text-[#86898B]/40 shrink-0\"><span class=\"text-xs font-mono\">└</span></span><!-- Folder Icon --><div class=\"text-[#F5CE0D] shrink-0\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -448,7 +464,7 @@ func DashboardContent() templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 46, "</div><!-- Name & count --><div class=\"min-w-0 flex items-center gap-1.5\"><span class=\"text-xs font-semibold truncate\" x-text=\"node.name\"></span> <span class=\"text-[10px] text-[#86898B] font-mono shrink-0\" x-text=\"'(' + (node.file_count || 0) + ')'\"></span><template x-if=\"$store.drive.fileToMove && $store.drive.fileToMove.folder_id === node.id\"><span class=\"text-[9px] text-[#86898B] font-mono bg-white/5 px-1.5 py-0.5 rounded border border-white/10 shrink-0\">(Saat Ini)</span></template></div></div><span x-show=\"$store.drive.targetMoveFolderId === node.id\" class=\"text-[#F5CE0D] text-[11px] font-bold font-mono shrink-0 ml-2\">Pilihan</span></div></template></div><div class=\"flex gap-3 pt-2 border-t border-[#3F4247]/60\"><button type=\"button\" @click=\"$store.drive.showMoveModal = false\" class=\"flex-1 py-2.5 bg-white/[0.04] border border-[#3F4247]/60 text-[#86898B] hover:text-white rounded-xl text-xs font-bold transition-all\">Batal</button> <button type=\"button\" @click=\"$store.drive.executeMoveFile()\" class=\"flex-1 hornetz-btn py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 48, "</div><!-- Name & count --><div class=\"min-w-0 flex items-center gap-1.5\"><span class=\"text-xs font-semibold truncate\" x-text=\"node.name\"></span> <span class=\"text-[10px] text-[#86898B] font-mono shrink-0\" x-text=\"'(' + (node.file_count || 0) + ')'\"></span><template x-if=\"$store.drive.fileToMove && $store.drive.fileToMove.folder_id === node.id\"><span class=\"text-[9px] text-[#86898B] font-mono bg-white/5 px-1.5 py-0.5 rounded border border-white/10 shrink-0\">(Saat Ini)</span></template></div></div><span x-show=\"$store.drive.targetMoveFolderId === node.id\" class=\"text-[#F5CE0D] text-[11px] font-bold font-mono shrink-0 ml-2\">Pilihan</span></div></template></div><div class=\"flex gap-3 pt-2 border-t border-[#3F4247]/60\"><button type=\"button\" @click=\"$store.drive.showMoveModal = false\" class=\"flex-1 py-2.5 bg-white/[0.04] border border-[#3F4247]/60 text-[#86898B] hover:text-white rounded-xl text-xs font-bold transition-all\">Batal</button> <button type=\"button\" @click=\"$store.drive.executeMoveFile()\" class=\"flex-1 hornetz-btn py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -456,7 +472,7 @@ func DashboardContent() templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 47, "<span>Pindahkan ke Sini</span></button></div></div></div></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 49, "<span>Pindahkan ke Sini</span></button></div></div></div></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

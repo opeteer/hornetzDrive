@@ -75,6 +75,7 @@ hornetzDrive/
 * `GET /api/files` - Retrieve user file listing (JSON).
 * `GET /api/folders` - Retrieve folder structure (JSON).
 * `GET /api/files/:id/download` - Stream and decrypt file content on-the-fly.
+* `GET /api/folders/:id/download` - On-the-fly ZIP streaming folder download (recursive hierarchy & zero-RAM buffering).
 * `DELETE /api/files/:id` - Delete user file reference.
 
 ### Protected Resumable Upload API
