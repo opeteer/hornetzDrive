@@ -192,7 +192,8 @@ func NewSafeTransport(dialTimeout time.Duration, allowPrivate bool) *http.Transp
 		ResponseHeaderTimeout: 30 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
 		IdleConnTimeout:       90 * time.Second,
-		MaxIdleConns:          100,
+		MaxIdleConns:          200,
+		MaxIdleConnsPerHost:   32,
 	}
 }
 

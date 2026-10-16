@@ -3560,11 +3560,11 @@ templ Layout(title string) {
 					// Accelerate with client-side TurboDownloader if file >= 5MB or turbo explicitly requested
 					if ((turbo || (file.size && file.size >= 5 * 1024 * 1024)) && window.TurboDownloader) {
 						if (!this._turboClient) {
-							this._turboClient = new window.TurboDownloader({ concurrency: 6 });
+							this._turboClient = new window.TurboDownloader({ concurrency: 20 });
 						}
 						this.isTransferring = true;
 						this.transferDirection = 'download';
-						this.currentSpeedText = 'Turbo Akselerasi (6 thread)...';
+						this.currentSpeedText = 'Turbo Akselerasi (20 thread)...';
 
 						const downloadUrl = `/api/files/${file.id}/download`;
 						this._turboClient.startDownload(downloadUrl, file.name || 'file', file.size, {

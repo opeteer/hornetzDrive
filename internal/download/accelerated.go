@@ -14,18 +14,18 @@ import (
 
 // AcceleratedConfig controls the concurrency and block allocation for multi-threaded downloads.
 type AcceleratedConfig struct {
-	MaxConnections       int           // Max parallel worker connections (default 8)
-	MinBlockSize         int64         // Minimum chunk size (default 2MB)
+	MaxConnections       int           // Max parallel worker connections (default 20)
+	MinBlockSize         int64         // Minimum chunk size (default 1MB)
 	MaxBlockSize         int64         // Maximum chunk size (default 8MB)
 	MinAccelerationBytes int64         // Threshold below which single-threaded is used (default 5MB)
-	StallTimeout         time.Duration // Duration of inactivity before a block is re-queued (default 10s)
-	MaxRetriesPerBlock   int           // Max retries for a failing block (default 3)
+	StallTimeout         time.Duration // Duration of inactivity before a block is re-queued (default 12s)
+	MaxRetriesPerBlock   int           // Max retries for a failing block (default 4)
 }
 
 func DefaultAcceleratedConfig() AcceleratedConfig {
 	return AcceleratedConfig{
-		MaxConnections:       8,
-		MinBlockSize:         2 * 1024 * 1024,
+		MaxConnections:       20,
+		MinBlockSize:         1 * 1024 * 1024,
 		MaxBlockSize:         8 * 1024 * 1024,
 		MinAccelerationBytes: 5 * 1024 * 1024,
 		StallTimeout:         12 * time.Second,
@@ -258,6 +258,7 @@ func (ad *AcceleratedDownloader) DownloadToFile(
 	statePath string,
 	onProgress func(downloaded int64, total int64, speed string, threads int, completedBlocks int, totalBlocks int),
 	onMeta func(meta *DirectFileInfo),
+	maxThreads ...int,
 ) (*DirectFileInfo, error) {
 
 	// 1. Resolve Link & Preflight Probe
@@ -326,8 +327,14 @@ func (ad *AcceleratedDownloader) DownloadToFile(
 
 	// 4. Setup Worker Pool
 	concurrency := ad.Config.MaxConnections
+	if len(maxThreads) > 0 && maxThreads[0] > 0 {
+		concurrency = maxThreads[0]
+	}
 	if concurrency <= 0 {
-		concurrency = 8
+		concurrency = 20
+	}
+	if concurrency > 32 {
+		concurrency = 32
 	}
 	// Don't spawn more workers than total pieces
 	if coord.totalPieces < concurrency {

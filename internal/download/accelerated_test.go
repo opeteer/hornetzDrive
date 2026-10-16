@@ -473,3 +473,81 @@ func TestAcceleratedDownloader_RateLimitRecovery(t *testing.T) {
 		t.Fatalf("Payload corrupted after rate limit recovery")
 	}
 }
+
+func TestAcceleratedDownloader_TwentyConcurrentConnections(t *testing.T) {
+	// Generate 25 MB test payload so 25 pieces of 1MB exist (more pieces than 20 workers)
+	payloadSize := 25 * 1024 * 1024
+	payload := make([]byte, payloadSize)
+	for i := 0; i < payloadSize; i++ {
+		payload[i] = byte((i * 47) % 256)
+	}
+	expectedHash := sha256.Sum256(payload)
+
+	server := createMockRangeServer(payload)
+	defer server.Close()
+
+	tmpDir, err := os.MkdirTemp("", "twenty_conn_test_*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	targetPath := filepath.Join(tmpDir, "downloaded_20.bin")
+	targetFile, err := os.OpenFile(targetPath, os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer targetFile.Close()
+
+	statePath := filepath.Join(tmpDir, "downloaded_20.state")
+
+	// Use default config which has MaxConnections = 20
+	downloader := NewAcceleratedDownloader(server.Client(), nil)
+	if downloader.Config.MaxConnections != 20 {
+		t.Fatalf("expected DefaultAcceleratedConfig MaxConnections to be 20, got %d", downloader.Config.MaxConnections)
+	}
+
+	var maxObservedThreads int32 = 0
+
+	fileInfo, err := downloader.DownloadToFile(
+		context.Background(),
+		"task_test_twenty_conn",
+		server.URL+"/file",
+		targetFile,
+		statePath,
+		func(downloaded, total int64, speed string, threads, completedP, totalP int) {
+			for {
+				current := atomic.LoadInt32(&maxObservedThreads)
+				if int32(threads) <= current || atomic.CompareAndSwapInt32(&maxObservedThreads, current, int32(threads)) {
+					break
+				}
+			}
+		},
+		nil,
+		20, // explicitly requesting 20 threads
+	)
+
+	if err != nil {
+		t.Fatalf("DownloadToFile with 20 connections failed: %v", err)
+	}
+
+	if fileInfo.TotalBytes != int64(payloadSize) {
+		t.Errorf("expected TotalBytes %d, got %d", payloadSize, fileInfo.TotalBytes)
+	}
+
+	// Verify SHA-256 match
+	downloadedBytes, err := os.ReadFile(targetPath)
+	if err != nil {
+		t.Fatalf("failed reading downloaded file: %v", err)
+	}
+	if len(downloadedBytes) != payloadSize {
+		t.Fatalf("expected %d bytes on disk, got %d", payloadSize, len(downloadedBytes))
+	}
+
+	actualHash := sha256.Sum256(downloadedBytes)
+	if actualHash != expectedHash {
+		t.Fatalf("SHA-256 hash mismatch!\nExpected: %x\nActual:   %x", expectedHash, actualHash)
+	}
+
+	t.Logf("20-connection test completed successfully! Payload: %d bytes, Max observed active threads: %d", payloadSize, maxObservedThreads)
+}

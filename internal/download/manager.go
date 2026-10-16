@@ -69,6 +69,17 @@ func NewDownloadManager(cas *storage.CASEngine, db *data.DBEngine, broker *realt
 	}, nil
 }
 
+// DownloadOptions holds configurable parameters for initiating a download task.
+type DownloadOptions struct {
+	OwnerID          int
+	FolderID         string
+	Link             string
+	FilenameOverride string
+	IsVault          bool
+	VaultKey         []byte
+	MaxThreads       int // Concurrency level for multi-threaded downloads (default 20)
+}
+
 // StartDownload creates and starts an asynchronous download job.
 func (dm *DownloadManager) StartDownload(ctx context.Context, ownerID int, folderID string, link string, isVault bool, vaultKey []byte) (*DownloadTask, error) {
 	return dm.StartDownloadWithFilename(ctx, ownerID, folderID, link, "", isVault, vaultKey)
@@ -76,7 +87,20 @@ func (dm *DownloadManager) StartDownload(ctx context.Context, ownerID int, folde
 
 // StartDownloadWithFilename creates and starts an asynchronous download job with optional custom filename override.
 func (dm *DownloadManager) StartDownloadWithFilename(ctx context.Context, ownerID int, folderID string, link string, filenameOverride string, isVault bool, vaultKey []byte) (*DownloadTask, error) {
-	norm := NormalizeLink(link)
+	return dm.StartDownloadWithOptions(ctx, DownloadOptions{
+		OwnerID:          ownerID,
+		FolderID:         folderID,
+		Link:             link,
+		FilenameOverride: filenameOverride,
+		IsVault:          isVault,
+		VaultKey:         vaultKey,
+		MaxThreads:       20,
+	})
+}
+
+// StartDownloadWithOptions creates and starts an asynchronous download job with full configuration options.
+func (dm *DownloadManager) StartDownloadWithOptions(ctx context.Context, opts DownloadOptions) (*DownloadTask, error) {
+	norm := NormalizeLink(opts.Link)
 	if norm == "" {
 		return nil, errors.New("empty download link")
 	}
@@ -95,8 +119,8 @@ func (dm *DownloadManager) StartDownloadWithFilename(ctx context.Context, ownerI
 
 	// Determine initial filename
 	initialName := "downloading_file"
-	if filenameOverride != "" {
-		initialName = CleanFilename(filenameOverride, "downloaded_file")
+	if opts.FilenameOverride != "" {
+		initialName = CleanFilename(opts.FilenameOverride, "downloaded_file")
 	} else if resolved != nil && resolved.Filename != "" && !strings.HasPrefix(resolved.Filename, "download_") {
 		initialName = resolved.Filename
 	} else if linkType == DownloadTypeMagnet {
@@ -109,15 +133,24 @@ func (dm *DownloadManager) StartDownloadWithFilename(ctx context.Context, ownerI
 		initialName = ParseFilenameFromHeaders("", norm)
 	}
 
+	maxThreads := opts.MaxThreads
+	if maxThreads <= 0 {
+		maxThreads = 20
+	}
+	if maxThreads > 32 {
+		maxThreads = 32
+	}
+
 	taskCtx, cancel := context.WithCancel(context.Background())
 
 	task := &DownloadTask{
 		ID:         taskID,
-		OwnerID:    ownerID,
-		FolderID:   folderID,
+		OwnerID:    opts.OwnerID,
+		FolderID:   opts.FolderID,
 		URL:        norm,
 		Type:       linkType,
 		Filename:   initialName,
+		MaxThreads: maxThreads,
 		Status:     StatusDownloading,
 		StatusText: "Menghubungkan...",
 		SpeedText:  "Menghubungkan...",
@@ -129,8 +162,8 @@ func (dm *DownloadManager) StartDownloadWithFilename(ctx context.Context, ownerI
 	dm.tasks.Store(taskID, task)
 
 	// Execute download in background goroutine
-	hasCustomName := filenameOverride != ""
-	go dm.executeDownload(taskCtx, task, isVault, vaultKey, hasCustomName)
+	hasCustomName := opts.FilenameOverride != ""
+	go dm.executeDownload(taskCtx, task, opts.IsVault, opts.VaultKey, hasCustomName)
 
 	return task.Snapshot(), nil
 }
@@ -318,7 +351,7 @@ func (dm *DownloadManager) executeDownload(ctx context.Context, task *DownloadTa
 						task.MimeType = meta.MimeType
 					}
 					task.Mu.Unlock()
-				})
+				}, task.MaxThreads)
 
 				if aErr == nil {
 					// Phase 2: Sequential stream into CAS EncryptStream and Hasher

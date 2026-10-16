@@ -5,8 +5,8 @@
  */
 class TurboDownloader {
     constructor(options = {}) {
-        this.concurrency = options.concurrency || 6;
-        this.minBlockSize = options.minBlockSize || 2 * 1024 * 1024; // 2MB
+        this.concurrency = options.concurrency || 20;
+        this.minBlockSize = options.minBlockSize || 1024 * 1024; // 1MB
         this.maxBlockSize = options.maxBlockSize || 8 * 1024 * 1024; // 8MB
         this.abortController = null;
         this.isDownloading = false;
@@ -17,9 +17,11 @@ class TurboDownloader {
      */
     computeBlockSize(totalSize) {
         if (!totalSize || totalSize <= 0) return this.minBlockSize;
-        if (totalSize <= 16 * 1024 * 1024) return 2 * 1024 * 1024; // 2MB for small files
-        if (totalSize <= 64 * 1024 * 1024) return 4 * 1024 * 1024; // 4MB for medium files
-        return this.maxBlockSize; // 8MB for large files
+        // Target 32-64 blocks to keep up to 20 parallel threads fully saturated
+        let blockSize = Math.floor(totalSize / 32);
+        if (blockSize < this.minBlockSize) blockSize = this.minBlockSize;
+        if (blockSize > this.maxBlockSize) blockSize = this.maxBlockSize;
+        return blockSize;
     }
 
     /**

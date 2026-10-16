@@ -61,9 +61,10 @@ func (dc *DownloadController) getVaultKey(c *echo.Context) ([]byte, bool) {
 // StartDownload initiates an asynchronous download from a direct URL or magnet link.
 func (dc *DownloadController) StartDownload(c *echo.Context) error {
 	var req struct {
-		URL      string `json:"url"`
-		FolderID string `json:"folder_id"`
-		Filename string `json:"filename,omitempty"`
+		URL        string `json:"url"`
+		FolderID   string `json:"folder_id"`
+		Filename   string `json:"filename,omitempty"`
+		MaxThreads int    `json:"max_threads,omitempty"`
 	}
 
 	if err := c.Bind(&req); err != nil {
@@ -101,13 +102,29 @@ func (dc *DownloadController) StartDownload(c *echo.Context) error {
 
 	userID := int(auth.GetUserID(c))
 
-	task, err := dc.Manager.StartDownloadWithFilename(c.Request().Context(), userID, folderID, normURL, req.Filename, isVault, vk)
+	maxThreads := req.MaxThreads
+	if maxThreads <= 0 {
+		maxThreads = 20
+	}
+	if maxThreads > 32 {
+		maxThreads = 32
+	}
+
+	task, err := dc.Manager.StartDownloadWithOptions(c.Request().Context(), download.DownloadOptions{
+		OwnerID:          userID,
+		FolderID:         folderID,
+		Link:             normURL,
+		FilenameOverride: req.Filename,
+		IsVault:          isVault,
+		VaultKey:         vk,
+		MaxThreads:       maxThreads,
+	})
 	if err != nil {
 		slog.Error("failed to start download task", "error", err, "url", normURL)
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 
-	slog.Info("download task started", "task_id", task.ID, "url", normURL, "filename", task.Filename, "folder_id", folderID)
+	slog.Info("download task started", "task_id", task.ID, "url", normURL, "filename", task.Filename, "folder_id", folderID, "max_threads", maxThreads)
 	return c.JSON(http.StatusAccepted, task)
 }
 
