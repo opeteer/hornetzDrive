@@ -3554,67 +3554,43 @@ templ Layout(title string) {
 					}
 				},
 
-				downloadFile(file, turbo = false) {
+				downloadFile(file) {
 					if (!file) return;
 
-					// Accelerate with client-side TurboDownloader if file >= 5MB or turbo explicitly requested
-					if ((turbo || (file.size && file.size >= 5 * 1024 * 1024)) && window.TurboDownloader) {
-						if (!this._turboClient) {
-							this._turboClient = new window.TurboDownloader({ concurrency: 20 });
-						}
-						this.isTransferring = true;
-						this.transferDirection = 'download';
-						this.currentSpeedText = 'Turbo Akselerasi (20 thread)...';
-
-						const downloadUrl = `/api/files/${file.id}/download`;
-						this._turboClient.startDownload(downloadUrl, file.name || 'file', file.size, {
-							onProgress: (p) => {
-								this.isTransferring = true;
-								this.currentSpeedText = `${p.speed} (${p.threads} thread) [${p.percent}%]`;
-							},
-							onComplete: () => {
-								this.currentSpeedText = 'Selesai!';
-								setTimeout(() => {
-									this.isTransferring = false;
-									this.transferDirection = 'idle';
-									this.currentSpeedText = 'Idle';
-								}, 2500);
-							},
-							onError: (err) => {
-								console.warn('Turbo download fallback to native:', err);
-								const a = document.createElement('a');
-								a.href = downloadUrl;
-								a.download = file.name || '';
-								document.body.appendChild(a);
-								a.click();
-								a.remove();
-								setTimeout(() => {
-									this.isTransferring = false;
-									this.transferDirection = 'idle';
-									this.currentSpeedText = 'Idle';
-								}, 2000);
-							}
-						});
-						this.selectedFile = null;
-						return;
-					}
-
-					// Standard single-stream browser download
+					// Native browser streaming download: hands stream directly to OS/browser download manager
+					// and external tools (Motrix, Aria2, IDM) without in-memory buffering or V8 OOM crashes.
 					this.isTransferring = true;
 					this.transferDirection = 'download';
-					this.currentSpeedText = 'Mengunduh...';
+					this.currentSpeedText = 'Mengunduh ke klien...';
+
+					const downloadUrl = `/api/files/${file.id}/download`;
 					const a = document.createElement('a');
-					a.href = `/api/files/${file.id}/download`;
+					a.href = downloadUrl;
 					a.download = file.name || '';
 					document.body.appendChild(a);
 					a.click();
 					a.remove();
 					this.selectedFile = null;
+
 					setTimeout(() => {
 						this.isTransferring = false;
 						this.transferDirection = 'idle';
 						this.currentSpeedText = 'Idle';
 					}, 2500);
+				},
+
+				copyDownloadLink(file) {
+					if (!file) return;
+					const url = window.location.origin + `/api/files/${file.id}/download`;
+					if (navigator.clipboard && navigator.clipboard.writeText) {
+						navigator.clipboard.writeText(url).then(() => {
+							alert("Tautan unduhan berhasil disalin ke papan klip:\n\n" + url + "\n\nAnda dapat menempelkannya ke download manager seperti Motrix / Aria2.");
+						}).catch(() => {
+							prompt("Salin tautan unduhan berikut untuk download manager:", url);
+						});
+					} else {
+						prompt("Salin tautan unduhan berikut untuk download manager:", url);
+					}
 				},
 
 				triggerPanicPurge() {

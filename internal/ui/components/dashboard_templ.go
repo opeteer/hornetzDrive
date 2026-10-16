@@ -368,7 +368,15 @@ func DashboardContent() templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, "<span x-text=\"$store.drive.activeTab === 'vault' ? 'Dekripsi & Unduh' : 'Unduh Berkas'\"></span></button> <button @click=\"$store.drive.openMoveModal($store.drive.selectedFile)\" class=\"bg-white/[0.04] hover:bg-white/[0.08] text-[#EDEBE8] hover:text-[#F5CE0D] border border-[#3F4247]/60 py-2.5 px-3 rounded-xl text-xs font-semibold transition-all backdrop-blur-md flex items-center gap-1.5\" title=\"Pindahkan berkas ke folder lain\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, "<span x-text=\"$store.drive.activeTab === 'vault' ? 'Dekripsi & Unduh' : 'Unduh Berkas'\"></span></button> <button @click=\"$store.drive.copyDownloadLink($store.drive.selectedFile)\" class=\"bg-white/[0.04] hover:bg-white/[0.08] text-[#EDEBE8] hover:text-[#F5CE0D] border border-[#3F4247]/60 py-2.5 px-3 rounded-xl text-xs font-semibold transition-all backdrop-blur-md flex items-center gap-1.5\" title=\"Salin tautan unduhan langsung untuk download manager (Motrix, Aria2, curl, wget)\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = IconLink("w-4 h-4").Render(ctx, templ_7745c5c3_Buffer)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, "<span>Salin Tautan</span></button> <button @click=\"$store.drive.openMoveModal($store.drive.selectedFile)\" class=\"bg-white/[0.04] hover:bg-white/[0.08] text-[#EDEBE8] hover:text-[#F5CE0D] border border-[#3F4247]/60 py-2.5 px-3 rounded-xl text-xs font-semibold transition-all backdrop-blur-md flex items-center gap-1.5\" title=\"Pindahkan berkas ke folder lain\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -376,7 +384,7 @@ func DashboardContent() templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, "<span>Pindahkan</span></button> <button @click=\"$store.drive.renameFile($store.drive.selectedFile)\" class=\"bg-white/[0.04] hover:bg-white/[0.08] text-[#EDEBE8] border border-[#3F4247]/60 py-2.5 px-3 rounded-xl text-xs font-semibold transition-all backdrop-blur-md flex items-center gap-1.5\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, "<span>Pindahkan</span></button> <button @click=\"$store.drive.renameFile($store.drive.selectedFile)\" class=\"bg-white/[0.04] hover:bg-white/[0.08] text-[#EDEBE8] border border-[#3F4247]/60 py-2.5 px-3 rounded-xl text-xs font-semibold transition-all backdrop-blur-md flex items-center gap-1.5\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -384,7 +392,7 @@ func DashboardContent() templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, "<span>Ubah Nama</span></button> <button @click=\"$store.drive.deleteFile($store.drive.selectedFile, false)\" class=\"bg-red-500/10 hover:bg-red-600 text-red-400 hover:text-white border border-red-500/30 py-2.5 px-4 rounded-xl text-xs font-semibold transition-colors backdrop-blur-md flex items-center gap-1.5\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "<span>Ubah Nama</span></button> <button @click=\"$store.drive.deleteFile($store.drive.selectedFile, false)\" class=\"bg-red-500/10 hover:bg-red-600 text-red-400 hover:text-white border border-red-500/30 py-2.5 px-4 rounded-xl text-xs font-semibold transition-colors backdrop-blur-md flex items-center gap-1.5\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -392,7 +400,7 @@ func DashboardContent() templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "<span>Ke Sampah</span></button></div></template></div></div></div><!-- MOVE FILE MODAL --><div x-show=\"$store.drive && $store.drive.showMoveModal\" x-cloak style=\"display: none;\" x-transition class=\"fixed inset-0 bg-black/80 backdrop-blur-xl flex items-center justify-center z-[110] p-4\"><div @click.away=\"$store.drive.showMoveModal = false\" class=\"bg-[#121519]/95 backdrop-blur-2xl border border-[#3F4247]/60 w-full max-w-md rounded-2xl p-6 shadow-2xl space-y-4\"><div class=\"flex justify-between items-center border-b border-[#3F4247]/60 pb-3\"><div class=\"flex items-center gap-2\"><div class=\"w-8 h-8 rounded-lg bg-[#2E3137] border border-[#F5CE0D]/40 text-[#F5CE0D] flex items-center justify-center\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, "<span>Ke Sampah</span></button></div></template></div></div></div><!-- MOVE FILE MODAL --><div x-show=\"$store.drive && $store.drive.showMoveModal\" x-cloak style=\"display: none;\" x-transition class=\"fixed inset-0 bg-black/80 backdrop-blur-xl flex items-center justify-center z-[110] p-4\"><div @click.away=\"$store.drive.showMoveModal = false\" class=\"bg-[#121519]/95 backdrop-blur-2xl border border-[#3F4247]/60 w-full max-w-md rounded-2xl p-6 shadow-2xl space-y-4\"><div class=\"flex justify-between items-center border-b border-[#3F4247]/60 pb-3\"><div class=\"flex items-center gap-2\"><div class=\"w-8 h-8 rounded-lg bg-[#2E3137] border border-[#F5CE0D]/40 text-[#F5CE0D] flex items-center justify-center\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -400,7 +408,7 @@ func DashboardContent() templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, "</div><h3 class=\"font-bold text-sm text-white\">Pindahkan Berkas</h3></div><button @click=\"$store.drive.showMoveModal = false\" class=\"text-[#86898B] hover:text-white transition-colors\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "</div><h3 class=\"font-bold text-sm text-white\">Pindahkan Berkas</h3></div><button @click=\"$store.drive.showMoveModal = false\" class=\"text-[#86898B] hover:text-white transition-colors\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -408,7 +416,7 @@ func DashboardContent() templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "</button></div><div class=\"space-y-1 bg-[#2E3137]/30 border border-[#3F4247]/50 p-3 rounded-xl\"><div class=\"flex items-center justify-between text-xs\"><span class=\"text-[#86898B]\">Berkas yang dipindah:</span> <span class=\"font-bold text-white truncate max-w-[200px] font-mono\" x-text=\"$store.drive.fileToMove ? $store.drive.fileToMove.name : ''\"></span></div><div class=\"flex items-center justify-between text-xs pt-2 border-t border-white/[0.04]\"><span class=\"text-[#86898B]\">Lokasi Tujuan:</span> <span class=\"font-bold text-[#F5CE0D] truncate max-w-[220px] font-mono text-right\" x-text=\"$store.drive.getMoveTargetFolderPath()\"></span></div></div><!-- Target Folder Selection Directory Tree --><div class=\"space-y-1.5 max-h-64 overflow-y-auto pr-1 select-none\"><!-- Root Folder Option --><div @click=\"$store.drive.targetMoveFolderId = ''\" :class=\"$store.drive.targetMoveFolderId === '' ? 'border-[#F5CE0D] bg-[#F5CE0D]/10 text-white font-bold shadow-sm' : 'border-[#3F4247]/50 hover:bg-[#2E3137]/40 text-[#86898B] hover:text-white'\" class=\"p-2.5 rounded-xl border flex items-center justify-between cursor-pointer transition-all\"><div class=\"flex items-center gap-2\"><span class=\"w-5 h-5 flex items-center justify-center text-[#86898B]/50 shrink-0\"><span class=\"w-1.5 h-1.5 rounded-full bg-[#86898B]/60\"></span></span><div class=\"text-[#F5CE0D] shrink-0\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, "</button></div><div class=\"space-y-1 bg-[#2E3137]/30 border border-[#3F4247]/50 p-3 rounded-xl\"><div class=\"flex items-center justify-between text-xs\"><span class=\"text-[#86898B]\">Berkas yang dipindah:</span> <span class=\"font-bold text-white truncate max-w-[200px] font-mono\" x-text=\"$store.drive.fileToMove ? $store.drive.fileToMove.name : ''\"></span></div><div class=\"flex items-center justify-between text-xs pt-2 border-t border-white/[0.04]\"><span class=\"text-[#86898B]\">Lokasi Tujuan:</span> <span class=\"font-bold text-[#F5CE0D] truncate max-w-[220px] font-mono text-right\" x-text=\"$store.drive.getMoveTargetFolderPath()\"></span></div></div><!-- Target Folder Selection Directory Tree --><div class=\"space-y-1.5 max-h-64 overflow-y-auto pr-1 select-none\"><!-- Root Folder Option --><div @click=\"$store.drive.targetMoveFolderId = ''\" :class=\"$store.drive.targetMoveFolderId === '' ? 'border-[#F5CE0D] bg-[#F5CE0D]/10 text-white font-bold shadow-sm' : 'border-[#3F4247]/50 hover:bg-[#2E3137]/40 text-[#86898B] hover:text-white'\" class=\"p-2.5 rounded-xl border flex items-center justify-between cursor-pointer transition-all\"><div class=\"flex items-center gap-2\"><span class=\"w-5 h-5 flex items-center justify-center text-[#86898B]/50 shrink-0\"><span class=\"w-1.5 h-1.5 rounded-full bg-[#86898B]/60\"></span></span><div class=\"text-[#F5CE0D] shrink-0\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -416,7 +424,7 @@ func DashboardContent() templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, "</div><span class=\"text-xs font-semibold\">Penyimpanan Utama (Root)</span><template x-if=\"$store.drive.fileToMove && (!$store.drive.fileToMove.folder_id || $store.drive.fileToMove.folder_id === '')\"><span class=\"text-[9px] text-[#86898B] font-mono bg-white/5 px-1.5 py-0.5 rounded border border-white/10 shrink-0\">(Saat Ini)</span></template></div><span x-show=\"$store.drive.targetMoveFolderId === ''\" class=\"text-[#F5CE0D] text-[11px] font-bold font-mono shrink-0\">Pilihan</span></div><!-- Directory Tree Nodes --><template x-for=\"node in $store.drive.getMoveTreeNodes()\" :key=\"node.id\"><div @click=\"$store.drive.targetMoveFolderId = node.id\" :style=\"'padding-left: ' + (10 + node.level * 22) + 'px'\" :class=\"[\n\t\t\t\t\t\t\t\t$store.drive.targetMoveFolderId === node.id ? 'border-[#F5CE0D] bg-[#F5CE0D]/10 text-white font-bold shadow-sm' : 'border-[#3F4247]/40 hover:bg-[#2E3137]/40 text-[#86898B] hover:text-white',\n\t\t\t\t\t\t\t]\" class=\"p-2 rounded-xl border flex items-center justify-between cursor-pointer transition-all relative group\"><div class=\"flex items-center gap-2 min-w-0\"><!-- Expand / Collapse chevron toggle --><button type=\"button\" x-show=\"node.hasChildren\" @click.stop=\"$store.drive.toggleMoveFolderExpand(node.id, $event)\" class=\"w-5 h-5 flex items-center justify-center rounded hover:bg-white/10 text-[#86898B] hover:text-[#F5CE0D] transition-colors shrink-0\"><template x-if=\"node.isExpanded\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 43, "</div><span class=\"text-xs font-semibold\">Penyimpanan Utama (Root)</span><template x-if=\"$store.drive.fileToMove && (!$store.drive.fileToMove.folder_id || $store.drive.fileToMove.folder_id === '')\"><span class=\"text-[9px] text-[#86898B] font-mono bg-white/5 px-1.5 py-0.5 rounded border border-white/10 shrink-0\">(Saat Ini)</span></template></div><span x-show=\"$store.drive.targetMoveFolderId === ''\" class=\"text-[#F5CE0D] text-[11px] font-bold font-mono shrink-0\">Pilihan</span></div><!-- Directory Tree Nodes --><template x-for=\"node in $store.drive.getMoveTreeNodes()\" :key=\"node.id\"><div @click=\"$store.drive.targetMoveFolderId = node.id\" :style=\"'padding-left: ' + (10 + node.level * 22) + 'px'\" :class=\"[\n\t\t\t\t\t\t\t\t$store.drive.targetMoveFolderId === node.id ? 'border-[#F5CE0D] bg-[#F5CE0D]/10 text-white font-bold shadow-sm' : 'border-[#3F4247]/40 hover:bg-[#2E3137]/40 text-[#86898B] hover:text-white',\n\t\t\t\t\t\t\t]\" class=\"p-2 rounded-xl border flex items-center justify-between cursor-pointer transition-all relative group\"><div class=\"flex items-center gap-2 min-w-0\"><!-- Expand / Collapse chevron toggle --><button type=\"button\" x-show=\"node.hasChildren\" @click.stop=\"$store.drive.toggleMoveFolderExpand(node.id, $event)\" class=\"w-5 h-5 flex items-center justify-center rounded hover:bg-white/10 text-[#86898B] hover:text-[#F5CE0D] transition-colors shrink-0\"><template x-if=\"node.isExpanded\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -424,7 +432,7 @@ func DashboardContent() templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 43, "</template><template x-if=\"!node.isExpanded\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, "</template><template x-if=\"!node.isExpanded\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -432,7 +440,7 @@ func DashboardContent() templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, "</template></button> <span x-show=\"!node.hasChildren\" class=\"w-5 h-5 flex items-center justify-center text-[#86898B]/40 shrink-0\"><span class=\"text-xs font-mono\">└</span></span><!-- Folder Icon --><div class=\"text-[#F5CE0D] shrink-0\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 45, "</template></button> <span x-show=\"!node.hasChildren\" class=\"w-5 h-5 flex items-center justify-center text-[#86898B]/40 shrink-0\"><span class=\"text-xs font-mono\">└</span></span><!-- Folder Icon --><div class=\"text-[#F5CE0D] shrink-0\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -440,7 +448,7 @@ func DashboardContent() templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 45, "</div><!-- Name & count --><div class=\"min-w-0 flex items-center gap-1.5\"><span class=\"text-xs font-semibold truncate\" x-text=\"node.name\"></span> <span class=\"text-[10px] text-[#86898B] font-mono shrink-0\" x-text=\"'(' + (node.file_count || 0) + ')'\"></span><template x-if=\"$store.drive.fileToMove && $store.drive.fileToMove.folder_id === node.id\"><span class=\"text-[9px] text-[#86898B] font-mono bg-white/5 px-1.5 py-0.5 rounded border border-white/10 shrink-0\">(Saat Ini)</span></template></div></div><span x-show=\"$store.drive.targetMoveFolderId === node.id\" class=\"text-[#F5CE0D] text-[11px] font-bold font-mono shrink-0 ml-2\">Pilihan</span></div></template></div><div class=\"flex gap-3 pt-2 border-t border-[#3F4247]/60\"><button type=\"button\" @click=\"$store.drive.showMoveModal = false\" class=\"flex-1 py-2.5 bg-white/[0.04] border border-[#3F4247]/60 text-[#86898B] hover:text-white rounded-xl text-xs font-bold transition-all\">Batal</button> <button type=\"button\" @click=\"$store.drive.executeMoveFile()\" class=\"flex-1 hornetz-btn py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 46, "</div><!-- Name & count --><div class=\"min-w-0 flex items-center gap-1.5\"><span class=\"text-xs font-semibold truncate\" x-text=\"node.name\"></span> <span class=\"text-[10px] text-[#86898B] font-mono shrink-0\" x-text=\"'(' + (node.file_count || 0) + ')'\"></span><template x-if=\"$store.drive.fileToMove && $store.drive.fileToMove.folder_id === node.id\"><span class=\"text-[9px] text-[#86898B] font-mono bg-white/5 px-1.5 py-0.5 rounded border border-white/10 shrink-0\">(Saat Ini)</span></template></div></div><span x-show=\"$store.drive.targetMoveFolderId === node.id\" class=\"text-[#F5CE0D] text-[11px] font-bold font-mono shrink-0 ml-2\">Pilihan</span></div></template></div><div class=\"flex gap-3 pt-2 border-t border-[#3F4247]/60\"><button type=\"button\" @click=\"$store.drive.showMoveModal = false\" class=\"flex-1 py-2.5 bg-white/[0.04] border border-[#3F4247]/60 text-[#86898B] hover:text-white rounded-xl text-xs font-bold transition-all\">Batal</button> <button type=\"button\" @click=\"$store.drive.executeMoveFile()\" class=\"flex-1 hornetz-btn py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -448,7 +456,7 @@ func DashboardContent() templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 46, "<span>Pindahkan ke Sini</span></button></div></div></div></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 47, "<span>Pindahkan ke Sini</span></button></div></div></div></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

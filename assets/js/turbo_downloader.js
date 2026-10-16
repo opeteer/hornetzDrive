@@ -68,10 +68,31 @@ class TurboDownloader {
                     });
                     directWritable = await handle.createWritable();
                 } catch (e) {
-                    // User dismissed picker or permission denied; gracefully fallback to in-memory Blob
+                    // User dismissed picker or permission denied; gracefully fallback to native download for large files
                     directWritable = null;
                 }
             }
+
+            // CRITICAL DEFECT FIX: If direct-to-disk streaming is unavailable and file is large (>= 20MB),
+            // immediately fallback to native browser download to prevent V8 JavaScript heap exhaustion and tab crashes.
+            if (!directWritable && knownSize >= 20 * 1024 * 1024) {
+                console.warn(`Direct filesystem stream unavailable for large file (${knownSize} bytes). Falling back to native browser download to prevent memory exhaustion.`);
+                this.fallbackNative(url, filename);
+                this.isDownloading = false;
+                if (onComplete) onComplete({ fallback: true });
+                return;
+            }
+
+            // Mutex queue to serialize writes to directWritable and prevent concurrent stream lock races
+            let writeQueue = Promise.resolve();
+            const writeChunkDirect = (start, data) => {
+                const nextWrite = writeQueue.then(async () => {
+                    await directWritable.seek(start);
+                    await directWritable.write(data);
+                });
+                writeQueue = nextWrite.catch(() => {});
+                return nextWrite;
+            };
 
             // 3. Prepare Pieces
             const blockSize = this.computeBlockSize(knownSize);
@@ -182,8 +203,7 @@ class TurboDownloader {
                                 }
 
                                 if (directWritable) {
-                                    await directWritable.seek(piece.start);
-                                    await directWritable.write(pieceData);
+                                    await writeChunkDirect(piece.start, pieceData);
                                     piece.data = null; // Zero browser RAM overhead!
                                 } else {
                                     piece.data = pieceData;
